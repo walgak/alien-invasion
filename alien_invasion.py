@@ -24,11 +24,9 @@ class AlienInvasion:
     def run_game(self):
         """Starts the main loop for the game"""
         while True:
-            #Listing to keyboard and mouse events
             self._check_events()
             self.ship.update()
-            self.bullets.update()
-            #Redraw the screen during each pass through the loop
+            self._update_bullets()
             self._update_screen()
             self.clock.tick(60)
     
@@ -63,8 +61,18 @@ class AlienInvasion:
     
     def _fire_bullet(self):
         """Create anew bullet and add it to the bullets group"""
-        new_bullet = Bullet(self)
-        self.bullets.add(new_bullet)
+        if len(self.bullets) < self.settings.bullets_allowed:
+            new_bullet = Bullet(self)
+            self.bullets.add(new_bullet)
+        
+    def _update_bullets(self):
+        """Updates position of bullets and gets rid of bullet's already out of screen"""
+        #update bullet positions
+        self.bullets.update()
+            #Getting rid of bullets that left the screen
+        for bullet in self.bullets.copy():
+            if bullet.rect.bottom <= 0:
+                self.bullets.remove(bullet)
             
     def _update_screen(self):
             """Updates the images on the screen, and flip to the new screen"""
