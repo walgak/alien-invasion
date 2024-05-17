@@ -24,9 +24,9 @@ class Ship:
     def update(self):
         """Update the ship's movement based on the movement flag"""
         if self.moving_right:
-            self.rect.x += 3
+            self.rect.x += 1
         if self.moving_left:
-            self.rect.x -= 3
+            self.rect.x -= 1
 
     def blitme(self):
         """Draw the ship at it's current location"""
