@@ -22,9 +22,12 @@ class Settings:
 
 
         #Game speed rate
-        self.speedup_scale = 1.1
+        self.speedup_scale = 1.3
 
         self.initialize_dynamic_settings()
+
+        #Score settings
+        self.alien_points = 50
     
     def initialize_dynamic_settings(self):
         """Initialize settings that change throughout the game"""

@@ -9,6 +9,7 @@ from bullet import Bullet
 from alien import Alien
 from game_stats import GameStats
 from button import Button
+from scoreboard import Scoreboard
 
 class AlienInvasion:
     """This is the master class that will manage all game assets and behavior."""
@@ -23,8 +24,9 @@ class AlienInvasion:
         self.screen = pygame.display.set_mode((self.settings.screen_width,self.settings.screen_height))
         pygame.display.set_caption("ALien Invasion")
 
-        #Create an instance to store game stats
+        #Create an instance to store game stats and create a score board
         self.stats = GameStats(self)
+        self.sb = Scoreboard(self)
 
         self.ship = Ship(self)
         self.bullets = pygame.sprite.Group()
@@ -90,6 +92,7 @@ class AlienInvasion:
             #Reset game statistics
             self.settings.initialize_dynamic_settings()
             self.stats.reset_stats()
+            self.sb.prep_score()
             self.game_active = True
 
             #Get rid of any remaining aliens and bullets
@@ -124,6 +127,11 @@ class AlienInvasion:
         """Check if a bullet has hit an alien ship and get rid of the bullet and ship if so"""
         collisions = pygame.sprite.groupcollide(self.bullets,self.aliens, True, True)
 
+        if collisions:
+            for aliens in collisions.values():
+                self.stats.score += self.settings.alien_points * len(aliens)
+            self.sb.prep_score()
+
         if not self.aliens:
             #Destroy existing bullets and create new fleet.
             self.bullets.empty()
@@ -140,6 +148,9 @@ class AlienInvasion:
 
             self.ship.blitme()
             self.aliens.draw(self.screen)
+
+            #Draw score
+            self.sb.show_score()
 
             #Draw the play button if the game is inactive
             if not self.game_active:
@@ -166,8 +177,8 @@ class AlienInvasion:
         alien = Alien(self)
         alien_width, alien_height = alien.rect.size
 
-        current_x, current_y = alien_width, -alien_height * 2
-        while current_y < (self.settings.screen_height - 10 * alien_height):
+        current_x, current_y = alien_width, alien_height * 2
+        while current_y < (self.settings.screen_height - 3 * alien_height):
             while current_x < (self.settings.screen_width - 2 * alien_width):
                 self._create_alien(current_x, current_y)
                 current_x += 2 * alien_width
@@ -197,6 +208,8 @@ class AlienInvasion:
 
     def _ship_hit(self):
         """Respond to a ship being hit by an alien ship"""
+        self.settings.initialize_dynamic_settings()
+
         #Decrement ships(Lives) left
         if self.stats.ships_left > 0:
             self.stats.ships_left -= 1
