@@ -4,6 +4,9 @@ class GameStats:
     def __init__(self,game):
         """Initialize statistics"""
         self.settings = game.settings
+        #High score should never be reset
+        self.high_score = 0
+        
         self.reset_stats()
 
     def reset_stats(self):
