@@ -49,6 +49,7 @@ class AlienInvasion:
                 self.ship.update()
                 self._update_bullets()
                 self._update_aliens()
+                self.sb.prep_ships()
 
             self._update_screen()
             self.clock.tick(60)
@@ -94,6 +95,7 @@ class AlienInvasion:
             self.stats.reset_stats()
             self.sb.prep_score()
             self.sb.prep_level()
+            self.sb.prep_ships()
             self.game_active = True
 
             #Get rid of any remaining aliens and bullets
@@ -216,9 +218,10 @@ class AlienInvasion:
         """Respond to a ship being hit by an alien ship"""
         self.settings.initialize_dynamic_settings()
 
-        #Decrement ships(Lives) left
+        #Decrement ships(Lives) left and update score board
         if self.stats.ships_left > 0:
             self.stats.ships_left -= 1
+            self.sb.prep_ships()
 
             #Clear screen for aliens and bullets
             self.bullets.empty()
