@@ -6,6 +6,8 @@ const WARNING_SECONDS := 1.25
 const ACTIVE_SECONDS := 4.0
 const FIREFIGHT_MIN_SECONDS := 5.0
 const FIREFIGHT_MAX_SECONDS := 9.0
+const TAP_NEUTRALISE_SECONDS := 0.22
+const EDGE_COLLISION_DISTANCE := 26.0
 var game: Node2D
 var kind := "black"
 var health := 60
@@ -17,7 +19,8 @@ var cooldown := 0.0
 var shot_timer := 0.8
 var asteroid_timer := 0.0
 var well_position := Vector2.ZERO
-var resistance := 0.0
+var white_push_direction := Vector2.DOWN
+var neutralise_time := 0.0
 var tap_flash := 0.0
 var hit_flash := 0.0
 var animation_time := 0.0
@@ -41,18 +44,22 @@ func step(delta: float) -> void:
 		elif shot_timer <= 0:
 			fire_volley()
 			shot_timer += 1.35
-	elif phase == "warning" and phase_time >= WARNING_SECONDS:
-		phase = "active"
-		phase_time = 0.0
-		resistance = 0.0
-		asteroid_timer = 0.0
-		if kind != "asteroid":
-			# Steering changes to tapping, so clear bullets that can no longer be dodged.
-			for shot in game.projectiles.duplicate():
-				if shot.hostile:
-					game.remove_projectile(shot)
-			game.pointer_id = -1
-			game.ship.target_x = game.ship.position.x
+	elif phase == "warning":
+		if kind == "white":
+			# Track the nearest edge while forming, then keep the active hole fixed.
+			position_white_hole()
+		if phase_time >= WARNING_SECONDS:
+			phase = "active"
+			phase_time = 0.0
+			neutralise_time = 0.0
+			asteroid_timer = 0.0
+			if kind != "asteroid":
+				# Steering changes to tapping, so clear bullets that can no longer be dodged.
+				for shot in game.projectiles.duplicate():
+					if shot.hostile:
+						game.remove_projectile(shot)
+				game.pointer_id = -1
+				game.ship.target_x = game.ship.position.x
 	elif phase == "active" and kind == "asteroid":
 		asteroid_timer -= delta
 		if phase_time >= ACTIVE_SECONDS:
@@ -66,21 +73,23 @@ func step(delta: float) -> void:
 		if game.asteroids.is_empty():
 			return_to_firefight()
 	elif phase == "active":
-		resistance = maxf(0.0, resistance - delta)
-		var offset: float = well_position.x - game.ship.position.x
-		var direction := signf(offset) if kind == "black" else -signf(offset)
-		var strength := (58.0 if kind == "black" else 88.0) + phase_time * 9.0
-		game.ship.position.x += direction * strength * (1.0 - resistance * 1.65) * delta
+		var force_blocked := neutralise_time > 0.0
+		neutralise_time = maxf(0.0, neutralise_time - delta)
+		var previous_position: Vector2 = game.ship.position
+		if not force_blocked:
+			var direction: Vector2 = (well_position - previous_position).normalized()
+			if kind == "white":
+				direction = -direction
+			var strength := (58.0 if kind == "black" else 88.0) + phase_time * 9.0
+			game.ship.position += direction * strength * delta
 		game.ship.target_x = game.ship.position.x
-		if kind == "black" and game.ship.position.distance_to(well_position) < 29:
+		var closest := Geometry2D.get_closest_point_to_segment(well_position, previous_position, game.ship.position)
+		if kind == "black" and closest.distance_to(well_position) < 29:
 			game.lose_ship("Caught in the black hole.")
 			return
-		if kind == "white" and (game.ship.position.x <= 26 or game.ship.position.x >= game.arena.x - 26):
+		if kind == "white" and touches_screen_edge():
 			game.lose_ship("The white hole pushed you into the boundary.")
 			return
-		if kind == "black":
-			game.ship.position.x = clampf(game.ship.position.x, 35, game.arena.x - 35)
-			game.ship.target_x = game.ship.position.x
 		if phase_time >= ACTIVE_SECONDS:
 			return_to_firefight()
 	queue_redraw()
@@ -96,7 +105,7 @@ func return_to_firefight() -> void:
 	phase_time = 0.0
 	cooldown = game.rng.randf_range(FIREFIGHT_MIN_SECONDS, FIREFIGHT_MAX_SECONDS)
 	shot_timer = 0.8
-	resistance = 0.0
+	neutralise_time = 0.0
 	game.pointer_id = -1
 	game.ship.target_x = game.ship.position.x
 	queue_redraw()
@@ -104,15 +113,37 @@ func return_to_firefight() -> void:
 func begin_special() -> void:
 	phase = "warning"
 	phase_time = 0.0
-	resistance = 0.0
-	if kind != "asteroid":
+	neutralise_time = 0.0
+	if kind == "white":
+		position_white_hole()
+	elif kind == "black":
 		var side := 1.0 if game.ship.position.x < game.arena.x * 0.5 else -1.0
 		well_position = Vector2(clampf(game.ship.position.x + side * 130.0, 45, game.arena.x - 45), game.ship.position.y)
 	queue_redraw()
 
+func position_white_hole() -> void:
+	var at: Vector2 = game.ship.position
+	# Bottom wins an exact tie; otherwise select the true shortest distance.
+	var distances := [game.arena.y - at.y, at.x, game.arena.x - at.x, at.y]
+	var directions := [Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT, Vector2.UP]
+	var nearest := 0
+	for i in range(1, distances.size()):
+		if distances[i] < distances[nearest]:
+			nearest = i
+	white_push_direction = directions[nearest]
+	well_position = at - white_push_direction * 130.0
+
+func touches_screen_edge() -> bool:
+	var at: Vector2 = game.ship.position
+	return at.x <= EDGE_COLLISION_DISTANCE or at.x >= game.arena.x - EDGE_COLLISION_DISTANCE \
+		or at.y <= EDGE_COLLISION_DISTANCE or at.y >= game.arena.y - EDGE_COLLISION_DISTANCE
+
+func neutralisation() -> float:
+	return 1.0 if neutralise_time > 0.0 else 0.0
+
 func resist() -> void:
 	if phase == "active" and kind != "asteroid":
-		resistance = minf(1.0, resistance + 0.36)
+		neutralise_time = TAP_NEUTRALISE_SECONDS
 		tap_flash = 0.18
 		queue_redraw()
 

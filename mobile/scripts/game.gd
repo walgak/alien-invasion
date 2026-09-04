@@ -60,7 +60,7 @@ func _ready() -> void:
 	show_title()
 
 func update_layout() -> void:
-	var old_width := arena.x
+	var old_arena := arena
 	arena = get_viewport_rect().size
 	top_inset = 36.0
 	bottom_inset = 28.0
@@ -73,11 +73,11 @@ func update_layout() -> void:
 	if state == State.MENU:
 		ship.position = Vector2(arena.x * 0.5, arena.y * 0.475)
 	else:
-		ship.position.x = clampf(ship.position.x / old_width * arena.x, 35, arena.x - 35)
+		var resize_scale := arena / old_arena
+		ship.position *= resize_scale
 		ship.target_x = ship.position.x
-		ship.position.y = arena.y - bottom_inset - 152
 		if is_instance_valid(boss):
-			boss.well_position.y = ship.position.y
+			boss.well_position *= resize_scale
 	interface.size = arena
 	interface.refresh()
 	queue_redraw()

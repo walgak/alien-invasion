@@ -126,16 +126,16 @@ func run_checks() -> void:
 			game.boss.step(1.0 / 60.0)
 		check(game.state == game.State.PLAYING and game.boss.phase == "firefight", mode + " hole can be survived with five taps per second")
 		game.boss.phase = "active"
-		game.boss.resistance = 0
+		game.boss.neutralise_time = 0
 		var click := InputEventMouseButton.new()
 		click.pressed = true
 		click.button_index = MOUSE_BUTTON_LEFT
 		game._unhandled_input(click)
-		check(game.boss.resistance > 0, "mouse clicks resist the " + mode + " hole")
-		var value: float = game.boss.resistance
+		check(game.boss.neutralisation() == 1.0, "mouse clicks neutralise the " + mode + " hole")
+		var value: float = game.boss.neutralise_time
 		click.device = InputEvent.DEVICE_ID_EMULATION
 		game._unhandled_input(click)
-		check(game.boss.resistance == value, "emulated mouse input cannot double-count a touch")
+		check(game.boss.neutralise_time == value, "emulated mouse input cannot double-count a touch")
 	game.start_run("asteroid")
 	game.spawn_asteroid(Vector2(270, 500), Vector2(0, 250), 24)
 	var rock: Node2D = game.asteroids[0]

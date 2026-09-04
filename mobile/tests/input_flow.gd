@@ -48,8 +48,8 @@ func run_checks() -> void:
 	game.boss.begin_special()
 	game.boss.step(1.3)
 	await click(Vector2(220, 820))
-	check(is_equal_approx(game.boss.resistance, 0.36), "one routed mouse click produces exactly one resistance impulse")
-	game.boss.resistance = 0
+	check(is_equal_approx(game.boss.neutralise_time, game.boss.TAP_NEUTRALISE_SECONDS), "one routed mouse click opens one full neutralise window")
+	game.boss.neutralise_time = 0
 	for down in [true, false]:
 		var touch := InputEventScreenTouch.new()
 		touch.index = 0
@@ -57,7 +57,7 @@ func run_checks() -> void:
 		touch.pressed = down
 		Input.parse_input_event(touch)
 		await process_frame
-	check(is_equal_approx(game.boss.resistance, 0.36), "one routed touch produces exactly one resistance impulse")
+	check(is_equal_approx(game.boss.neutralise_time, game.boss.TAP_NEUTRALISE_SECONDS), "one routed touch opens one full neutralise window")
 	game.free()
 	await process_frame
 	print("INPUT FLOW: %d failures" % failures)

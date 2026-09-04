@@ -11,8 +11,8 @@ Choose a flight on the title screen, then **Launch mission**:
 | Flight | Objective |
 | --- | --- |
 | First contact | Clear the 15-ship fleet with three lives. |
-| Black hole | Shoot the boss. When its hole opens next to your ship, tap rapidly to resist the pull. Entering the dark core ends the run. |
-| White hole | Shoot the boss. Tap rapidly to resist the push. Hitting a screen boundary during the attack destroys the ship and ends the run. |
+| Black hole | Shoot the boss. When its hole opens next to your ship, tap rapidly to neutralise the pull. Entering the dark core ends the run. |
+| White hole | Shoot the boss. Tap rapidly to neutralise the push. Hitting a screen boundary during the attack destroys the ship and ends the run. |
 | Asteroid forge | Shoot the boss while dodging its asteroids. Two shots break an asteroid; a collision costs one life. |
 
 Every boss fight repeats the same cycle: exchange fire and dodge the boss's aimed volleys, face its signature special attack, then return to the firefight. A new special is scheduled after a random 5–9 seconds of normal fighting. Surviving a special does not damage the boss or end the battle. Only player bullets hitting its core reduce its health; reaching zero wins the fight.
@@ -21,9 +21,13 @@ Black-hole and white-hole attacks have a 1.25-second warning followed by four se
 
 **Touch:** drag horizontally to steer and dodge normal shots. During an active hole attack, lift your finger and tap repeatedly anywhere in the playfield. Steering returns after the hole closes. Old hostile bullets clear when tapping starts so they cannot hit you while steering is unavailable. Weapons always fire automatically, including during special attacks.
 
-**Mouse:** click and drag to steer; click repeatedly to resist a hole.
+Each tap fully cancels the hole's force for a brief beat. Keep tapping to hold the current position exactly. Tapping never pushes the ship away and never recovers ground lost; when the tap window expires, the pull or push resumes at full strength. The force meter shows whether neutralisation is active.
 
-**Keyboard:** arrow keys or A/D to steer; press Space repeatedly to resist a hole. P/Esc pauses and resumes. Enter launches a flight. Holding Space does not count as repeated taps.
+The white hole selects the closest of all four screen edges and forms on the opposite side of the ship. At the normal bottom-center starting position, it forms above the ship and pushes down. While the warning is visible, its position follows the nearest edge; once active, the hole stays fixed. Any of the four edges can destroy the ship, and vertical displacement persists when normal fighting resumes.
+
+**Mouse:** click and drag to steer; click repeatedly to neutralise a hole.
+
+**Keyboard:** arrow keys or A/D to steer; press Space repeatedly to neutralise a hole. P/Esc pauses and resumes. Enter launches a flight. Holding Space does not count as repeated taps.
 
 Pause also activates when the application loses focus. Each flight has its own saved best score. Sound can be toggled on the title or pause screen. There are no accounts, advertisements, analytics, or network requests in the game.
 
@@ -54,6 +58,7 @@ From this directory, use a temporary save path ending in `smoke-record.cfg`:
 ALIEN_SAVE_PATH=/tmp/alien-smoke-record.cfg godot --headless --path . --script tests/smoke.gd
 ALIEN_SAVE_PATH=/tmp/alien-input-record.cfg godot --headless --path . --script tests/input_flow.gd
 ALIEN_SAVE_PATH=/tmp/alien-boss-cycle-record.cfg godot --headless --path . --script tests/boss_cycle.gd
+ALIEN_SAVE_PATH=/tmp/alien-hole-physics-record.cfg godot --headless --path . --script tests/hole_physics.gd
 ```
 
 To capture screens, set `ALIEN_CAPTURE_DIR` to an existing output directory and run `tests/capture.gd` with a graphical display. The save override keeps test scores separate from your real records.

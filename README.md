@@ -21,7 +21,7 @@ godot --path mobile
 
 ### Controls
 
-| Input | Steering | Resist a hole | Pause |
+| Input | Steering | Block a hole | Pause |
 | --- | --- | --- | --- |
 | Touch | Drag horizontally | Tap repeatedly | Pause button |
 | Mouse | Click and drag | Click repeatedly | Pause button |
@@ -29,12 +29,14 @@ godot --path mobile
 
 Weapons fire automatically. During a hole attack, tapping temporarily replaces steering. Holding a button does not count as repeated taps.
 
+Each tap fully cancels a hole's force for a brief beat. Keep tapping to hold the ship exactly where it is. Tapping never pushes the ship away and never recovers distance already lost; when the tap window expires, the pull or push returns at full strength.
+
 ## Boss fights
 
 **Exchange fire → randomly timed special attack → survive → exchange fire again.** This cycle repeats until the boss has no health left. Only player shots hitting the boss damage it. Surviving an attack does not reduce its health, and health never resets between cycles.
 
-- **Black hole:** a hole opens next to the ship. Repeated taps resist the pull. Being pulled into its core ends the run.
-- **White hole:** repeated taps resist a nearby hole's push. Being pushed into a screen edge destroys the ship and ends the run.
+- **Black hole:** a hole opens next to the ship. Repeated taps neutralise the pull. Being pulled into its core ends the run.
+- **White hole:** it forms on the opposite side from the ship's nearest screen edge and pushes toward that edge. All four edges count, so the hole usually forms above the ship and pushes down. Repeated taps neutralise the push; reaching an edge destroys the ship.
 - **Asteroid forge:** the boss throws a finite barrage of rocks. Dodge them or shoot each one twice. Once the barrage is cleared, the firefight resumes.
 
 Each boss shoots aimed volleys during normal combat and uses its own special after a random interval, with a visible warning. The fleet encounter has 15 enemies and three lives.
@@ -67,9 +69,10 @@ Use disposable save files so tests do not overwrite your flight records:
 ALIEN_SAVE_PATH=/tmp/alien-smoke-record.cfg godot --headless --path mobile --script tests/smoke.gd
 ALIEN_SAVE_PATH=/tmp/alien-input-record.cfg godot --headless --path mobile --script tests/input_flow.gd
 ALIEN_SAVE_PATH=/tmp/alien-boss-cycle-record.cfg godot --headless --path mobile --script tests/boss_cycle.gd
+ALIEN_SAVE_PATH=/tmp/alien-hole-physics-record.cfg godot --headless --path mobile --script tests/hole_physics.gd
 ```
 
-Checks cover scoring, lives, restart, saves, pause, touch ownership, GUI input, swept collisions, hole resistance and failure, destructible asteroids, repeated boss cycles, and projectile-only boss damage.
+Checks cover scoring, lives, restart, saves, pause, touch ownership, GUI input, swept collisions, hole neutralisation and failure, destructible asteroids, repeated boss cycles, and projectile-only boss damage.
 
 ## Run the original Python game
 

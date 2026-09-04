@@ -131,7 +131,7 @@ func _draw() -> void:
 		tracked("CHOOSE YOUR FLIGHT", h - game.bottom_inset - 324, 11, 1.8, MUTED)
 		var hint := "Drag to steer · weapons fire automatically."
 		if game.selected_mode in ["black", "white"]:
-			hint = "Drag to steer · tap rapidly to resist the hole."
+			hint = "Drag to steer · tap rapidly to block the hole."
 		elif game.selected_mode == "asteroid":
 			hint = "Dodge the asteroids, or shoot them apart."
 		centered(hint, h - game.bottom_inset - 100, 13, MUTED)
@@ -187,10 +187,23 @@ func _draw() -> void:
 
 func draw_boss_notice() -> void:
 	var boss: Node2D = game.boss
-	var y: float = game.ship.position.y - 155
+	# Keep instructions clear of the white hole that now often appears above the ship.
+	var y: float = game.arena.y * 0.52
 	if boss.kind == "white":
-		draw_rect(Rect2(0, 160, 5, size.y - 160), Color("7ab6c4"))
-		draw_rect(Rect2(size.x - 5, 160, 5, size.y - 160), Color("7ab6c4"))
+		draw_rect(Rect2(Vector2(2.5, 2.5), size - Vector2(5, 5)), Color("36505e"), false, 3)
+		if boss.phase in ["warning", "active"]:
+			var edge_start := Vector2(3, size.y - 3)
+			var edge_end := Vector2(size.x - 3, size.y - 3)
+			if boss.white_push_direction == Vector2.UP:
+				edge_start.y = 3
+				edge_end.y = 3
+			elif boss.white_push_direction == Vector2.LEFT:
+				edge_start = Vector2(3, 3)
+				edge_end = Vector2(3, size.y - 3)
+			elif boss.white_push_direction == Vector2.RIGHT:
+				edge_start = Vector2(size.x - 3, 3)
+				edge_end = Vector2(size.x - 3, size.y - 3)
+			draw_line(edge_start, edge_end, Color("ffb86a"), 5)
 	if boss.phase == "firefight":
 		if boss.phase_time < 2.5:
 			centered("Dodge the boss's shots. Keep firing back.", y - 20, 14, MUTED)
@@ -206,7 +219,7 @@ func draw_boss_notice() -> void:
 		centered("Get ready to tap rapidly.", y + 17, 15)
 		centered("Avoid the dark core." if boss.kind == "black" else "The screen edges are lethal.", y + 44, 13, MUTED)
 	else:
-		centered("TAP TO RESIST", y - 12, 23, MINT)
-		centered("Fight the pull." if boss.kind == "black" else "Fight the push. Stay away from the edges.", y + 15, 13)
+		centered("FORCE NEUTRALISED" if boss.neutralisation() >= 1.0 else "TAP TO BLOCK FORCE", y - 12, 21, MINT)
+		centered("Keep tapping to hold your position.", y + 15, 13)
 		draw_rect(Rect2(76, y + 34, size.x - 152, 9), Color("2a354a"))
-		draw_rect(Rect2(76, y + 34, (size.x - 152) * boss.resistance, 9), MINT)
+		draw_rect(Rect2(76, y + 34, (size.x - 152) * boss.neutralisation(), 9), MINT)
