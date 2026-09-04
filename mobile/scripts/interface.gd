@@ -156,7 +156,7 @@ func _draw() -> void:
 		if game.boss.phase == "warning":
 			phase_label = "SPECIAL ATTACK INCOMING"
 		elif game.boss.phase in ["active", "clearing"]:
-			phase_label = "ASTEROID BARRAGE" if game.boss.kind == "asteroid" else "RESIST THE HOLE"
+			phase_label = "BLOCK THE HOLE" if game.boss.kind != "asteroid" else "ASTEROID BARRAGE"
 		tracked(phase_label, top + 160, 10, 1.3, MUTED)
 	text_at(remaining, Vector2(w - 32 - font.get_string_size(remaining, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x, top + 109), 11, MUTED)
 	var drag_y: float = h - game.bottom_inset - 46

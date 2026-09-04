@@ -187,11 +187,7 @@ func _draw() -> void:
 		return
 	var active := phase == "active"
 	var radius := 31.0 if active else 25.0
-	for i in range(5):
-		var ring := fmod(animation_time * (35 if kind == "white" else -35) + i * 15, 75)
-		if ring < 0:
-			ring += 75
-		draw_arc(well_position, radius + ring, 0, TAU, 56, Color(tint, (1.0 - ring / 75.0) * (0.4 if active else 0.15)), 1.2, true)
+	draw_space_folds(well_position, radius, tint, active)
 	if active:
 		draw_circle(well_position, radius, Color("f2fdff") if kind == "white" else Color("01030a"))
 		draw_arc(well_position, radius, 0, TAU, 56, tint, 3, true)
@@ -201,3 +197,43 @@ func _draw() -> void:
 		draw_line(well_position - Vector2(0,9), well_position + Vector2(0,9), tint, 1, true)
 	if tap_flash > 0:
 		draw_arc(game.ship.position, 42 + (0.18 - tap_flash) * 110, 0, TAU, 56, Color("6cf4d4"), 2, true)
+
+func draw_space_folds(center: Vector2, core_radius: float, tint: Color, active: bool) -> void:
+	var fold_span := 96.0 if active else 58.0
+	var fold_count := 7 if active else 5
+	var direction := 1.0 if kind == "white" else -1.0
+	var pulse := fposmod(animation_time * (0.72 if active else 0.38) * direction, 1.0)
+	for i in range(fold_count):
+		var travel := fposmod(float(i) / float(fold_count) + pulse, 1.0)
+		var ring_offset := travel * fold_span
+		var alpha := 0.11 + (1.0 - travel) * (0.29 if active else 0.12)
+		var line_width := 1.2 + (1.0 - travel) * (1.0 if active else 0.3)
+		if kind == "white":
+			alpha = 0.09 + travel * (0.27 if active else 0.11)
+			line_width = 1.0 + travel * (1.0 if active else 0.3)
+		var ring_radius := core_radius + 8.0 + ring_offset
+		draw_warped_ring(center, ring_radius, i, Color(tint, alpha), line_width)
+	if not active:
+		return
+	for i in range(14):
+		var angle := float(i) / 14.0 * TAU + sin(animation_time * 0.7 + i) * 0.08
+		var outer := core_radius + 118.0 + sin(animation_time * 1.1 + i * 0.7) * 8.0
+		var inner := core_radius + 22.0 + cos(animation_time * 1.4 + i) * 5.0
+		if kind == "white":
+			var swap := inner
+			inner = outer - 44.0
+			outer = swap + 118.0
+		var from := center + Vector2.from_angle(angle) * inner
+		var to := center + Vector2.from_angle(angle + 0.045 * direction) * outer
+		draw_line(from, to, Color(tint, 0.08), 1.0, true)
+
+func draw_warped_ring(center: Vector2, ring_radius: float, seed: int, color: Color, width: float) -> void:
+	var points := PackedVector2Array()
+	var segments := 96
+	for n in range(segments + 1):
+		var angle := float(n) / float(segments) * TAU
+		var ripple := sin(angle * 5.0 + animation_time * 2.5 + seed * 0.9) * 4.0
+		ripple += sin(angle * 9.0 - animation_time * 1.7 + seed * 0.45) * 2.2
+		var squeeze := 1.0 + sin(angle * 2.0 + animation_time + seed) * 0.025
+		points.append(center + Vector2.from_angle(angle) * (ring_radius * squeeze + ripple))
+	draw_polyline(points, color, width, true)

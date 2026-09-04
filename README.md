@@ -42,6 +42,8 @@ Each tap fully cancels a hole's force for a brief beat. Keep tapping to hold the
 Each boss shoots aimed volleys during normal combat and uses its own special after a random interval, with a visible warning. The fleet encounter has 15 enemies and three lives.
 
 ![A boss exchanging fire with the player](docs/screenshots/firefight.png)
+![Black-hole space folds collapsing inward](docs/screenshots/black.png)
+![White-hole space folds expanding outward](docs/screenshots/white.png)
 
 The game includes pause on focus loss, hit effects, synthesized sound, and a separate local best score for each encounter. There are no accounts, ads, analytics, or network requests in the game.
 
