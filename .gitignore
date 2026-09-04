@@ -1,2 +1,9 @@
 
 *.ipynb
+__pycache__/
+*.py[cod]
+.DS_Store
+.godot/
+.venv/
+*.log
+export_credentials.cfg

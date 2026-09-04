@@ -1,0 +1,30 @@
+; Open this project in Godot 4.7 and press F6/F5 to play.
+config_version=5
+
+[application]
+config/name="Alien Invasion — First Contact"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+config/icon="res://icon.svg"
+
+[display]
+window/size/viewport_width=540
+window/size/viewport_height=960
+window/size/window_width_override=450
+window/size/window_height_override=800
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=1
+
+[input_devices]
+pointing/emulate_touch_from_mouse=false
+pointing/emulate_mouse_from_touch=true
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.027, 0.043, 0.09, 1)
+textures/default_filters/use_nearest_mipmap_filter=false
+
+[debug]
+file_logging/enable_file_logging=false
