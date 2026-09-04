@@ -8,6 +8,12 @@ const FIREFIGHT_MIN_SECONDS := 5.0
 const FIREFIGHT_MAX_SECONDS := 9.0
 const TAP_NEUTRALISE_SECONDS := 0.22
 const EDGE_COLLISION_DISTANCE := 26.0
+const RIFT_CANNON_SPEED := 1225.0
+const ASTEROID_SIZES := [
+	{"radius": 20.0, "health": 3},
+	{"radius": 31.0, "health": 6},
+	{"radius": 43.0, "health": 10}
+]
 var game: Node2D
 var kind := "black"
 var health := 60
@@ -21,6 +27,10 @@ var asteroid_timer := 0.0
 var well_position := Vector2.ZERO
 var white_push_direction := Vector2.DOWN
 var neutralise_time := 0.0
+var cannon_active := false
+var cannon_position := Vector2.ZERO
+var cannon_previous_position := Vector2.ZERO
+var cannon_velocity := Vector2.ZERO
 var tap_flash := 0.0
 var hit_flash := 0.0
 var animation_time := 0.0
@@ -48,27 +58,23 @@ func step(delta: float) -> void:
 		if kind == "white":
 			# Track the nearest edge while forming, then keep the active hole fixed.
 			position_white_hole()
-		if phase_time >= WARNING_SECONDS:
-			phase = "active"
-			phase_time = 0.0
-			neutralise_time = 0.0
-			asteroid_timer = 0.0
-			if kind != "asteroid":
-				# Steering changes to tapping, so clear bullets that can no longer be dodged.
-				for shot in game.projectiles.duplicate():
-					if shot.hostile:
-						game.remove_projectile(shot)
-				game.pointer_id = -1
-				game.ship.target_x = game.ship.position.x
+			if cannon_active:
+				aim_cannon_at_hole()
+		if cannon_active:
+			cannon_previous_position = cannon_position
+			cannon_position += cannon_velocity * delta
+			if Geometry2D.get_closest_point_to_segment(well_position, cannon_previous_position, cannon_position).distance_to(well_position) <= 18.0:
+				activate_special()
+		elif phase_time >= WARNING_SECONDS:
+			activate_special()
 	elif phase == "active" and kind == "asteroid":
 		asteroid_timer -= delta
 		if phase_time >= ACTIVE_SECONDS:
 			phase = "clearing"
 			phase_time = 0.0
 		elif asteroid_timer <= 0:
-			var target := Vector2(clampf(game.ship.position.x + game.rng.randf_range(-120, 120), 35, game.arena.x - 35), game.ship.position.y)
-			game.spawn_asteroid(body_position + Vector2(0, 42), (target - body_position).normalized() * game.rng.randf_range(195, 275), game.rng.randf_range(20, 32))
-			asteroid_timer += 0.65
+			summon_asteroid()
+			asteroid_timer += 0.82
 	elif phase == "clearing":
 		if game.asteroids.is_empty():
 			return_to_firefight()
@@ -106,6 +112,7 @@ func return_to_firefight() -> void:
 	cooldown = game.rng.randf_range(FIREFIGHT_MIN_SECONDS, FIREFIGHT_MAX_SECONDS)
 	shot_timer = 0.8
 	neutralise_time = 0.0
+	cannon_active = false
 	game.pointer_id = -1
 	game.ship.target_x = game.ship.position.x
 	queue_redraw()
@@ -116,10 +123,56 @@ func begin_special() -> void:
 	neutralise_time = 0.0
 	if kind == "white":
 		position_white_hole()
+		launch_rift_cannon()
 	elif kind == "black":
 		var side := 1.0 if game.ship.position.x < game.arena.x * 0.5 else -1.0
 		well_position = Vector2(clampf(game.ship.position.x + side * 130.0, 45, game.arena.x - 45), game.ship.position.y)
+		launch_rift_cannon()
+	else:
+		cannon_active = false
 	queue_redraw()
+
+func activate_special() -> void:
+	cannon_active = false
+	phase = "active"
+	phase_time = 0.0
+	neutralise_time = 0.0
+	asteroid_timer = 0.0
+	game.sound.play_effect("rift" if kind != "asteroid" else "burst")
+	if kind != "asteroid":
+		game.burst(well_position, Color("b9f8ff") if kind == "white" else Color("baa3ff"), 34)
+		# Steering changes to tapping, so clear bullets that can no longer be dodged.
+		for shot in game.projectiles.duplicate():
+			if shot.hostile:
+				game.remove_projectile(shot)
+		game.pointer_id = -1
+		game.ship.target_x = game.ship.position.x
+
+func launch_rift_cannon() -> void:
+	cannon_active = true
+	cannon_position = body_position + Vector2(0, 46)
+	cannon_previous_position = cannon_position
+	aim_cannon_at_hole()
+
+func aim_cannon_at_hole() -> void:
+	var aim := well_position - cannon_position
+	cannon_velocity = aim.normalized() * RIFT_CANNON_SPEED if aim.length() > 0.001 else Vector2.ZERO
+
+func summon_asteroid() -> void:
+	var choice: Dictionary = ASTEROID_SIZES[game.rng.randi_range(0, ASTEROID_SIZES.size() - 1)]
+	var radius: float = choice.radius
+	var side: int = game.rng.randi_range(0, 2)
+	var start := Vector2.ZERO
+	if side == 0:
+		start = Vector2(game.rng.randf_range(radius, game.arena.x - radius), -radius - 18.0)
+	elif side == 1:
+		start = Vector2(-radius - 18.0, game.rng.randf_range(game.top_inset + 145.0, game.arena.y - 260.0))
+	else:
+		start = Vector2(game.arena.x + radius + 18.0, game.rng.randf_range(game.top_inset + 145.0, game.arena.y - 260.0))
+	var target := Vector2(clampf(game.ship.position.x + game.rng.randf_range(-90, 90), 35, game.arena.x - 35), game.ship.position.y)
+	var velocity: Vector2 = (target - start).normalized() * game.rng.randf_range(225, 305)
+	game.spawn_asteroid(start, velocity, radius, int(choice.health), body_position)
+	game.sound.play_effect("rift")
 
 func position_white_hole() -> void:
 	var at: Vector2 = game.ship.position
@@ -187,6 +240,8 @@ func _draw() -> void:
 		return
 	var active := phase == "active"
 	var radius := 31.0 if active else 25.0
+	if cannon_active:
+		draw_rift_cannon(tint)
 	draw_space_folds(well_position, radius, tint, active)
 	if active:
 		draw_circle(well_position, radius, Color("f2fdff") if kind == "white" else Color("01030a"))
@@ -237,3 +292,17 @@ func draw_warped_ring(center: Vector2, ring_radius: float, seed: int, color: Col
 		var squeeze := 1.0 + sin(angle * 2.0 + animation_time + seed) * 0.025
 		points.append(center + Vector2.from_angle(angle) * (ring_radius * squeeze + ripple))
 	draw_polyline(points, color, width, true)
+
+func draw_rift_cannon(tint: Color) -> void:
+	var trail := PackedVector2Array()
+	var direction := cannon_velocity.normalized()
+	var side := direction.orthogonal()
+	for i in range(18):
+		var t := float(i) / 17.0
+		var base := cannon_position - direction * t * 86.0
+		var wave := side * sin(animation_time * 24.0 + t * 16.0) * (10.0 * (1.0 - t))
+		trail.append(base + wave)
+	draw_polyline(trail, Color(tint, 0.24), 7.0, true)
+	draw_polyline(trail, Color(tint, 0.55), 2.4, true)
+	draw_circle(cannon_position, 9.5, Color("f5ffff") if kind == "white" else Color("f0e5ff"))
+	draw_circle(cannon_position, 17.0, Color(tint, 0.25))

@@ -35,9 +35,9 @@ Each tap fully cancels a hole's force for a brief beat. Keep tapping to hold the
 
 **Exchange fire → randomly timed special attack → survive → exchange fire again.** This cycle repeats until the boss has no health left. Only player shots hitting the boss damage it. Surviving an attack does not reduce its health, and health never resets between cycles.
 
-- **Black hole:** a hole opens next to the ship. Repeated taps neutralise the pull. Being pulled into its core ends the run.
-- **White hole:** it forms on the opposite side from the ship's nearest screen edge and pushes toward that edge. All four edges count, so the hole usually forms above the ship and pushes down. Repeated taps neutralise the push; reaching an edge destroys the ship.
-- **Asteroid forge:** the boss throws a finite barrage of rocks. Dodge them or shoot each one twice. Once the barrage is cleared, the firefight resumes.
+- **Black hole:** the boss fires a fast rift cannon that folds space, detonates beside the ship, and creates the hole. Repeated taps neutralise the pull. Being pulled into its core ends the run.
+- **White hole:** the boss fires the same rift cannon toward the opposite side from the ship's nearest screen edge. The blast creates a white hole that pushes toward that edge. All four edges count, so the hole usually forms above the ship and pushes down. Repeated taps neutralise the push; reaching an edge destroys the ship.
+- **Asteroid forge:** the boss folds space around rocks offscreen, then hurls them toward the ship. Small, medium, and large asteroids take 3, 6, and 10 shots to destroy. Once the barrage is cleared, the firefight resumes.
 
 Each boss shoots aimed volleys during normal combat and uses its own special after a random interval, with a visible warning. The fleet encounter has 15 enemies and three lives.
 
@@ -45,7 +45,7 @@ Each boss shoots aimed volleys during normal combat and uses its own special aft
 ![Black-hole space folds collapsing inward](docs/screenshots/black.png)
 ![White-hole space folds expanding outward](docs/screenshots/white.png)
 
-The game includes pause on focus loss, hit effects, synthesized sound, and a separate local best score for each encounter. There are no accounts, ads, analytics, or network requests in the game.
+The game includes pause on focus loss, hit effects, original synthesized sound, and a separate local best score for each encounter. The rift cannon uses a high-to-low sci-fi blast made in code. There are no accounts, ads, analytics, or network requests in the game.
 
 ## Project structure
 

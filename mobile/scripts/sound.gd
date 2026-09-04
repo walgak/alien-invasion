@@ -11,6 +11,7 @@ func _ready() -> void:
 	streams["burst"] = tone(230, 60, 0.19, 0.45)
 	streams["hit"] = tone(150, 35, 0.35, 0.6)
 	streams["win"] = tone(440, 880, 0.6, 0.0)
+	streams["rift"] = tone(1550, 95, 0.72, 0.34)
 	for i in range(8):
 		var voice := AudioStreamPlayer.new()
 		voice.volume_db = -20.0

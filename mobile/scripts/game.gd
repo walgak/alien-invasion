@@ -275,13 +275,17 @@ func select_mode(mode: String) -> void:
 	selected_mode = mode
 	interface.refresh()
 
-func spawn_asteroid(at: Vector2, velocity: Vector2, radius: float) -> void:
+func spawn_asteroid(at: Vector2, velocity: Vector2, radius: float, health: int = 0, fold_origin: Vector2 = Vector2.INF) -> void:
 	var rock = Asteroid.new()
 	rock.position = at
 	rock.previous_position = at
 	rock.velocity = velocity
 	rock.radius = radius
+	if health <= 0:
+		health = 3 if radius < 26.0 else (6 if radius < 37.0 else 10)
+	rock.health = health
 	rock.spin = rng.randf_range(-2, 2)
+	rock.fold_origin = at if fold_origin == Vector2.INF else fold_origin
 	add_child(rock)
 	asteroids.append(rock)
 

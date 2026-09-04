@@ -48,6 +48,8 @@ func run_checks() -> void:
 		var remaining_health: int = game.boss.health
 		check(remaining_health == game.boss.max_health - 1, mode + ": a player bullet damages the boss core")
 		game.boss.begin_special()
+		if mode != "asteroid":
+			check(game.boss.cannon_active and is_equal_approx(game.boss.cannon_velocity.length(), 1225.0), mode + ": rift cannon flies five times faster than a normal boss bullet")
 		game.boss.step(1.3)
 		check(game.boss.phase == "active", mode + ": warning leads into the special attack")
 		if mode != "asteroid":
@@ -61,8 +63,8 @@ func run_checks() -> void:
 				game.boss.step(1.0 / 60.0)
 			check(game.boss.phase == "clearing" and not game.asteroids.is_empty(), "asteroid: waits until the finite barrage has been dealt with")
 			for rock in game.asteroids.duplicate():
-				game.hit_asteroid(rock)
-				game.hit_asteroid(rock)
+				while game.asteroids.has(rock):
+					game.hit_asteroid(rock)
 			game.boss.step(1.0 / 60.0)
 		check(game.state == game.State.PLAYING and game.boss.phase == "firefight", mode + ": surviving the special returns to the firefight")
 		check(game.boss.health == remaining_health, mode + ": survival preserves boss damage without adding damage")

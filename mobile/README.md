@@ -11,13 +11,13 @@ Choose a flight on the title screen, then **Launch mission**:
 | Flight | Objective |
 | --- | --- |
 | First contact | Clear the 15-ship fleet with three lives. |
-| Black hole | Shoot the boss. When its hole opens next to your ship, tap rapidly to neutralise the pull. Entering the dark core ends the run. |
-| White hole | Shoot the boss. Tap rapidly to neutralise the push. Hitting a screen boundary during the attack destroys the ship and ends the run. |
-| Asteroid forge | Shoot the boss while dodging its asteroids. Two shots break an asteroid; a collision costs one life. |
+| Black hole | Shoot the boss. It fires a fast rift cannon that detonates into a black hole. Tap rapidly to neutralise the pull. |
+| White hole | Shoot the boss. It fires a fast rift cannon that detonates into a white hole. Tap rapidly to neutralise the push before reaching an edge. |
+| Asteroid forge | Shoot the boss while dodging asteroids folded in from offscreen. Small, medium, and large rocks take 3, 6, and 10 shots. |
 
 Every boss fight repeats the same cycle: exchange fire and dodge the boss's aimed volleys, face its signature special attack, then return to the firefight. A new special is scheduled after a random 5–9 seconds of normal fighting. Surviving a special does not damage the boss or end the battle. Only player bullets hitting its core reduce its health; reaching zero wins the fight.
 
-Black-hole and white-hole attacks have a 1.25-second warning followed by four seconds of tapping. The asteroid boss warns, throws a finite barrage, and waits for the rocks to be dodged or destroyed before resuming normal shots. Damage already dealt to the boss persists between cycles.
+Black-hole and white-hole attacks begin with a rift cannon fired five times faster than normal boss bullets. The cannon folds space as it travels, then explodes with an original high-to-low sci-fi blast and creates the hole. The hole stays active for four seconds of tapping. The asteroid boss warns, folds in a finite barrage from offscreen, and waits for the rocks to be dodged or destroyed before resuming normal shots. Damage already dealt to the boss persists between cycles.
 
 **Touch:** drag horizontally to steer and dodge normal shots. During an active hole attack, lift your finger and tap repeatedly anywhere in the playfield. Steering returns after the hole closes. Old hostile bullets clear when tapping starts so they cannot hit you while steering is unavailable. Weapons always fire automatically, including during special attacks.
 
@@ -44,7 +44,7 @@ The four encounters are independently selectable so their mechanics can be evalu
 - `boss.gd`, `asteroid.gd`: the three boss mechanics and destructible rocks.
 - `interface.gd`: menus, mission selector, HUD, and attack instructions.
 - `progress.gd`: best scores and sound preference in a local ConfigFile.
-- `sound.gd`: original, synthesized effects generated in memory.
+- `sound.gd`: original, synthesized effects generated in memory, including the rift cannon pitch drop.
 
 All new artwork is drawn with Godot primitives; the icon is an original SVG. No artwork or recordings from the Python game are bundled here. Godot's bundled font is used. This document does not change the original repository's licensing.
 
