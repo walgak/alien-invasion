@@ -41,6 +41,8 @@ Each tap fully cancels a hole's force for a brief beat. Keep tapping to hold the
 
 Each boss shoots aimed volleys during normal combat and uses its own special after a random interval, with a visible warning. The fleet encounter has 15 enemies and three lives.
 
+Space folds refract a textured starfield, nebula, and shaded planet. Black-hole ripples travel inward and white-hole ripples outward; their lit ridges bend the background into an elliptical well. The rift cannon, asteroid tethers, and folded rocks also distort the sky behind them. Ships, bullets, and controls remain sharp above the effect.
+
 ![A boss exchanging fire with the player](docs/screenshots/firefight.png)
 ![Black-hole space folds collapsing inward](docs/screenshots/black.png)
 ![White-hole space folds expanding outward](docs/screenshots/white.png)

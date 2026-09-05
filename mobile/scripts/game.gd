@@ -9,6 +9,8 @@ const Sound = preload("res://scripts/sound.gd")
 const Interface = preload("res://scripts/interface.gd")
 const Boss = preload("res://scripts/boss.gd")
 const Asteroid = preload("res://scripts/asteroid.gd")
+const SpaceBackground = preload("res://scripts/space_background.gd")
+const SpaceFolds = preload("res://scripts/space_folds.gd")
 const ENEMY_COUNT := 15
 const POINTS_PER_ENEMY := 100
 enum State { MENU, PLAYING, PAUSED, WON, LOST }
@@ -35,20 +37,19 @@ var previous_pointer_x := 0.0
 var enemies: Array[Node2D] = []
 var projectiles: Array[Node2D] = []
 var particles: Array[Dictionary] = []
-var stars: Array[Vector3] = []
 var rng := RandomNumberGenerator.new()
 var progress = Progress.new()
 var ship = Ship.new()
 var sound = Sound.new()
 var interface = Interface.new()
+var space_background = SpaceBackground.new()
+var space_folds = SpaceFolds.new()
 
 func _ready() -> void:
 	rng.randomize()
-	# A separate deterministic generator keeps the sky independent of gameplay.
-	var sky := RandomNumberGenerator.new()
-	sky.seed = 41
-	for i in range(95):
-		stars.append(Vector3(sky.randf(), sky.randf(), sky.randf_range(0.3, 1.0)))
+	space_background.z_index = -30
+	add_child(space_background)
+	add_child(space_folds)
 	add_child(ship)
 	add_child(sound)
 	sound.enabled = progress.sound_enabled
@@ -80,6 +81,7 @@ func update_layout() -> void:
 			boss.well_position *= resize_scale
 	interface.size = arena
 	interface.refresh()
+	refresh_space()
 	queue_redraw()
 
 func show_title() -> void:
@@ -183,6 +185,11 @@ func _process(delta: float) -> void:
 				particles.remove_at(i)
 	queue_redraw()
 	interface.queue_redraw()
+	refresh_space()
+
+func refresh_space() -> void:
+	space_background.update_background(arena, visual_time)
+	space_folds.update_effects(self)
 
 func update_enemies(_delta: float) -> void:
 	var spacing_scale := minf(1.0, (arena.x - 160.0) / 304.0)
@@ -435,14 +442,6 @@ func _notification(what: int) -> void:
 		progress.save()
 
 func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, arena), Color("080e20"))
-	var planet := Vector2(arena.x * 0.73, arena.y * 0.4)
-	draw_circle(planet, 178, Color("0a1629"))
-	draw_arc(planet, 178, -2.65, 0.2, 100, Color("162b43"), 1, true)
-	draw_arc(planet, 182, -2.65, 0.0, 100, Color(0.1, 0.25, 0.32, 0.22), 2, true)
-	for star in stars:
-		var point := Vector2(star.x * arena.x, fmod(star.y * arena.y + visual_time * star.z * 10.0, arena.y))
-		draw_circle(point, 0.6 + star.z * 0.7, Color(0.57, 0.74, 0.85, star.z * 0.58))
 	if state == State.MENU:
 		var center := Vector2(arena.x * 0.5, arena.y * 0.475)
 		draw_arc(center, 106, 0.0, TAU, 90, Color("203248"), 1, true)

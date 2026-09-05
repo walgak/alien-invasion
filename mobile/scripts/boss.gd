@@ -244,8 +244,14 @@ func _draw() -> void:
 		draw_rift_cannon(tint)
 	draw_space_folds(well_position, radius, tint, active)
 	if active:
-		draw_circle(well_position, radius, Color("f2fdff") if kind == "white" else Color("01030a"))
-		draw_arc(well_position, radius, 0, TAU, 56, tint, 3, true)
+		if kind == "white":
+			for layer in range(8, 0, -1):
+				var fraction := float(layer) / 8.0
+				draw_circle(well_position, radius * fraction, Color("a5d9ef").lerp(Color("ffffff"), 1.0 - fraction))
+		else:
+			draw_circle(well_position, radius, Color("01030a"))
+		draw_arc(well_position, radius, 0, TAU, 56, Color(tint, 0.6), 2, true)
+		draw_arc(well_position + Vector2(-1, -1), radius + 1.5, -2.8, -0.3, 40, Color("e6ecff"), 1.4, true)
 	else:
 		draw_arc(well_position, radius, animation_time, animation_time + PI * 1.65, 48, tint, 2, true)
 		draw_line(well_position - Vector2(9,0), well_position + Vector2(9,0), tint, 1, true)
@@ -254,44 +260,21 @@ func _draw() -> void:
 		draw_arc(game.ship.position, 42 + (0.18 - tap_flash) * 110, 0, TAU, 56, Color("6cf4d4"), 2, true)
 
 func draw_space_folds(center: Vector2, core_radius: float, tint: Color, active: bool) -> void:
-	var fold_span := 96.0 if active else 58.0
-	var fold_count := 7 if active else 5
+	# The background shader bends the sky. These sparse glints sit on its ridges.
 	var direction := 1.0 if kind == "white" else -1.0
-	var pulse := fposmod(animation_time * (0.72 if active else 0.38) * direction, 1.0)
-	for i in range(fold_count):
-		var travel := fposmod(float(i) / float(fold_count) + pulse, 1.0)
-		var ring_offset := travel * fold_span
-		var alpha := 0.11 + (1.0 - travel) * (0.29 if active else 0.12)
-		var line_width := 1.2 + (1.0 - travel) * (1.0 if active else 0.3)
-		if kind == "white":
-			alpha = 0.09 + travel * (0.27 if active else 0.11)
-			line_width = 1.0 + travel * (1.0 if active else 0.3)
-		var ring_radius := core_radius + 8.0 + ring_offset
-		draw_warped_ring(center, ring_radius, i, Color(tint, alpha), line_width)
-	if not active:
-		return
-	for i in range(14):
-		var angle := float(i) / 14.0 * TAU + sin(animation_time * 0.7 + i) * 0.08
-		var outer := core_radius + 118.0 + sin(animation_time * 1.1 + i * 0.7) * 8.0
-		var inner := core_radius + 22.0 + cos(animation_time * 1.4 + i) * 5.0
-		if kind == "white":
-			var swap := inner
-			inner = outer - 44.0
-			outer = swap + 118.0
-		var from := center + Vector2.from_angle(angle) * inner
-		var to := center + Vector2.from_angle(angle + 0.045 * direction) * outer
-		draw_line(from, to, Color(tint, 0.08), 1.0, true)
-
-func draw_warped_ring(center: Vector2, ring_radius: float, seed: int, color: Color, width: float) -> void:
-	var points := PackedVector2Array()
-	var segments := 96
-	for n in range(segments + 1):
-		var angle := float(n) / float(segments) * TAU
-		var ripple := sin(angle * 5.0 + animation_time * 2.5 + seed * 0.9) * 4.0
-		ripple += sin(angle * 9.0 - animation_time * 1.7 + seed * 0.45) * 2.2
-		var squeeze := 1.0 + sin(angle * 2.0 + animation_time + seed) * 0.025
-		points.append(center + Vector2.from_angle(angle) * (ring_radius * squeeze + ripple))
-	draw_polyline(points, color, width, true)
+	var spacing := TAU / 0.255
+	var offset := fposmod(animation_time * direction * 5.5 / 0.255, spacing)
+	var outer := 164.0 if active else 112.0
+	for i in range(6):
+		var ring_radius := core_radius + offset + i * spacing
+		if ring_radius > outer:
+			break
+		var envelope := (1.0 - smoothstep(outer * 0.66, outer, ring_radius)) * smoothstep(core_radius, core_radius + 12.0, ring_radius)
+		var points := PackedVector2Array()
+		for n in range(33):
+			var angle := -2.9 + float(n) / 32.0 * 1.7
+			points.append(center + Vector2(cos(angle), sin(angle) * 0.83) * ring_radius)
+		draw_polyline(points, Color(tint, envelope * (0.17 if active else 0.05)), 1.0, true)
 
 func draw_rift_cannon(tint: Color) -> void:
 	var trail := PackedVector2Array()

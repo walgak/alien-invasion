@@ -42,6 +42,7 @@ The four encounters are independently selectable so their mechanics can be evalu
 - `game.gd`: run state, input, scoring, spawning, collisions, and app lifecycle.
 - `ship.gd`, `enemy.gd`, `projectile.gd`: the basic arcade actors.
 - `boss.gd`, `asteroid.gd`: the three boss mechanics and destructible rocks.
+- `space_background.gd`, `space_folds.gd`, `shaders/`: layered procedural sky and background refraction. One screen-reading pass combines up to eight object lenses and six strands; actors and HUD render above it. Animation uses game time so pausing also freezes the folds.
 - `interface.gd`: menus, mission selector, HUD, and attack instructions.
 - `progress.gd`: best scores and sound preference in a local ConfigFile.
 - `sound.gd`: original, synthesized effects generated in memory, including the rift cannon pitch drop.
@@ -50,7 +51,7 @@ All new artwork is drawn with Godot primitives; the icon is an original SVG. No 
 
 ## Verification
 
-The headless checks cover run reset, three-life semantics, save/load, swept projectile collisions, steering, pause, touch ownership, both hole failure/survival paths, asteroid damage/destruction, and separate flight records. A second check sends events through Godot's GUI/input pipeline. Rendering captures use Godot's actual desktop renderer.
+The headless checks cover run reset, three-life semantics, save/load, swept projectile collisions, steering, pause, touch ownership, both hole failure/survival paths, asteroid damage/destruction, and separate flight records. A second check sends events through Godot's GUI/input pipeline. Rendering captures use Godot's actual desktop renderer, including cannon frames and matching hole/asteroid frames with refraction disabled for comparison. Headless checks validate shader syntax but cannot verify GPU output.
 
 From this directory, use a temporary save path ending in `smoke-record.cfg`:
 

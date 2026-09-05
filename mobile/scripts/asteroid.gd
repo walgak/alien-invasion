@@ -69,11 +69,19 @@ func advance(delta: float, target: Vector2 = Vector2.ZERO) -> void:
 func _draw() -> void:
 	draw_fold_lines()
 	draw_colored_polygon(outline, Color("fff0d5") if flash > 0 else Color("495065"))
+	if flash <= 0:
+		var light := Vector2(-0.6, -0.8).rotated(-rotation)
+		for i in range(outline.size()):
+			var next := (i + 1) % outline.size()
+			var facing := (outline[i] + outline[next]).normalized().dot(light)
+			var face := PackedVector2Array([Vector2(-radius * 0.12, -radius * 0.08), outline[i], outline[next]])
+			draw_colored_polygon(face, Color("303747").lerp(Color("8795aa"), (facing + 1.0) * 0.5))
 	var closed := outline.duplicate()
 	closed.append(outline[0])
 	draw_polyline(closed, Color("caa48c"), 1.5, true)
 	draw_circle(Vector2(-radius * 0.3, -radius * 0.25), radius * 0.25, Color("2d3449"))
 	draw_circle(Vector2(radius * 0.28, radius * 0.1), radius * 0.16, Color("333c50"))
+	draw_arc(Vector2(-radius * 0.3, -radius * 0.25), radius * 0.25, 0.2 - rotation, 2.3 - rotation, 20, Color("a4abc2", 0.45), 1.0, true)
 	var damage_ratio := 1.0 - float(health) / float(max_health)
 	if damage_ratio > 0.28:
 		draw_polyline(PackedVector2Array([Vector2(-radius, 0), Vector2(0, -5), Vector2(5, 9), Vector2(radius, radius * 0.4)]), Color("ffb86a"), 2, true)

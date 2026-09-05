@@ -50,6 +50,12 @@ func capture() -> void:
 			root.get_texture().get_image().save_png(destination.path_join("firefight.png"))
 		game.boss.begin_special()
 		if mode != "asteroid":
+			# Capture the moving lens as well as the hole it creates.
+			game.boss.step(0.12)
+			game.refresh_space()
+			await process_frame
+			await RenderingServer.frame_post_draw
+			root.get_texture().get_image().save_png(destination.path_join(mode + "-cannon.png"))
 			for i in range(95):
 				game.boss.step(1.0 / 60.0)
 			game.boss.resist()
@@ -60,10 +66,17 @@ func capture() -> void:
 				game.boss.step(1.0 / 60.0)
 				game.update_asteroids(1.0 / 60.0)
 		game.interface.refresh()
+		game.refresh_space()
 		game.queue_redraw()
 		game.boss.queue_redraw()
 		await process_frame
 		await RenderingServer.frame_post_draw
 		root.get_texture().get_image().save_png(destination.path_join(mode + ".png"))
+		# Same lighting and actors, but no displacement: isolates real refraction.
+		game.space_folds.material.set_shader_parameter("refraction_strength", 0.0)
+		await process_frame
+		await RenderingServer.frame_post_draw
+		root.get_texture().get_image().save_png(destination.path_join(mode + "-no-refraction.png"))
+		game.space_folds.material.set_shader_parameter("refraction_strength", 1.0)
 	print("Screens captured to " + destination)
 	quit(0)
