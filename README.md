@@ -37,7 +37,7 @@ Each tap fully cancels a hole's force for a brief beat. Keep tapping to hold the
 
 - **Black hole:** the boss fires a fast rift cannon that folds space, detonates beside the ship, and creates the hole. Repeated taps neutralise the pull. Being pulled into its core ends the run.
 - **White hole:** the boss fires the same rift cannon toward the opposite side from the ship's nearest screen edge. The blast creates a white hole that pushes toward that edge. All four edges count, so the hole usually forms above the ship and pushes down. Repeated taps neutralise the push; reaching an edge destroys the ship.
-- **Asteroid forge:** the boss folds space around rocks offscreen, then hurls them toward the ship. Small, medium, and large asteroids take 3, 6, and 10 shots to destroy. Once the barrage is cleared, the firefight resumes.
+- **Asteroid forge:** space-fold strands connect the boss to rocks offscreen, pulling them inward before a brief wind-up and sling toward the ship. The strands fade after release. Small, medium, and large asteroids take 3, 6, and 10 shots to destroy. Once the barrage is cleared, the firefight resumes.
 
 Each boss shoots aimed volleys during normal combat and uses its own special after a random interval, with a visible warning. The fleet encounter has 15 enemies and three lives.
 

@@ -13,11 +13,11 @@ Choose a flight on the title screen, then **Launch mission**:
 | First contact | Clear the 15-ship fleet with three lives. |
 | Black hole | Shoot the boss. It fires a fast rift cannon that detonates into a black hole. Tap rapidly to neutralise the pull. |
 | White hole | Shoot the boss. It fires a fast rift cannon that detonates into a white hole. Tap rapidly to neutralise the push before reaching an edge. |
-| Asteroid forge | Shoot the boss while dodging asteroids folded in from offscreen. Small, medium, and large rocks take 3, 6, and 10 shots. |
+| Asteroid forge | Shoot the boss as it pulls rocks from offscreen on attached space-fold strands, then slings them toward the ship. Small, medium, and large rocks take 3, 6, and 10 shots. |
 
 Every boss fight repeats the same cycle: exchange fire and dodge the boss's aimed volleys, face its signature special attack, then return to the firefight. A new special is scheduled after a random 5–9 seconds of normal fighting. Surviving a special does not damage the boss or end the battle. Only player bullets hitting its core reduce its health; reaching zero wins the fight.
 
-Black-hole and white-hole attacks begin with a rift cannon fired five times faster than normal boss bullets. The cannon folds space as it travels, then explodes with an original high-to-low sci-fi blast and creates the hole. The hole stays active for four seconds of tapping. The asteroid boss warns, folds in a finite barrage from offscreen, and waits for the rocks to be dodged or destroyed before resuming normal shots. Damage already dealt to the boss persists between cycles.
+Black-hole and white-hole attacks begin with a rift cannon fired five times faster than normal boss bullets. The cannon folds space as it travels, then explodes with an original high-to-low sci-fi blast and creates the hole. The hole stays active for four seconds of tapping. The asteroid boss warns, then pulls a finite barrage of rocks from offscreen using space-fold strands anchored to its body. Each rock pulls inward, pauses for a brief wind-up, and is slung toward the ship's position at release as its strands fade. The boss waits for the rocks to be dodged or destroyed before resuming normal shots. Damage already dealt to the boss persists between cycles.
 
 **Touch:** drag horizontally to steer and dodge normal shots. During an active hole attack, lift your finger and tap repeatedly anywhere in the playfield. Steering returns after the hole closes. Old hostile bullets clear when tapping starts so they cannot hit you while steering is unavailable. Weapons always fire automatically, including during special attacks.
 

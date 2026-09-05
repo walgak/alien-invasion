@@ -275,7 +275,7 @@ func select_mode(mode: String) -> void:
 	selected_mode = mode
 	interface.refresh()
 
-func spawn_asteroid(at: Vector2, velocity: Vector2, radius: float, health: int = 0, fold_origin: Vector2 = Vector2.INF) -> void:
+func spawn_asteroid(at: Vector2, velocity: Vector2, radius: float, health: int = 0, fold_origin: Vector2 = Vector2.INF, aim_offset: Vector2 = Vector2.ZERO) -> void:
 	var rock = Asteroid.new()
 	rock.position = at
 	rock.previous_position = at
@@ -285,13 +285,16 @@ func spawn_asteroid(at: Vector2, velocity: Vector2, radius: float, health: int =
 		health = 3 if radius < 26.0 else (6 if radius < 37.0 else 10)
 	rock.health = health
 	rock.spin = rng.randf_range(-2, 2)
-	rock.fold_origin = at if fold_origin == Vector2.INF else fold_origin
+	if fold_origin != Vector2.INF:
+		rock.begin_pull(fold_origin, aim_offset)
 	add_child(rock)
 	asteroids.append(rock)
 
 func update_asteroids(delta: float) -> void:
 	for rock in asteroids.duplicate():
-		rock.advance(delta)
+		if is_instance_valid(boss) and boss.kind == "asteroid":
+			rock.fold_origin = boss.body_position + Vector2(0, 42)
+		rock.advance(delta, ship.position)
 		var closest := Geometry2D.get_closest_point_to_segment(ship.position, rock.previous_position, rock.position)
 		if closest.distance_to(ship.position) <= rock.radius + Ship.HIT_RADIUS:
 			remove_asteroid(rock)

@@ -169,9 +169,9 @@ func summon_asteroid() -> void:
 		start = Vector2(-radius - 18.0, game.rng.randf_range(game.top_inset + 145.0, game.arena.y - 260.0))
 	else:
 		start = Vector2(game.arena.x + radius + 18.0, game.rng.randf_range(game.top_inset + 145.0, game.arena.y - 260.0))
-	var target := Vector2(clampf(game.ship.position.x + game.rng.randf_range(-90, 90), 35, game.arena.x - 35), game.ship.position.y)
-	var velocity: Vector2 = (target - start).normalized() * game.rng.randf_range(225, 305)
-	game.spawn_asteroid(start, velocity, radius, int(choice.health), body_position)
+	var aim_offset := Vector2(game.rng.randf_range(-65, 65), 0)
+	var velocity: Vector2 = Vector2.DOWN * game.rng.randf_range(225, 305)
+	game.spawn_asteroid(start, velocity, radius, int(choice.health), body_position + Vector2(0, 42), aim_offset)
 	game.sound.play_effect("rift")
 
 func position_white_hole() -> void:

@@ -154,7 +154,21 @@ func run_checks() -> void:
 	game.boss.summon_asteroid()
 	rock = game.asteroids[0]
 	var offscreen: bool = rock.position.x < 0 or rock.position.x > game.arena.x or rock.position.y < 0 or rock.position.y > game.arena.y
-	check(offscreen and rock.health in [3, 6, 10] and rock.fold_origin.distance_to(game.boss.body_position) < 0.001, "asteroid boss folds a three-class rock in from offscreen")
+	check(offscreen and rock.health in [3, 6, 10] and rock.motion_phase == "pull", "asteroid boss pulls a three-class rock in from offscreen")
+	game.boss.body_position = Vector2(180, 310)
+	game.update_asteroids(0.0)
+	check(rock.fold_origin == game.boss.body_position + Vector2(0, 42), "asteroid fold lines stay tethered to the boss")
+	var initial_distance: float = rock.position.distance_to(rock.fold_origin)
+	game.update_asteroids(0.7)
+	check(rock.motion_phase == "windup" and rock.position.distance_to(rock.fold_origin) < initial_distance and rock.velocity == Vector2.ZERO, "asteroid reels in beside the boss before its throwing windup")
+	game.ship.position.x = 400
+	game.update_asteroids(0.22)
+	var release_direction: Vector2 = (game.ship.position + rock.aim_offset - rock.position).normalized()
+	check(rock.motion_phase == "flight" and rock.velocity.normalized().dot(release_direction) > 0.999, "asteroid is thrown toward the ship's position at release")
+	var thrown_velocity: Vector2 = rock.velocity
+	game.ship.position.x = 100
+	game.update_asteroids(0.25)
+	check(rock.velocity == thrown_velocity and rock.fold_life == 0.0, "released asteroid stays dodgeable and its web fades away")
 	game.remove_asteroid(rock)
 	game.spawn_asteroid(game.ship.position - Vector2(0, 100), Vector2(0, 1000), 24)
 	game.update_asteroids(0.12)
