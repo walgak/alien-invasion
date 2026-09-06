@@ -32,7 +32,10 @@ func run_checks() -> void:
 	game.sound.enabled = false
 	check(game.state == game.State.MENU, "opens on the title screen")
 	game.start_run()
-	check(game.enemies.size() == 15 and game.lives == 3 and game.score == 0, "a new run has 15 enemies, 3 lives, and zero score")
+	check(game.enemies.is_empty() and game.lives == 3 and game.score == 0, "a new endless run has 3 lives and zero score")
+	game.spawn_enemy_group()
+	var group_size: int = game.enemies.size()
+	check(group_size >= 1 and group_size <= 5, "random group has one to five aliens")
 	var initial_x: float = game.ship.position.x
 	var touch := InputEventScreenTouch.new()
 	touch.index = 0
@@ -59,7 +62,7 @@ func run_checks() -> void:
 	check(game.state == game.State.PAUSED, "losing app focus pauses the run")
 	game.resume_run()
 	game.destroy_enemy(game.enemies[0])
-	check(game.score == 100 and game.enemies.size() == 14, "destroying an enemy gives exactly 100 points")
+	check(game.score == 100 and game.enemies.size() == group_size - 1, "destroying an enemy gives exactly 100 points")
 	game.damage_ship()
 	game.damage_ship()
 	check(game.lives == 2, "post-hit invulnerability prevents repeated damage")
@@ -69,17 +72,19 @@ func run_checks() -> void:
 	game.damage_ship()
 	check(game.lives == 0 and game.state == game.State.LOST, "the third hit ends the run")
 	game.start_run()
-	check(game.score == 0 and game.lives == 3 and game.elapsed == 0 and game.enemies.size() == 15, "retry resets score, health, time, and enemies")
-	for enemy in game.enemies.duplicate():
-		game.destroy_enemy(enemy)
-	check(game.state == game.State.WON and game.score == 1500, "clearing the wave wins with 1500 points")
+	check(game.score == 0 and game.lives == 3 and game.elapsed == 0 and game.enemies.is_empty(), "retry resets score, health, time, and enemies")
+	game.spawn_enemy(Vector2(100, 200), Vector2.DOWN * 100)
+	game.destroy_enemy(game.enemies[0])
+	check(game.state == game.State.PLAYING and game.score == 100, "clearing a wave continues the run")
+	game.add_score(1400)
+	game.progress.save()
 	game.toggle_sound()
 	var reopened = Progress.new()
-	check(reopened.best_for("fleet") == 1500 and reopened.sound_enabled == game.progress.sound_enabled, "best score and sound preference survive a reload")
+	check(reopened.best_for("endless") == 1500 and reopened.sound_enabled == game.progress.sound_enabled, "best score and sound preference survive a reload")
 	# These accelerated checks exercise settings, not real-time audio playback.
 	game.sound.enabled = false
 	game.start_run()
-	check(game.progress.best_for("fleet") == 1500 and game.score == 0, "a new run preserves only the personal best")
+	check(game.progress.best_for("endless") == 1500 and game.score == 0, "a new run preserves only the personal best")
 	var shot = Projectile.new()
 	shot.previous_position = Vector2(100, 500)
 	shot.position = Vector2(100, 100)
@@ -107,7 +112,7 @@ func run_checks() -> void:
 			break
 		game.ship.target_x = 270 + sin(i / 90.0) * 200
 		game._physics_process(1.0 / 60.0)
-	check(game.score % 100 == 0 and game.lives >= 0, "a simulated mission retains valid score and health")
+	check(game.score % 25 == 0 and game.lives >= 0, "a simulated mission retains valid score and health")
 	for mode in ["black", "white"]:
 		game.start_run(mode)
 		check(is_instance_valid(game.boss) and game.enemies.is_empty(), mode + " encounter starts with its own boss")
@@ -176,10 +181,9 @@ func run_checks() -> void:
 	game.spawn_asteroid(game.ship.position + Vector2(100, -100), Vector2(0, 1000), 24)
 	game.update_asteroids(0.12)
 	check(game.lives == 2, "a dodged asteroid does not damage the ship")
-	for i in range(game.boss.max_health):
-		game.boss.take_hit()
-	check(game.state == game.State.WON and game.score == 1025, "destroying the asteroid boss completes the encounter")
-	check(game.progress.best_for("fleet") == 1500 and game.progress.best_for("asteroid") == 1025, "flight records are separate for each encounter")
+	game.boss.take_hit(game.boss.max_health)
+	check(game.state == game.State.PLAYING and not is_instance_valid(game.boss) and game.score == 1525, "destroying the boss continues the endless run")
+	check(game.progress.best_for("endless") >= 1525, "boss points count toward the endless record")
 	print("%d CHECKS PASSED; %d FAILED" % [checks, failures])
 	game.free()
 	DirAccess.remove_absolute(save_path)

@@ -2,7 +2,7 @@
 
 A space shooter that began as a Python/Pygame practice project and is being developed into a portrait mobile game with Godot.
 
-The current Godot prototype has four selectable encounters: the original alien fleet and three bosses. It runs locally on desktop and supports touch input. Phone builds and store submission are the next development stage.
+The current Godot prototype is an endless high-score shooter with random alien groups, drifting asteroids, and four bosses. It runs locally on desktop and supports touch input. Phone builds and store submission are the next development stage.
 
 ## Play the Godot game
 
@@ -10,7 +10,7 @@ Install **Godot 4.7**; development and local checks use **4.7.2**.
 
 1. Open `mobile/project.godot` in Godot.
 2. Press **F5**.
-3. Choose an encounter and select **Launch mission**.
+3. Select **Launch endless flight**.
 
 On macOS, you can also double-click [`mobile/Play.command`](mobile/Play.command). The launcher imports the project on its first run and starts the game. On any platform with the Godot CLI installed:
 
@@ -35,11 +35,19 @@ Each tap fully cancels a hole's force for a brief beat. Keep tapping to hold the
 
 **Exchange fire → randomly timed special attack → survive → exchange fire again.** This cycle repeats until the boss has no health left. Only player shots hitting the boss damage it. Surviving an attack does not reduce its health, and health never resets between cycles.
 
-- **Black hole:** the boss fires a fast rift cannon that folds space, detonates beside the ship, and creates the hole. Repeated taps neutralise the pull. Being pulled into its core ends the run.
+- **Black hole:** the boss fires a fast rift cannon that folds space, detonates beside the ship, and creates the hole. Repeated taps neutralise the pull. Being pulled into its core is lethal unless a weapon upgrade supplies an emergency life.
 - **White hole:** the boss fires the same rift cannon toward the opposite side from the ship's nearest screen edge. The blast creates a white hole that pushes toward that edge. All four edges count, so the hole usually forms above the ship and pushes down. Repeated taps neutralise the push; reaching an edge destroys the ship.
 - **Asteroid forge:** space-fold strands connect the boss to rocks offscreen, pulling them inward before a brief wind-up and sling toward the ship. The strands fade after release. Small, medium, and large asteroids take 3, 6, and 10 shots to destroy. Once the barrage is cleared, the firefight resumes.
 
-Each boss shoots aimed volleys during normal combat and uses its own special after a random interval, with a visible warning. The fleet encounter has 15 enemies and three lives.
+- **Swarm carrier:** pulls alien ships from offscreen on boss-connected folds, then throws them toward the player. These ships can shoot and can be dodged or destroyed.
+
+Random enemy groups and asteroids keep arriving between bosses. Boss music gives a three-second warning before an entrance, roughly every 40–55 seconds of regular flight. Each set of four bosses contains all four types in shuffled order. Defeating a boss awards points, drops a weapon upgrade, clears its hazards, and continues the run. Gravity-boss victories restore the ship to its normal position.
+
+## Drops and survival
+
+Collect weapon drops to advance **single → double → triple → laser → rockets**. Lasers pierce targets; rockets deal splash damage. Enemy kills randomly drop upgrades or hull repairs; ten kills without a weapon drop guarantee one. Hull repairs restore one life up to a maximum of three.
+
+Upgrades collectively provide one emergency life: losing the last hull life consumes the weapon upgrade, restores the single shooter, and leaves one hull life. Ordinary hits preserve the weapon. Another lethal hit without an upgrade ends the run. Surplus pickups at maximum capacity award points.
 
 Space folds refract a textured starfield, nebula, and shaded planet. Black-hole ripples travel inward and white-hole ripples outward; their lit ridges bend the background into an elliptical well. The rift cannon, asteroid tethers, and folded rocks also distort the sky behind them. Ships, bullets, and controls remain sharp above the effect.
 
@@ -47,7 +55,7 @@ Space folds refract a textured starfield, nebula, and shaded planet. Black-hole 
 ![Black-hole space folds collapsing inward](docs/screenshots/black.png)
 ![White-hole space folds expanding outward](docs/screenshots/white.png)
 
-The game includes pause on focus loss, hit effects, original synthesized sound, and a separate local best score for each encounter. The rift cannon uses a high-to-low sci-fi blast made in code. There are no accounts, ads, analytics, or network requests in the game.
+The game includes pause on focus loss, hit effects, original synthesized sound, and a persistent local endless high score. The rift cannon uses a high-to-low sci-fi blast made in code. There are no accounts, ads, analytics, or network requests in the game.
 
 ## Project structure
 
@@ -74,6 +82,7 @@ ALIEN_SAVE_PATH=/tmp/alien-smoke-record.cfg godot --headless --path mobile --scr
 ALIEN_SAVE_PATH=/tmp/alien-input-record.cfg godot --headless --path mobile --script tests/input_flow.gd
 ALIEN_SAVE_PATH=/tmp/alien-boss-cycle-record.cfg godot --headless --path mobile --script tests/boss_cycle.gd
 ALIEN_SAVE_PATH=/tmp/alien-hole-physics-record.cfg godot --headless --path mobile --script tests/hole_physics.gd
+ALIEN_SAVE_PATH=/tmp/alien-endless-record.cfg godot --headless --path mobile --script tests/endless.gd
 ```
 
 Checks cover scoring, lives, restart, saves, pause, touch ownership, GUI input, swept collisions, hole neutralisation and failure, destructible asteroids, repeated boss cycles, and projectile-only boss damage.
@@ -91,4 +100,4 @@ Use the left/right arrow keys to move, Space to shoot, and Q to exit. The origin
 
 ## Release status
 
-This is a playable development prototype, not a signed Android/iOS release. It has been checked locally on macOS; physical-phone testing, final artwork, campaign progression, export configuration, signing, and store submission remain. The Godot prototype uses original procedural graphics and synthesized sounds; original Python artwork is not bundled into the Godot game.
+This is a playable development prototype, not a signed Android/iOS release. It has been checked locally on macOS; physical-phone testing, final artwork, difficulty tuning, export configuration, signing, and store submission remain. The Godot prototype uses original procedural graphics and synthesized sounds; original Python artwork is not bundled into the Godot game.

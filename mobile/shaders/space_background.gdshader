@@ -64,8 +64,8 @@ void fragment() {
 	vec3 nebula_tint = mix(vec3(0.047, 0.058, 0.155), vec3(0.021, 0.127, 0.166), broad);
 	color += nebula_tint * filaments * 0.78;
 	color += vec3(0.030, 0.026, 0.061) * pow(cloud, 4.0) * band;
-	color += star_layer(p + vec2(0.0, visual_time * 0.65), 62.0, 11.7) * 0.72;
-	color += star_layer(p + vec2(19.0, visual_time * 1.15), 141.0, 82.1) * 0.87;
+	color += star_layer(p - vec2(0.0, visual_time * 20.0), 62.0, 11.7) * 0.72;
+	color += star_layer(p - vec2(19.0, visual_time * 42.0), 141.0, 82.1) * 0.87;
 
 	// A spherical planet supplies curved surface detail and a lit horizon for
 	// the refraction pass. Its low contrast leaves bullets and ships readable.

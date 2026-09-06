@@ -9,6 +9,7 @@ const FIREFIGHT_MAX_SECONDS := 9.0
 const TAP_NEUTRALISE_SECONDS := 0.22
 const EDGE_COLLISION_DISTANCE := 26.0
 const RIFT_CANNON_SPEED := 1225.0
+const SWARM_SIZE := 4
 const ASTEROID_SIZES := [
 	{"radius": 20.0, "health": 3},
 	{"radius": 31.0, "health": 6},
@@ -24,6 +25,7 @@ var phase_time := 0.0
 var cooldown := 0.0
 var shot_timer := 0.8
 var asteroid_timer := 0.0
+var swarm_count := 0
 var well_position := Vector2.ZERO
 var white_push_direction := Vector2.DOWN
 var neutralise_time := 0.0
@@ -37,6 +39,7 @@ var animation_time := 0.0
 
 func _ready() -> void:
 	return_to_firefight()
+	phase = "arrival"
 
 func step(delta: float) -> void:
 	if health <= 0 or game.state != game.State.PLAYING:
@@ -46,7 +49,11 @@ func step(delta: float) -> void:
 	tap_flash = maxf(0.0, tap_flash - delta)
 	hit_flash = maxf(0.0, hit_flash - delta)
 	body_position = Vector2(game.arena.x * 0.5 + sin(animation_time * 0.63) * 80, game.top_inset + 250)
-	if phase == "firefight":
+	if phase == "arrival":
+		body_position.y = lerpf(-100.0, game.top_inset + 250.0, smoothstep(0.0, 1.5, phase_time))
+		if phase_time >= 1.5:
+			return_to_firefight()
+	elif phase == "firefight":
 		cooldown -= delta
 		shot_timer -= delta
 		if cooldown <= 0:
@@ -75,10 +82,22 @@ func step(delta: float) -> void:
 		elif asteroid_timer <= 0:
 			summon_asteroid()
 			asteroid_timer += 0.82
+	elif phase == "active" and kind == "swarm":
+		asteroid_timer -= delta
+		if swarm_count >= SWARM_SIZE:
+			phase = "clearing"
+			phase_time = 0.0
+		elif asteroid_timer <= 0.0:
+			summon_alien()
+			swarm_count += 1
+			asteroid_timer += 0.92
 	elif phase == "clearing":
-		if game.asteroids.is_empty():
+		var summons_cleared: bool = game.asteroids.is_empty()
+		if kind == "swarm":
+			summons_cleared = game.enemies.filter(func(enemy: Node2D) -> bool: return enemy.summoned).is_empty()
+		if summons_cleared:
 			return_to_firefight()
-	elif phase == "active":
+	elif phase == "active" and kind in ["black", "white"]:
 		var force_blocked := neutralise_time > 0.0
 		neutralise_time = maxf(0.0, neutralise_time - delta)
 		var previous_position: Vector2 = game.ship.position
@@ -138,8 +157,9 @@ func activate_special() -> void:
 	phase_time = 0.0
 	neutralise_time = 0.0
 	asteroid_timer = 0.0
-	game.sound.play_effect("rift" if kind != "asteroid" else "burst")
-	if kind != "asteroid":
+	swarm_count = 0
+	game.sound.play_effect("rift" if kind in ["black", "white"] else "burst")
+	if kind in ["black", "white"]:
 		game.burst(well_position, Color("b9f8ff") if kind == "white" else Color("baa3ff"), 34)
 		# Steering changes to tapping, so clear bullets that can no longer be dodged.
 		for shot in game.projectiles.duplicate():
@@ -174,6 +194,20 @@ func summon_asteroid() -> void:
 	game.spawn_asteroid(start, velocity, radius, int(choice.health), body_position + Vector2(0, 42), aim_offset)
 	game.sound.play_effect("rift")
 
+func summon_alien() -> void:
+	var side: int = game.rng.randi_range(0, 2)
+	var start := Vector2.ZERO
+	if side == 0:
+		start = Vector2(game.rng.randf_range(40.0, game.arena.x - 40.0), -60.0)
+	elif side == 1:
+		start = Vector2(-60.0, game.rng.randf_range(game.top_inset + 140.0, game.top_inset + 340.0))
+	else:
+		start = Vector2(game.arena.x + 60.0, game.rng.randf_range(game.top_inset + 140.0, game.top_inset + 340.0))
+	var velocity: Vector2 = Vector2.DOWN * game.rng.randf_range(185.0, 240.0)
+	var alien: Node2D = game.spawn_enemy(start, velocity, true, body_position + Vector2(0, 42))
+	alien.shot_timer = 0.55
+	game.sound.play_effect("rift")
+
 func position_white_hole() -> void:
 	var at: Vector2 = game.ship.position
 	# Bottom wins an exact tie; otherwise select the true shortest distance.
@@ -195,27 +229,28 @@ func neutralisation() -> float:
 	return 1.0 if neutralise_time > 0.0 else 0.0
 
 func resist() -> void:
-	if phase == "active" and kind != "asteroid":
+	if phase == "active" and kind in ["black", "white"]:
 		neutralise_time = TAP_NEUTRALISE_SECONDS
 		tap_flash = 0.18
 		queue_redraw()
 
-func take_hit() -> void:
+func take_hit(amount: int = 1) -> void:
 	# Called only by a friendly projectile collision in the game controller.
 	if health <= 0 or game.state != game.State.PLAYING:
 		return
-	health -= 1
+	health = maxi(0, health - maxi(amount, 0))
 	hit_flash = 0.07
 	if health == 0:
-		game.burst(body_position, Color("ffca8d"), 60)
-		game.add_score(1000)
 		visible = false
-		game.finish_run(true)
+		game.defeat_boss(self)
 
 func holds_steering() -> bool:
-	return phase == "active" and kind != "asteroid"
+	return phase == "active" and kind in ["black", "white"]
 
 func _draw() -> void:
+	if kind == "swarm":
+		draw_swarm_body()
+		return
 	var tint := Color("baa3ff") if kind == "black" else (Color("b9f8ff") if kind == "white" else Color("ffb86a"))
 	draw_set_transform(body_position)
 	draw_circle(Vector2.ZERO, 74, Color(tint, 0.035))
@@ -236,7 +271,7 @@ func _draw() -> void:
 	if hit_flash > 0:
 		draw_circle(Vector2.ZERO, 38, Color(1, 1, 1, 0.55))
 	draw_set_transform(Vector2.ZERO)
-	if phase == "firefight" or kind == "asteroid":
+	if phase not in ["warning", "active"] or kind not in ["black", "white"]:
 		return
 	var active := phase == "active"
 	var radius := 31.0 if active else 25.0
@@ -258,6 +293,41 @@ func _draw() -> void:
 		draw_line(well_position - Vector2(0,9), well_position + Vector2(0,9), tint, 1, true)
 	if tap_flash > 0:
 		draw_arc(game.ship.position, 42 + (0.18 - tap_flash) * 110, 0, TAU, 56, Color("6cf4d4"), 2, true)
+
+func draw_swarm_body() -> void:
+	var tint := Color("79f4c4")
+	var pulse := 0.5 + sin(animation_time * 4.0) * 0.5
+	draw_set_transform(body_position)
+	draw_circle(Vector2.ZERO, 87.0, Color(tint, 0.045))
+	# Swept hangars and paired eyes make the carrier read as an alien mother ship.
+	for side in [-1.0, 1.0]:
+		var wing := PackedVector2Array([
+			Vector2(side * 20.0, -34.0), Vector2(side * 64.0, -51.0),
+			Vector2(side * 79.0, -18.0), Vector2(side * 67.0, 41.0),
+			Vector2(side * 48.0, 62.0), Vector2(side * 47.0, 9.0),
+			Vector2(side * 25.0, 22.0)
+		])
+		draw_colored_polygon(wing, Color("203f4a"))
+		wing.append(wing[0])
+		draw_polyline(wing, Color(tint, 0.8), 2.0, true)
+		draw_line(Vector2(side * 57.0, -27.0), Vector2(side * 62.0, 11.0), Color("3f897d"), 5.0, true)
+		for i in range(3):
+			var dock := Vector2(side * (40.0 + float(i) * 8.0), -23.0 + float(i) * 20.0)
+			draw_circle(dock, 3.0, Color(tint, 0.45 + pulse * 0.4))
+	var hull := PackedVector2Array([Vector2(0, -51), Vector2(33, -28), Vector2(28, 23), Vector2(0, 46), Vector2(-28, 23), Vector2(-33, -28)])
+	draw_colored_polygon(hull, Color("142a36"))
+	hull.append(hull[0])
+	draw_polyline(hull, tint.darkened(0.3), 2.0, true)
+	for side in [-1.0, 1.0]:
+		var eye := PackedVector2Array([Vector2(side * 6.0, -6.0), Vector2(side * 24.0, -21.0), Vector2(side * 20.0, -1.0), Vector2(side * 7.0, 5.0)])
+		draw_colored_polygon(eye, tint)
+	draw_circle(Vector2(0, 22), 9.0 + pulse, Color("79f4c4", 0.17))
+	draw_circle(Vector2(0, 22), 5.0, Color("d5fff0"))
+	if phase in ["warning", "active", "clearing"]:
+		draw_arc(Vector2(0, 42), 16.0 + pulse * 3.0, animation_time * 2.0, animation_time * 2.0 + TAU * 0.8, 32, Color(tint, 0.6), 2.0, true)
+	if hit_flash > 0.0:
+		draw_circle(Vector2.ZERO, 40.0, Color(1, 1, 1, 0.5))
+	draw_set_transform(Vector2.ZERO)
 
 func draw_space_folds(center: Vector2, core_radius: float, tint: Color, active: bool) -> void:
 	# The background shader bends the sky. These sparse glints sit on its ridges.

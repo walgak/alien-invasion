@@ -4,14 +4,13 @@ extends Control
 const INK := Color("e8f0f5")
 const MUTED := Color("94a7bc")
 const MINT := Color("64edcf")
-const MODE_LABELS := {"fleet": "First contact", "black": "Black hole", "white": "White hole", "asteroid": "Asteroid forge"}
+const BOSS_NAMES := {"black": "BLACK HOLE", "white": "WHITE HOLE", "asteroid": "ASTEROID FORGE", "swarm": "SWARM CARRIER"}
 var game: Node2D
 var primary: Button
 var secondary: Button
 var pause_button: Button
 var sound_button: Button
 var font: Font
-var mode_buttons: Dictionary = {}
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -33,12 +32,6 @@ func _ready() -> void:
 	sound_button = make_button(false)
 	sound_button.add_theme_font_size_override("font_size", 13)
 	sound_button.pressed.connect(game.toggle_sound)
-	for mode in MODE_LABELS:
-		var button := make_button(false)
-		button.text = MODE_LABELS[mode]
-		button.add_theme_font_size_override("font_size", 15)
-		button.pressed.connect(game.select_mode.bind(mode))
-		mode_buttons[mode] = button
 
 func make_button(accent: bool) -> Button:
 	var button := Button.new()
@@ -75,10 +68,10 @@ func refresh() -> void:
 	secondary.visible = not playing and not menu
 	pause_button.visible = playing
 	sound_button.visible = not playing
-	primary.text = "Launch mission  →" if menu else ("Resume flight  →" if game.state == game.State.PAUSED else "Fly again  →")
+	primary.text = "Launch endless flight  →" if menu else ("Resume flight  →" if game.state == game.State.PAUSED else "Fly again  →")
 	secondary.text = "Return to title"
-	primary.position = Vector2(48, h - game.bottom_inset - 186) if menu else Vector2(64, h * 0.36 + 215)
-	primary.size = Vector2(w - (96 if menu else 128), 62)
+	primary.position = Vector2(40, h - game.bottom_inset - 170) if menu else Vector2(64, h * 0.36 + 215)
+	primary.size = Vector2(w - (80 if menu else 128), 62)
 	secondary.position = primary.position + Vector2(0, 76)
 	secondary.size = primary.size
 	pause_button.position = Vector2(w - 88, game.top_inset)
@@ -86,14 +79,6 @@ func refresh() -> void:
 	sound_button.position = Vector2(w * 0.5 - 75, h - game.bottom_inset - 74)
 	sound_button.size = Vector2(150, 46)
 	sound_button.text = "SOUND  " + ("ON" if game.progress.sound_enabled else "OFF")
-	var index := 0
-	for mode in mode_buttons:
-		var button: Button = mode_buttons[mode]
-		button.visible = menu
-		button.position = Vector2(48 + (index % 2) * ((w - 108) * 0.5 + 12), h - game.bottom_inset - 300 + floori(index / 2.0) * 54)
-		button.size = Vector2((w - 108) * 0.5, 44)
-		button.add_theme_stylebox_override("normal", panel(Color("1b3645") if mode == game.selected_mode else Color("101c30"), MINT if mode == game.selected_mode else Color("283b51")))
-		index += 1
 	# Clear focus after a click; keyboard users can still Tab through visible buttons.
 	var focused := get_viewport().gui_get_focus_owner()
 	if focused:
@@ -123,67 +108,58 @@ func _draw() -> void:
 	var h: float = game.arena.y
 	var top: float = game.top_inset
 	if game.state == game.State.MENU:
-		tracked("FLIGHT SELECT / " + str(MODE_LABELS[game.selected_mode]).to_upper(), top + 25, 11, 1.5, MINT)
-		draw_line(Vector2(w * 0.5 - 24, top + 57), Vector2(w * 0.5 + 24, top + 57), Color("355364"), 1)
-		tracked("ALIEN", top + 143, 58, 9.0, INK)
-		tracked("INVASION", top + 207, 58, 4.0, INK)
-		centered("Protect the quiet between the stars.", top + 250, 17, MUTED)
-		tracked("CHOOSE YOUR FLIGHT", h - game.bottom_inset - 324, 11, 1.8, MUTED)
-		var hint := "Drag to steer · weapons fire automatically."
-		if game.selected_mode in ["black", "white"]:
-			hint = "Drag to steer · tap rapidly to block the hole."
-		elif game.selected_mode == "asteroid":
-			hint = "Dodge the asteroids, or shoot them apart."
-		centered(hint, h - game.bottom_inset - 100, 13, MUTED)
-		tracked("FLIGHT BEST  %04d" % game.progress.best_for(game.selected_mode), h - game.bottom_inset, 11, 1.5, MUTED)
+		tracked("ENDLESS FLIGHT", top + 28, 12, 3.0, MINT)
+		tracked("ALIEN", top + 142, 58, 9.0, INK)
+		tracked("INVASION", top + 205, 56, 4.0, INK)
+		centered("Keep flying. Make every life count.", top + 250, 17, MUTED)
+		tracked("HIGH SCORE  %06d" % game.progress.best_for("endless"), top + 290, 12, 1.5, MINT)
+		centered("Single → Double → Triple → Laser → Rockets", h - game.bottom_inset - 292, 16, Color("ffc56e"))
+		centered("Catch weapon drops for power and one emergency life.", h - game.bottom_inset - 262, 13, MUTED)
+		centered("Hull drops restore lives. Carry up to three.", h - game.bottom_inset - 239, 13, MUTED)
+		centered("Drag to steer · auto-fire · tap against gravity", h - game.bottom_inset - 200, 13, INK)
 		return
-	draw_rect(Rect2(0, 0, w, top + 121), Color("080e20"))
-	text_at("SCORE", Vector2(32, top + 13), 11, MUTED)
-	text_at("%04d" % game.score, Vector2(32, top + 50), 32)
-	centered(str(MODE_LABELS[game.encounter]).to_upper(), top + 14, 11, MINT)
-	centered("WAVE 01" if game.encounter == "fleet" else "BOSS ENCOUNTER", top + 43, 16)
-	draw_line(Vector2(32, top + 78), Vector2(w - 32, top + 78), Color("233247"), 1)
-	text_at("HULL", Vector2(32, top + 109), 11, MUTED)
+	draw_rect(Rect2(0, 0, w, top + 143), Color("080e20"))
+	text_at("SCORE", Vector2(28, top + 12), 11, MUTED)
+	text_at("%06d" % game.score, Vector2(28, top + 48), 31)
+	text_at("HIGH SCORE", Vector2(w * 0.48, top + 12), 10, MINT)
+	text_at("%06d" % game.progress.best_for("endless"), Vector2(w * 0.48, top + 42), 23)
+	text_at("HULL", Vector2(28, top + 84), 10, MUTED)
 	for i in range(3):
-		var at := Vector2(86 + i * 23, top + 104)
-		draw_circle(at, 5.5, MINT if i < game.lives else Color("293349"))
-	var remaining := "%02d / 15 REMAINING" % game.enemies.size()
+		draw_circle(Vector2(77 + i * 22, top + 79), 5, MINT if i < game.lives else Color("293349"))
+	if game.weapons.level > 0:
+		text_at("+ BACKUP", Vector2(152, top + 84), 10, Color("ffc56e"))
+	text_at(game.weapons.weapon_name(), Vector2(w - 125, top + 84), 12, Color("ffc56e"))
 	if is_instance_valid(game.boss):
-		remaining = "BOSS CORE  %d%%" % roundi(100.0 * game.boss.health / game.boss.max_health)
-		draw_rect(Rect2(32, top + 132, w - 64, 4), Color("243147"))
-		draw_rect(Rect2(32, top + 132, (w - 64) * game.boss.health / game.boss.max_health, 4), Color("ffb86a"))
-		var phase_label := "EXCHANGE FIRE"
-		if game.boss.phase == "warning":
-			phase_label = "SPECIAL ATTACK INCOMING"
-		elif game.boss.phase in ["active", "clearing"]:
-			phase_label = "BLOCK THE HOLE" if game.boss.kind != "asteroid" else "ASTEROID BARRAGE"
-		tracked(phase_label, top + 160, 10, 1.3, MUTED)
-	text_at(remaining, Vector2(w - 32 - font.get_string_size(remaining, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x, top + 109), 11, MUTED)
-	var drag_y: float = h - game.bottom_inset - 46
-	draw_line(Vector2(w * 0.5 - 50, drag_y), Vector2(w * 0.5 + 50, drag_y), Color("294758"), 2)
-	draw_circle(Vector2(w * 0.5, drag_y), 4, MINT)
-	var resisting: bool = is_instance_valid(game.boss) and game.boss.holds_steering()
-	tracked("TAP ANYWHERE · SPACE ON KEYBOARD" if resisting else "DRAG ANYWHERE TO MOVE", drag_y + 28, 10, 1.1, MUTED)
-	if game.elapsed < 4.0 and game.state == game.State.PLAYING and game.encounter == "fleet":
-		centered("Your weapons fire automatically.", h - game.bottom_inset - 239, 15, Color(MUTED, clampf(4.0 - game.elapsed, 0, 1)))
-	if game.damage_flash > 0 and game.state == game.State.PLAYING:
-		draw_rect(Rect2(Vector2.ZERO, size), Color(1, 0.26, 0.22, game.damage_flash * 0.13))
+		centered(BOSS_NAMES.get(game.boss.kind, "BOSS"), top + 112, 12, Color("ffb86a"))
+		draw_rect(Rect2(28, top + 127, w - 56, 4), Color("293349"))
+		draw_rect(Rect2(28, top + 127, (w - 56) * float(game.boss.health) / game.boss.max_health, 4), Color("ffb86a"))
+	else:
+		tracked("SECTOR %02d  ·  %d BOSSES DEFEATED" % [game.bosses_defeated + 1, game.bosses_defeated], top + 119, 10, 1.0, MUTED)
 	if game.state == game.State.PLAYING:
-		if is_instance_valid(game.boss):
+		if game.boss_warning > 0.0:
+			centered("BOSS APPROACHING", top + 202, 25, Color("ffb86a"))
+			centered(BOSS_NAMES.get(game.pending_boss, "UNKNOWN SIGNAL"), top + 231, 13, INK)
+		elif game.recovery_time > 0.0:
+			centered("BOSS DEFEATED", h * 0.43, 26, MINT)
+			centered("Keep flying. The next sector awaits.", h * 0.43 + 29, 14, MUTED)
+		elif is_instance_valid(game.boss):
 			draw_boss_notice()
+		if game.pickup_notice_time > 0.0:
+			centered(game.pickup_notice, h - game.bottom_inset - 220, 15, Color("ffc56e"))
+		centered("DRAG TO STEER", h - game.bottom_inset - 5, 10, MUTED)
+		if game.damage_flash > 0.0:
+			draw_rect(Rect2(Vector2.ZERO, size), Color(1, 0.26, 0.22, game.damage_flash * 0.13))
 		return
 	draw_rect(Rect2(Vector2.ZERO, size), Color(0.025, 0.04, 0.08, 0.86))
-	var y: float = h * 0.36
-	draw_style_box(panel(Color("101c30"), Color("2b4258")), Rect2(32, y - 58, w - 64, 426))
+	var y := h * 0.36
 	var paused: bool = game.state == game.State.PAUSED
-	var won: bool = game.state == game.State.WON
-	tracked("FLIGHT PAUSED" if paused else ("SECTOR SECURED" if won else "SIGNAL LOST"), y - 17, 11, 2, MINT if paused or won else Color("ffb18f"))
-	centered("Take a breath." if paused else ("Clear skies." if won else "One more flight?"), y + 32, 34)
-	centered("Your mission will wait for you." if paused else ("Every invader stopped. Beautiful flying." if won and game.encounter == "fleet" else ("The boss is down. Beautiful flying." if won else game.loss_reason)), y + 68, 13, MUTED)
-	centered("%04d" % game.score, y + 132, 43)
-	tracked("CURRENT SCORE" if paused else "FINAL SCORE", y + 156, 10, 1.5, MUTED)
-	var record := "NEW FLIGHT BEST" if not paused and game.score > game.best_at_start else "FLIGHT BEST  %04d" % game.progress.best_for(game.encounter)
-	centered(record, y + 189, 12, MINT)
+	draw_style_box(panel(Color("101c30"), Color("2b4258")), Rect2(32, y - 58, w - 64, 426))
+	tracked("FLIGHT PAUSED" if paused else "RUN ENDED", y - 17, 11, 2, MINT if paused else Color("ffb18f"))
+	centered("Take a breath." if paused else "One more flight?", y + 32, 32)
+	centered("Your flight will wait for you." if paused else game.loss_reason, y + 66, 13, MUTED)
+	centered("%06d" % game.score, y + 128, 42)
+	centered("%d BOSSES DEFEATED" % game.bosses_defeated, y + 156, 11, MUTED)
+	centered("NEW HIGH SCORE" if not paused and game.score > game.best_at_start else "HIGH SCORE  %06d" % game.progress.best_for("endless"), y + 188, 12, MINT)
 
 func draw_boss_notice() -> void:
 	var boss: Node2D = game.boss
@@ -204,13 +180,13 @@ func draw_boss_notice() -> void:
 				edge_start = Vector2(size.x - 3, 3)
 				edge_end = Vector2(size.x - 3, size.y - 3)
 			draw_line(edge_start, edge_end, Color("ffb86a"), 5)
-	if boss.phase == "firefight":
+	if boss.phase in ["firefight", "arrival"]:
 		if boss.phase_time < 2.5:
 			centered("Dodge the boss's shots. Keep firing back.", y - 20, 14, MUTED)
 		return
-	if boss.kind == "asteroid":
+	if boss.kind in ["asteroid", "swarm"]:
 		# Keep the playfield unobstructed while the pilot is dodging rocks.
-		centered("ASTEROID BARRAGE INCOMING" if boss.phase == "warning" else "Dodge or shoot the asteroids.", y - 20, 16, Color("ffd19d"))
+		centered("REINFORCEMENTS INCOMING" if boss.phase == "warning" else "Dodge or shoot the incoming threats.", y - 20, 16, Color("ffd19d"))
 		centered("Only hits on the boss damage its core.", y + 7, 12, MUTED)
 		return
 	draw_style_box(panel(Color("101c30"), Color("425064")), Rect2(48, y - 45, size.x - 96, 111))

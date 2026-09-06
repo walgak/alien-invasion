@@ -21,7 +21,7 @@ func update_effects(game: Node2D) -> void:
 	var strand_styles := PackedVector4Array()
 	var boss: Node2D = game.boss
 	if is_instance_valid(boss) and boss.visible:
-		if boss.kind != "asteroid" and boss.phase in ["warning", "active"]:
+		if boss.kind in ["black", "white"] and boss.phase in ["warning", "active"]:
 			var active: bool = boss.phase == "active"
 			lenses.append(Vector4(boss.well_position.x, boss.well_position.y, 164.0 if active else 112.0, 1.0 if active else 0.3))
 			styles.append(Vector4(31.0 if active else 25.0, 1.0 if boss.kind == "white" else -1.0, 0.0, boss.animation_time))
@@ -31,7 +31,7 @@ func update_effects(game: Node2D) -> void:
 				var tail: Vector2 = boss.cannon_position - boss.cannon_velocity.normalized() * 112.0
 				strands.append(Vector4(tail.x, tail.y, boss.cannon_position.x, boss.cannon_position.y))
 				strand_styles.append(Vector4(20.0, 0.75, boss.animation_time, 1.0))
-		elif boss.kind == "asteroid" and boss.phase in ["active", "clearing"]:
+		elif boss.kind in ["asteroid", "swarm"] and boss.phase in ["active", "clearing"]:
 			lenses.append(Vector4(boss.body_position.x, boss.body_position.y, 87.0, 0.28))
 			styles.append(Vector4(36.0, -1.0, 1.0, boss.animation_time))
 		for rock in game.asteroids:
@@ -43,6 +43,15 @@ func update_effects(game: Node2D) -> void:
 				var alpha: float = rock.fold_life / rock.RELEASE_FADE_SECONDS
 				strands.append(Vector4(rock.fold_origin.x, rock.fold_origin.y, rock.position.x, rock.position.y))
 				strand_styles.append(Vector4(16.0 + rock.radius * 0.2, alpha, boss.animation_time, -1.0))
+		for enemy in game.enemies:
+			if not enemy.summoned or enemy.fold_life <= 0.0:
+				continue
+			if lenses.size() < MAX_LENSES:
+				lenses.append(Vector4(enemy.position.x, enemy.position.y, 58.0, 0.5))
+				styles.append(Vector4(22.0, -1.0, 1.0, boss.animation_time))
+			if strands.size() < MAX_STRANDS:
+				strands.append(Vector4(enemy.fold_origin.x, enemy.fold_origin.y, enemy.position.x, enemy.position.y))
+				strand_styles.append(Vector4(20.0, enemy.fold_life / enemy.RELEASE_FADE_SECONDS, boss.animation_time, -1.0))
 	lens_count = lenses.size()
 	strand_count = strands.size()
 	lenses.resize(MAX_LENSES)

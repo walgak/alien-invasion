@@ -1,7 +1,7 @@
 extends RefCounted
 ## A local record only. ALIEN_SAVE_PATH isolates automated checks from real saves.
 
-var best_by_mode := {"fleet": 0, "black": 0, "white": 0, "asteroid": 0}
+var best_by_mode := {"endless": 0, "fleet": 0, "black": 0, "white": 0, "asteroid": 0}
 var sound_enabled := true
 var save_path := "user://flight_record.cfg"
 var last_error := OK

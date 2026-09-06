@@ -37,9 +37,11 @@ func run_checks() -> void:
 	game.set_physics_process(false)
 	game.set_process(false)
 	game.sound.enabled = false
-	for mode in ["black", "white", "asteroid"]:
+	for mode in ["black", "white", "asteroid", "swarm"]:
 		game.start_run(mode)
-		check(game.boss.phase == "firefight", mode + ": starts by exchanging fire")
+		check(game.boss.phase == "arrival", mode + ": enters from offscreen")
+		game.boss.step(1.5)
+		check(game.boss.phase == "firefight", mode + ": arrival leads to exchanging fire")
 		game.boss.step(1.0)
 		check(game.projectiles.size() == 3 and game.projectiles.all(func(shot): return shot.hostile), mode + ": boss shoots an aimed three-shot volley")
 		game.update_projectiles(3.0)
@@ -48,11 +50,11 @@ func run_checks() -> void:
 		var remaining_health: int = game.boss.health
 		check(remaining_health == game.boss.max_health - 1, mode + ": a player bullet damages the boss core")
 		game.boss.begin_special()
-		if mode != "asteroid":
+		if mode in ["black", "white"]:
 			check(game.boss.cannon_active and is_equal_approx(game.boss.cannon_velocity.length(), 1225.0), mode + ": rift cannon flies five times faster than a normal boss bullet")
 		game.boss.step(1.3)
 		check(game.boss.phase == "active", mode + ": warning leads into the special attack")
-		if mode != "asteroid":
+		if mode in ["black", "white"]:
 			check(game.projectiles.all(func(shot): return not shot.hostile), mode + ": old bullets clear before steering changes to tapping")
 			for i in range(245):
 				if i % 12 == 0:
@@ -61,7 +63,9 @@ func run_checks() -> void:
 		else:
 			for i in range(250):
 				game.boss.step(1.0 / 60.0)
-			check(game.boss.phase == "clearing" and not game.asteroids.is_empty(), "asteroid: waits until the finite barrage has been dealt with")
+			check(game.boss.phase == "clearing" and (not game.asteroids.is_empty() or not game.enemies.is_empty()), mode + ": waits until the finite barrage has been dealt with")
+			for enemy in game.enemies.duplicate():
+				game.destroy_enemy(enemy)
 			for rock in game.asteroids.duplicate():
 				while game.asteroids.has(rock):
 					game.hit_asteroid(rock)
@@ -79,10 +83,10 @@ func run_checks() -> void:
 		# Only one point remains, and the final hit uses the actual collision path.
 		game.boss.health = 1
 		hit_core_with_bullet()
-		check(game.state == game.State.WON and game.boss.health == 0, mode + ": the final player bullet ends the encounter")
-		var before_time: float = game.boss.animation_time
-		game.boss.step(20.0)
-		check(game.projectiles.is_empty() and game.boss.animation_time == before_time, mode + ": a defeated boss cannot fire or restart its cycle")
+		check(game.state == game.State.PLAYING and not is_instance_valid(game.boss), mode + ": the final player bullet returns to endless flight")
+		check(game.projectiles.is_empty() and game.bosses_defeated == 1, mode + ": defeated boss hazards clear")
+		if mode in ["black", "white"]:
+			check(game.ship.position == game.cruise_position(), mode + ": victory restores the normal ship position")
 	game.start_run("black")
 	game.rng.seed = 77
 	var intervals: Array[float] = []

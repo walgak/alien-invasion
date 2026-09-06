@@ -11,16 +11,34 @@ const Boss = preload("res://scripts/boss.gd")
 const Asteroid = preload("res://scripts/asteroid.gd")
 const SpaceBackground = preload("res://scripts/space_background.gd")
 const SpaceFolds = preload("res://scripts/space_folds.gd")
-const ENEMY_COUNT := 15
+const WeaponSystem = preload("res://scripts/weapon_system.gd")
+const Pickup = preload("res://scripts/pickup.gd")
 const POINTS_PER_ENEMY := 100
+const MAX_LIVES := 3
+const MAX_ENEMIES := 14
+const BOSS_KINDS := ["black", "white", "asteroid", "swarm"]
 enum State { MENU, PLAYING, PAUSED, WON, LOST }
 
 var state := State.MENU
-var selected_mode := "fleet"
-var encounter := "fleet"
+var selected_mode := "endless"
+var encounter := "endless"
 var loss_reason := "The next run starts with a clean slate."
 var boss: Node2D
 var asteroids: Array[Node2D] = []
+var pickups: Array[Node2D] = []
+var weapons = WeaponSystem.new()
+var bosses_defeated := 0
+var boss_timer := 40.0
+var boss_warning := 0.0
+var pending_boss := ""
+var boss_deck: Array[String] = []
+var recovery_time := 0.0
+var wave_timer := 0.5
+var asteroid_timer := 5.0
+var save_timer := 10.0
+var kills_since_drop := 0
+var pickup_notice := ""
+var pickup_notice_time := 0.0
 var score := 0
 var lives := 3
 var elapsed := 0.0
@@ -87,6 +105,7 @@ func update_layout() -> void:
 func show_title() -> void:
 	clear_actors()
 	state = State.MENU
+	sound.silence()
 	pointer_id = -1
 	ship.reset_ship(Vector2(arena.x * 0.5, arena.y * 0.475))
 	ship.scale = Vector2.ONE * 1.65
@@ -94,40 +113,49 @@ func show_title() -> void:
 
 func start_run(mode: String = "") -> void:
 	clear_actors()
-	encounter = selected_mode if mode.is_empty() else mode
-	selected_mode = encounter
+	encounter = "endless"
+	selected_mode = "endless"
 	loss_reason = "The next run starts with a clean slate."
 	score = 0
 	lives = 3
 	elapsed = 0.0
+	bosses_defeated = 0
+	weapons.level = 0
+	boss_timer = rng.randf_range(38.0, 48.0)
+	wave_timer = 0.4
+	asteroid_timer = rng.randf_range(4.0, 7.0)
+	save_timer = 10.0
+	kills_since_drop = 0
+	pickup_notice = ""
+	pickup_notice_time = 0.0
+	boss_deck.clear()
 	shot_timer = 0.22
 	enemy_shot_timer = 2.4
 	damage_flash = 0.0
 	pointer_id = -1
 	best_at_start = progress.best_for(encounter)
 	state = State.PLAYING
-	ship.reset_ship(Vector2(arena.x * 0.5, arena.y - bottom_inset - 152))
-	if encounter != "fleet":
-		boss = Boss.new()
-		boss.game = self
-		boss.kind = encounter
-		add_child(boss)
-		boss.step(0.0)
-		interface.refresh()
-		return
-	for row in range(3):
-		for column in range(5):
-			var enemy = Enemy.new()
-			enemy.formation_offset = Vector2((column - 2) * 76, row * 73)
-			enemy.phase = column * 0.45 + row * 0.7
-			enemy.tint = [Color("ffb86a"), Color("f1958d"), Color("baacf5")][row]
-			add_child(enemy)
-			enemies.append(enemy)
-	update_enemies(0.0)
+	ship.reset_ship(cruise_position())
+	sound.set_boss_music(false)
+	sound.set_paused(false)
+	# Explicit modes are developer entry points for encounter tests only.
+	if mode in BOSS_KINDS:
+		begin_boss(mode)
 	interface.refresh()
+	refresh_space()
+
+func cruise_position() -> Vector2:
+	return Vector2(arena.x * 0.5, arena.y - bottom_inset - 152.0)
+
+func restore_cruise_position() -> void:
+	ship.position = cruise_position()
+	ship.target_x = ship.position.x
+	ship.rotation = 0.0
+	ship.lean = 0.0
+	pointer_id = -1
 
 func clear_actors() -> void:
-	for actor in enemies + projectiles + asteroids:
+	for actor in enemies + projectiles + asteroids + pickups:
 		actor.queue_free()
 	if is_instance_valid(boss):
 		boss.queue_free()
@@ -135,12 +163,22 @@ func clear_actors() -> void:
 	enemies.clear()
 	projectiles.clear()
 	asteroids.clear()
+	pickups.clear()
 	particles.clear()
+	boss_warning = 0.0
+	pending_boss = ""
+	recovery_time = 0.0
 
 func _physics_process(delta: float) -> void:
 	if state != State.PLAYING:
 		return
 	elapsed += delta
+	pickup_notice_time = maxf(0.0, pickup_notice_time - delta)
+	save_timer -= delta
+	if save_timer <= 0.0:
+		progress.save()
+		save_timer = 10.0
+	update_director(delta)
 	damage_flash = maxf(0.0, damage_flash - delta * 2.5)
 	var direction := Input.get_axis("ui_left", "ui_right")
 	if Input.is_physical_key_pressed(KEY_A):
@@ -154,23 +192,132 @@ func _physics_process(delta: float) -> void:
 		ship.move_ship(delta, clampf(direction, -1, 1), arena.x)
 	shot_timer -= delta
 	if shot_timer <= 0.0:
-		fire_player_shot()
-		shot_timer += 0.19
+		shot_timer += fire_player_shot()
 	if is_instance_valid(boss):
 		boss.step(delta)
 		if state != State.PLAYING:
 			return
-		update_asteroids(delta)
-	else:
-		update_enemies(delta)
+	update_enemies(delta)
 	if state != State.PLAYING:
 		return
-	enemy_shot_timer -= delta
-	if enemy_shot_timer <= 0.0 and not enemies.is_empty():
-		fire_enemy_shot()
-		enemy_shot_timer += maxf(0.62, 1.2 - elapsed * 0.008)
+	update_asteroids(delta)
+	if state != State.PLAYING:
+		return
 	update_projectiles(delta)
+	if state == State.PLAYING:
+		update_pickups(delta)
 	interface.queue_redraw()
+
+func update_director(delta: float) -> void:
+	if is_instance_valid(boss):
+		return
+	if recovery_time > 0.0:
+		recovery_time = maxf(0.0, recovery_time - delta)
+		return
+	if boss_warning > 0.0:
+		boss_warning = maxf(0.0, boss_warning - delta)
+		if boss_warning == 0.0:
+			begin_boss(pending_boss)
+		return
+	boss_timer -= delta
+	if boss_timer <= 0.0:
+		pending_boss = next_boss_kind()
+		boss_warning = 3.0
+		clear_hazards()
+		sound.set_boss_music(true)
+		interface.refresh()
+		return
+	wave_timer -= delta
+	if wave_timer <= 0.0:
+		spawn_enemy_group()
+		wave_timer = rng.randf_range(1.5, 2.7) / minf(1.7, 1.0 + bosses_defeated * 0.08)
+	asteroid_timer -= delta
+	if asteroid_timer <= 0.0:
+		var radius: float = [20.0, 31.0, 43.0][rng.randi_range(0, 2)]
+		spawn_asteroid(Vector2(rng.randf_range(45.0, arena.x - 45.0), -radius - 10.0),
+			Vector2(rng.randf_range(-25.0, 25.0), rng.randf_range(145.0, 205.0)), radius)
+		asteroid_timer = rng.randf_range(4.0, 7.0)
+
+func next_boss_kind() -> String:
+	if boss_deck.is_empty():
+		boss_deck.assign(BOSS_KINDS)
+		for i in range(boss_deck.size() - 1, 0, -1):
+			var j := rng.randi_range(0, i)
+			var swap := boss_deck[i]
+			boss_deck[i] = boss_deck[j]
+			boss_deck[j] = swap
+	return boss_deck.pop_back()
+
+func spawn_enemy_group() -> void:
+	var count := mini(rng.randi_range(1, 5 + mini(bosses_defeated / 2, 2)), MAX_ENEMIES - enemies.size())
+	if count <= 0:
+		return
+	var group_center := rng.randf_range(90.0, arena.x - 90.0)
+	for i in range(count):
+		var x := clampf(group_center + (i - (count - 1) * 0.5) * 66.0 + rng.randf_range(-16.0, 16.0), 38.0, arena.x - 38.0)
+		spawn_enemy(Vector2(x, -45.0 - i * 42.0), Vector2(rng.randf_range(-14.0, 14.0), rng.randf_range(95.0, 145.0) + minf(bosses_defeated * 7.0, 80.0)))
+
+func spawn_enemy(at: Vector2, velocity: Vector2, summoned: bool = false, fold_origin: Vector2 = Vector2.INF) -> Node2D:
+	var enemy = Enemy.new()
+	enemy.position = at
+	enemy.previous_position = at
+	enemy.velocity = velocity
+	enemy.phase = rng.randf_range(0.0, TAU)
+	enemy.shot_timer = rng.randf_range(1.7, 3.4)
+	enemy.summoned = summoned
+	enemy.tint = Color("73eac4") if summoned else [Color("ffb86a"), Color("f1958d"), Color("baacf5")][rng.randi_range(0, 2)]
+	if fold_origin != Vector2.INF:
+		enemy.begin_pull(fold_origin)
+	add_child(enemy)
+	enemies.append(enemy)
+	return enemy
+
+func begin_boss(kind: String) -> void:
+	clear_hazards()
+	boss_warning = 0.0
+	pending_boss = ""
+	boss = Boss.new()
+	boss.game = self
+	boss.kind = kind if kind in BOSS_KINDS else "black"
+	boss.max_health = 75 + bosses_defeated * 20
+	boss.health = boss.max_health
+	add_child(boss)
+	boss.step(0.0)
+	sound.set_boss_music(true)
+	interface.refresh()
+
+func defeat_boss(defeated: Node2D) -> void:
+	if state != State.PLAYING or defeated != boss:
+		return
+	var was_gravity: bool = defeated.kind in ["black", "white"]
+	var at: Vector2 = defeated.body_position
+	burst(at, Color("ffca8d"), 60)
+	add_score(1500 + bosses_defeated * 250)
+	bosses_defeated += 1
+	defeated.queue_free()
+	boss = null
+	clear_hazards()
+	if was_gravity:
+		restore_cruise_position()
+	ship.invulnerable = maxf(ship.invulnerable, 2.5)
+	spawn_pickup(Vector2(ship.position.x, ship.position.y - 130.0), "weapon")
+	recovery_time = 3.0
+	boss_timer = rng.randf_range(40.0, 55.0)
+	wave_timer = 0.5
+	asteroid_timer = 4.0
+	sound.set_boss_music(false)
+	sound.play_effect("win")
+	progress.save()
+	interface.refresh()
+	refresh_space()
+
+func clear_hazards() -> void:
+	for enemy in enemies.duplicate():
+		remove_enemy(enemy)
+	for rock in asteroids.duplicate():
+		remove_asteroid(rock)
+	for shot in projectiles.duplicate():
+		remove_projectile(shot)
 
 func _process(delta: float) -> void:
 	if state != State.PAUSED:
@@ -191,22 +338,34 @@ func refresh_space() -> void:
 	space_background.update_background(arena, visual_time)
 	space_folds.update_effects(self)
 
-func update_enemies(_delta: float) -> void:
-	var spacing_scale := minf(1.0, (arena.x - 160.0) / 304.0)
-	for enemy in enemies:
-		enemy.position = Vector2(arena.x * 0.5 + enemy.formation_offset.x * spacing_scale + sin(elapsed * 0.8) * 38.0,
-			top_inset + 183.0 + enemy.formation_offset.y + elapsed * 4.0 + sin(elapsed * 1.8 + enemy.phase) * 7.0)
-		if enemy.position.y + Enemy.HIT_RADIUS >= ship.position.y - 30.0:
-			finish_run(false)
-			return
+func update_enemies(delta: float) -> void:
+	for enemy in enemies.duplicate():
+		if not enemies.has(enemy):
+			continue
+		if is_instance_valid(boss) and enemy.summoned:
+			enemy.fold_origin = boss.body_position + Vector2(0, 42)
+		enemy.advance(delta, ship.position)
+		if enemy.motion_phase == "flight":
+			enemy.position.x = clampf(enemy.position.x, 32.0, arena.x - 32.0)
+		var closest := Geometry2D.get_closest_point_to_segment(ship.position, enemy.previous_position, enemy.position)
+		if closest.distance_to(ship.position) < Ship.HIT_RADIUS + Enemy.HIT_RADIUS:
+			remove_enemy(enemy)
+			damage_ship()
+			if state != State.PLAYING:
+				return
+			continue
+		if enemy.position.y > arena.y + 65.0:
+			remove_enemy(enemy)
+			continue
+		if enemy.motion_phase == "flight" and enemy.position.y > top_inset + 110.0 and enemy.position.y < ship.position.y - 90.0:
+			enemy.shot_timer -= delta
+			if enemy.shot_timer <= 0.0:
+				var aim: Vector2 = (ship.position - enemy.position).normalized()
+				spawn_hostile_shot(enemy.position + Vector2(0, 24), aim * (215.0 if enemy.summoned else 180.0))
+				enemy.shot_timer = rng.randf_range(2.1, 3.8)
 
-func fire_player_shot() -> void:
-	var shot = Projectile.new()
-	shot.position = ship.position + Vector2(0, -36)
-	shot.previous_position = shot.position
-	add_child(shot)
-	projectiles.append(shot)
-	sound.play_effect("shot")
+func fire_player_shot() -> float:
+	return weapons.fire(self)
 
 func fire_enemy_shot() -> void:
 	var shooter = enemies[rng.randi_range(0, enemies.size() - 1)]
@@ -234,30 +393,57 @@ func update_projectiles(delta: float) -> void:
 				if state != State.PLAYING:
 					return
 		else:
-			var absorbed := false
+			var targets: Array[Dictionary] = []
 			for rock in asteroids.duplicate():
 				if shot.intersects(rock.position, rock.radius):
-					remove_projectile(shot)
-					hit_asteroid(rock)
-					absorbed = true
-					break
-			if absorbed:
-				continue
+					targets.append({"actor": rock, "type": "rock", "at": rock.position})
 			if is_instance_valid(boss) and shot.intersects(boss.body_position, Boss.HIT_RADIUS):
-				remove_projectile(shot)
-				boss.take_hit()
-				if state != State.PLAYING:
-					return
-				continue
+				targets.append({"actor": boss, "type": "boss", "at": boss.body_position})
 			for enemy in enemies.duplicate():
 				if shot.intersects(enemy.position, Enemy.HIT_RADIUS):
-					remove_projectile(shot)
-					destroy_enemy(enemy)
+					targets.append({"actor": enemy, "type": "enemy", "at": enemy.position})
+			targets.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+				return shot.previous_position.distance_squared_to(a.at) < shot.previous_position.distance_squared_to(b.at))
+			for target in targets:
+				if not projectiles.has(shot):
+					break
+				var id: int = target.actor.get_instance_id()
+				if shot.hit_ids.has(id):
+					continue
+				shot.hit_ids[id] = true
+				damage_target(target.actor, target.type, shot.damage)
+				if shot.blast_radius > 0.0:
+					detonate_rocket(target.at, shot.blast_radius, target.actor)
+				if not shot.piercing:
+					if projectiles.has(shot):
+						remove_projectile(shot)
 					break
 		if state != State.PLAYING:
 			return
-		if projectiles.has(shot) and (shot.position.y < -50 or shot.position.y > arena.y + 50):
+		if projectiles.has(shot) and (shot.expired or shot.position.y < -50 or shot.position.y > arena.y + 50 or shot.position.x < -80 or shot.position.x > arena.x + 80):
 			remove_projectile(shot)
+
+func damage_target(actor: Node2D, kind: String, amount: int) -> void:
+	if kind == "rock" and asteroids.has(actor):
+		hit_asteroid(actor, amount)
+	elif kind == "boss" and actor == boss:
+		boss.take_hit(amount)
+	elif kind == "enemy" and enemies.has(actor):
+		actor.health -= amount
+		if actor.health <= 0:
+			destroy_enemy(actor)
+
+func detonate_rocket(at: Vector2, radius: float, direct_target: Node2D) -> void:
+	burst(at, Color("ffb86a"), 24)
+	for enemy in enemies.duplicate():
+		if enemy != direct_target and enemy.position.distance_to(at) <= radius + Enemy.HIT_RADIUS:
+			damage_target(enemy, "enemy", 2)
+	for rock in asteroids.duplicate():
+		if rock != direct_target and rock.position.distance_to(at) <= radius + rock.radius:
+			hit_asteroid(rock, 2)
+	if is_instance_valid(boss) and boss != direct_target and boss.body_position.distance_to(at) <= radius + Boss.HIT_RADIUS:
+		boss.take_hit(2)
+	sound.play_effect("burst")
 
 func remove_projectile(shot: Node2D) -> void:
 	projectiles.erase(shot)
@@ -267,12 +453,74 @@ func destroy_enemy(enemy: Node2D) -> void:
 	if not enemies.has(enemy):
 		return
 	burst(enemy.position, enemy.tint, 18)
-	enemies.erase(enemy)
-	enemy.queue_free()
+	maybe_drop_pickup(enemy.position)
+	remove_enemy(enemy)
 	add_score(POINTS_PER_ENEMY)
 	sound.play_effect("burst")
-	if enemies.is_empty():
-		finish_run(true)
+
+func remove_enemy(enemy: Node2D) -> void:
+	enemies.erase(enemy)
+	enemy.queue_free()
+
+func maybe_drop_pickup(at: Vector2) -> void:
+	kills_since_drop += 1
+	var roll := rng.randf()
+	if roll < 0.19 or kills_since_drop >= 10:
+		spawn_pickup(at, "weapon")
+		kills_since_drop = 0
+	elif roll < 0.28:
+		spawn_pickup(at, "life")
+
+func spawn_pickup(at: Vector2, kind: String) -> void:
+	if pickups.size() >= 12:
+		return
+	var pickup = Pickup.new()
+	pickup.kind = kind
+	pickup.position = Vector2(clampf(at.x, 30.0, arena.x - 30.0), maxf(at.y, top_inset + 110.0))
+	pickup.previous_position = pickup.position
+	pickup.phase = rng.randf_range(0.0, TAU)
+	add_child(pickup)
+	pickups.append(pickup)
+
+func update_pickups(delta: float) -> void:
+	# Drops wait while gravity replaces steering with tapping.
+	if is_instance_valid(boss) and boss.holds_steering():
+		return
+	for pickup in pickups.duplicate():
+		pickup.advance(delta)
+		if pickup.position.distance_to(ship.position) < 135.0:
+			pickup.position = pickup.position.move_toward(ship.position, 210.0 * delta)
+		var closest := Geometry2D.get_closest_point_to_segment(ship.position, pickup.previous_position, pickup.position)
+		if closest.distance_to(ship.position) <= Ship.HIT_RADIUS + Pickup.HIT_RADIUS:
+			collect_pickup(pickup)
+		elif pickup.position.y > arena.y + 45.0:
+			pickups.erase(pickup)
+			pickup.queue_free()
+
+func collect_pickup(pickup: Node2D) -> void:
+	if not pickups.has(pickup):
+		return
+	if pickup.kind == "life":
+		if lives < MAX_LIVES:
+			lives += 1
+			pickup_notice = "HULL RESTORED +1"
+		else:
+			add_score(100)
+			pickup_notice = "FULL HULL  +100"
+	else:
+		if weapons.level < WeaponSystem.MAX_LEVEL:
+			weapons.upgrade()
+			shot_timer = 0.0
+			pickup_notice = weapons.weapon_name() + " ONLINE"
+		else:
+			add_score(150)
+			pickup_notice = "MAX WEAPON  +150"
+	pickup_notice_time = 2.0
+	burst(pickup.position, Color("7cf3b7") if pickup.kind == "life" else Color("ffc56e"), 14)
+	pickups.erase(pickup)
+	pickup.queue_free()
+	sound.play_effect("pickup")
+	interface.refresh()
 
 func add_score(points: int) -> void:
 	score += points
@@ -299,6 +547,8 @@ func spawn_asteroid(at: Vector2, velocity: Vector2, radius: float, health: int =
 
 func update_asteroids(delta: float) -> void:
 	for rock in asteroids.duplicate():
+		if not asteroids.has(rock):
+			continue
 		if is_instance_valid(boss) and boss.kind == "asteroid":
 			rock.fold_origin = boss.body_position + Vector2(0, 42)
 		rock.advance(delta, ship.position)
@@ -311,10 +561,10 @@ func update_asteroids(delta: float) -> void:
 		elif rock.position.y > arena.y + 60:
 			remove_asteroid(rock)
 
-func hit_asteroid(rock: Node2D) -> void:
-	rock.health -= 1
+func hit_asteroid(rock: Node2D, amount: int = 1) -> void:
+	rock.health -= amount
 	rock.flash = 0.08
-	if rock.health == 0:
+	if rock.health <= 0:
 		burst(rock.position, Color("d6b899"), 15)
 		remove_asteroid(rock)
 		add_score(25)
@@ -328,6 +578,8 @@ func lose_ship(reason: String) -> void:
 	if state != State.PLAYING:
 		return
 	lives = 0
+	if use_emergency_life():
+		return
 	ship.visible = false
 	loss_reason = reason
 	burst(ship.position, Color("ff816f"), 42)
@@ -342,6 +594,8 @@ func damage_ship() -> void:
 	burst(ship.position, Color("ff816f"), 28)
 	sound.play_effect("hit")
 	if lives == 0:
+		if use_emergency_life():
+			return
 		ship.visible = false
 		finish_run(false)
 		return
@@ -350,16 +604,37 @@ func damage_ship() -> void:
 		if shot.hostile:
 			remove_projectile(shot)
 
+func use_emergency_life() -> bool:
+	if weapons.level <= 0:
+		return false
+	weapons.level = 0
+	lives = 1
+	ship.visible = true
+	ship.invulnerable = 2.5
+	restore_cruise_position()
+	clear_hazards()
+	if is_instance_valid(boss):
+		boss.return_to_firefight()
+	shot_timer = 0.0
+	pickup_notice = "EMERGENCY LIFE · SINGLE SHOT"
+	pickup_notice_time = 3.0
+	sound.play_effect("pickup")
+	interface.refresh()
+	return true
+
 func finish_run(won: bool) -> void:
 	if state != State.PLAYING:
 		return
-	state = State.WON if won else State.LOST
+	if won:
+		if is_instance_valid(boss):
+			defeat_boss(boss)
+		return
+	state = State.LOST
+	sound.silence()
 	pointer_id = -1
 	for shot in projectiles.duplicate():
 		remove_projectile(shot)
 	progress.save()
-	if won:
-		sound.play_effect("win")
 	interface.refresh()
 
 func pause_run() -> void:
@@ -368,7 +643,7 @@ func pause_run() -> void:
 	state = State.PAUSED
 	pointer_id = -1
 	ship.target_x = ship.position.x
-	sound.silence()
+	sound.set_paused(true)
 	progress.save()
 	interface.refresh()
 
@@ -376,14 +651,14 @@ func resume_run() -> void:
 	if state != State.PAUSED:
 		return
 	state = State.PLAYING
+	sound.set_paused(false)
 	pointer_id = -1
 	interface.refresh()
 
 func toggle_sound() -> void:
 	progress.sound_enabled = not progress.sound_enabled
 	sound.enabled = progress.sound_enabled
-	if not sound.enabled:
-		sound.silence()
+	sound.sync_enabled()
 	progress.save()
 	interface.refresh()
 
