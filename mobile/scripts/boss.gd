@@ -62,11 +62,6 @@ func step(delta: float) -> void:
 			fire_volley()
 			shot_timer += 1.35
 	elif phase == "warning":
-		if kind == "white":
-			# Track the nearest edge while forming, then keep the active hole fixed.
-			position_white_hole()
-			if cannon_active:
-				aim_cannon_at_hole()
 		if cannon_active:
 			cannon_previous_position = cannon_position
 			cannon_position += cannon_velocity * delta
@@ -140,18 +135,18 @@ func begin_special() -> void:
 	phase = "warning"
 	phase_time = 0.0
 	neutralise_time = 0.0
-	if kind == "white":
-		position_white_hole()
-		launch_rift_cannon()
-	elif kind == "black":
-		var side := 1.0 if game.ship.position.x < game.arena.x * 0.5 else -1.0
-		well_position = Vector2(clampf(game.ship.position.x + side * 130.0, 45, game.arena.x - 45), game.ship.position.y)
+	if kind in ["black", "white"]:
+		position_gravity_hole()
 		launch_rift_cannon()
 	else:
 		cannon_active = false
 	queue_redraw()
 
 func activate_special() -> void:
+	if kind in ["black", "white"] and well_position.distance_to(game.ship.position) < minf(130.0, game.arena.x * 0.22):
+		position_gravity_hole()
+		aim_cannon_at_hole()
+		return
 	cannon_active = false
 	phase = "active"
 	phase_time = 0.0
@@ -208,17 +203,17 @@ func summon_alien() -> void:
 	alien.shot_timer = 0.55
 	game.sound.play_effect("rift")
 
-func position_white_hole() -> void:
-	var at: Vector2 = game.ship.position
-	# Bottom wins an exact tie; otherwise select the true shortest distance.
-	var distances := [game.arena.y - at.y, at.x, game.arena.x - at.x, at.y]
-	var directions := [Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT, Vector2.UP]
-	var nearest := 0
-	for i in range(1, distances.size()):
-		if distances[i] < distances[nearest]:
-			nearest = i
-	white_push_direction = directions[nearest]
-	well_position = at - white_push_direction * 130.0
+func position_gravity_hole() -> void:
+	# Fixed lower-middle arena region, never a ship-relative target.
+	var region := Rect2(game.arena * Vector2(0.28, 0.57), game.arena * Vector2(0.44, 0.13))
+	var candidate := Vector2(game.rng.randf_range(region.position.x, region.end.x), game.rng.randf_range(region.position.y, region.end.y))
+	if candidate.distance_to(game.ship.position) < 130.0:
+		# The farthest corner maximizes reaction room even after prior drift.
+		for corner in [region.position, region.end, Vector2(region.end.x, region.position.y), Vector2(region.position.x, region.end.y)]:
+			if corner.distance_to(game.ship.position) > candidate.distance_to(game.ship.position):
+				candidate = corner
+	well_position = candidate
+	white_push_direction = (game.ship.position - well_position).normalized()
 
 func touches_screen_edge() -> bool:
 	var at: Vector2 = game.ship.position

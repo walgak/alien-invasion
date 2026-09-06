@@ -36,16 +36,16 @@ Each tap fully cancels a hole's force for a brief beat. Keep tapping to hold the
 **Exchange fire → randomly timed special attack → survive → exchange fire again.** This cycle repeats until the boss has no health left. Only player shots hitting the boss damage it. Surviving an attack does not reduce its health, and health never resets between cycles.
 
 - **Black hole:** the boss fires a fast rift cannon that folds space, detonates beside the ship, and creates the hole. Repeated taps neutralise the pull. Being pulled into its core is lethal unless a weapon upgrade supplies an emergency life.
-- **White hole:** the boss fires the same rift cannon toward the opposite side from the ship's nearest screen edge. The blast creates a white hole that pushes toward that edge. All four edges count, so the hole usually forms above the ship and pushes down. Repeated taps neutralise the push; reaching an edge destroys the ship.
+- **White hole:** the boss fires its rift cannon into a fixed lower-middle area. The blast creates a white hole that pushes away from its core, usually downward. All four edges remain dangerous. Repeated taps neutralise the push; reaching an edge destroys the ship.
 - **Asteroid forge:** space-fold strands connect the boss to rocks offscreen, pulling them inward before a brief wind-up and sling toward the ship. The strands fade after release. Small, medium, and large asteroids take 3, 6, and 10 shots to destroy. Once the barrage is cleared, the firefight resumes.
 
 - **Swarm carrier:** pulls alien ships from offscreen on boss-connected folds, then throws them toward the player. These ships can shoot and can be dodged or destroyed.
 
-Random enemy groups and asteroids keep arriving between bosses. Boss music gives a three-second warning before an entrance, roughly every 40–55 seconds of regular flight. Each set of four bosses contains all four types in shuffled order. Defeating a boss awards points, drops a weapon upgrade, clears its hazards, and continues the run. Gravity-boss victories restore the ship to its normal position.
+Random enemy groups and asteroids keep arriving between bosses. About 45% of regular aliens zigzag, and aliens fire every 1.05–1.9 seconds. Boss music gives a three-second warning before an entrance, roughly every 40–55 seconds of regular flight. Each set of four bosses contains all four types in shuffled order. Defeating a boss awards points, may drop a pickup, clears its hazards, and continues the run. Gravity-boss victories restore the ship to its normal position.
 
 ## Drops and survival
 
-Collect weapon drops to advance **single → double → triple → laser → rockets**. Lasers pierce targets; rockets deal splash damage. Enemy kills randomly drop upgrades or hull repairs; ten kills without a weapon drop guarantee one. Hull repairs restore one life up to a maximum of three.
+Collect weapon drops to advance **single → double → triple → laser → rockets**. Lasers pierce targets; rockets deal splash damage. Enemy kills randomly drop upgrades or hull repairs; basic weapon drops have a 6% chance and a 30-kill fallback; laser/rocket progression has a 1.5% chance and a shared maximum of one drop per boss interval. Hull repairs restore one life up to a maximum of three.
 
 Upgrades collectively provide one emergency life: losing the last hull life consumes the weapon upgrade, restores the single shooter, and leaves one hull life. Ordinary hits preserve the weapon. Another lethal hit without an upgrade ends the run. Surplus pickups at maximum capacity award points.
 

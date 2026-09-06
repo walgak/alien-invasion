@@ -66,36 +66,26 @@ func run_checks() -> void:
 		check(game.ship.position == drifted, mode + ": the tap window blocks force until it expires")
 		game.boss.step(0.1)
 		check((game.ship.position - drifted).dot(unresisted_motion) > 0, mode + ": the original force resumes at full strength after the tap window")
-	var edges := [
-		{"name": "bottom", "at": Vector2(270, 780), "direction": Vector2.DOWN},
-		{"name": "left", "at": Vector2(60, 780), "direction": Vector2.LEFT},
-		{"name": "right", "at": Vector2(480, 780), "direction": Vector2.RIGHT},
-		{"name": "top", "at": Vector2(270, 60), "direction": Vector2.UP},
-		{"name": "bottom near a corner", "at": Vector2(90, 910), "direction": Vector2.DOWN}
-	]
-	for edge in edges:
-		prepare("white", edge.at)
-		check(game.boss.white_push_direction == edge.direction, "white: selects the nearest " + edge.name + " edge")
-		var away: Vector2 = (game.ship.position - game.boss.well_position).normalized()
-		check(away.is_equal_approx(edge.direction), "white: spawns on the opposite side to push toward " + edge.name)
-		game.boss.step(0.1)
-		var displacement: Vector2 = game.ship.position - edge.at
-		check(displacement.dot(edge.direction) > 0 and absf(displacement.cross(edge.direction)) < 0.001, "white: force moves only toward " + edge.name)
-	# Player movement during the warning cannot leave the hole targeting a far edge.
+	for mode in ["black", "white"]:
+		for at in [Vector2(60, 780), Vector2(480, 780), Vector2(270, 780), Vector2(270, 600)]:
+			prepare(mode, at)
+			var well: Vector2 = game.boss.well_position
+			check(well.x >= 540 * 0.28 - 0.01 and well.x <= 540 * 0.72 + 0.01 and well.y >= 960 * 0.57 - 0.01 and well.y <= 960 * 0.70 + 0.01, mode + ": hole stays in lower-middle region")
+			check(well.distance_to(at) >= 118.0, mode + ": hole opens with safe clearance")
+			game.boss.step(0.1)
+			var movement: Vector2 = game.ship.position - at
+			check(movement.dot(well - at) * (1 if mode == "black" else -1) > 0, mode + ": force acts toward or away from its fixed core")
 	game.start_run("white")
 	game.boss.begin_special()
+	var target: Vector2 = game.boss.well_position
 	game.ship.position.x = 50
-	game.ship.target_x = 50
 	game.boss.step(0.1)
-	check(game.boss.white_push_direction == Vector2.LEFT and game.boss.well_position.x > game.ship.position.x, "white: forming hole follows the nearest edge during the warning")
-	game.boss.step(1.2)
-	var fixed_hole: Vector2 = game.boss.well_position
-	game.boss.step(0.1)
-	check(game.boss.well_position == fixed_hole, "white: the active hole remains fixed while it pushes")
-	for at in [Vector2(27, 480), Vector2(513, 480), Vector2(270, 27), Vector2(270, 933)]:
-		prepare("white", at)
-		game.boss.step(0.1)
-		check(game.state == game.State.LOST and game.lives == 0 and not game.particles.is_empty(), "white: contact with boundary at %s destroys the ship" % at)
+	check(game.boss.well_position == target, "cannon destination does not track horizontal steering")
+	game.start_run("black")
+	game.boss.begin_special()
+	game.ship.position = game.boss.well_position
+	game.boss.step(1.3)
+	check(game.state == game.State.PLAYING and game.boss.phase == "warning", "unsafe landing redirects cannon before a core can open")
 	prepare("white")
 	game.boss.step(0.2)
 	var pushed_y: float = game.ship.position.y

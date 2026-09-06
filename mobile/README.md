@@ -6,7 +6,7 @@ A playable Godot prototype developed from the original Python/Pygame game, inclu
 
 On this Mac, double-click `Play.command`. Alternatively, import `project.godot` in Godot and press **F5**. No Python packages or third-party Godot plugins are needed.
 
-Select **Launch endless flight**. Random alien groups and asteroids arrive regularly. Boss music announces an approaching boss after roughly 40–55 seconds of ordinary flight; victories continue the run with a short recovery. All four bosses appear once per shuffled set:
+Select **Launch endless flight**. Random alien groups and asteroids arrive regularly. About 45% of regular aliens zigzag; alien shot intervals are 1.05–1.9 seconds. Boss music announces an approaching boss after roughly 40–55 seconds of ordinary flight; victories continue the run with a short recovery. All four bosses appear once per shuffled set:
 
 
 | Flight | Objective |
@@ -24,7 +24,7 @@ Black-hole and white-hole attacks begin with a rift cannon fired five times fast
 
 Each tap fully cancels the hole's force for a brief beat. Keep tapping to hold the current position exactly. Tapping never pushes the ship away and never recovers ground lost; when the tap window expires, the pull or push resumes at full strength. The force meter shows whether neutralisation is active.
 
-The white hole selects the closest of all four screen edges and forms on the opposite side of the ship. At the normal bottom-center starting position, it forms above the ship and pushes down. While the warning is visible, its position follows the nearest edge; once active, the hole stays fixed. Any of the four edges can destroy the ship, and vertical displacement persists between special attacks. Defeating the gravity boss restores the normal ship position.
+Both gravity holes form in the lower-middle region (28–72% screen width, 57–70% screen height). Cannons aim at a fixed point rather than tracking the ship. A clearance check redirects an unsafe landing before the core opens. White holes push away from their core, usually downward. Any of the four edges can destroy the ship, and vertical displacement persists between special attacks. Defeating the gravity boss restores the normal ship position.
 
 **Mouse:** click and drag to steer; click repeatedly to neutralise a hole.
 
@@ -36,7 +36,7 @@ Pause also activates when the application loses focus. The endless high score sa
 
 This is a desktop-playable project with mobile input and a portrait layout. It is not an App Store/Google Play release or a signed phone installation. Physical-device touch feel, cutouts, interruptions, audio behavior, battery use, and difficulty still need to be tested. Android SDK/export templates and signing are not configured in this project. iOS export requires Xcode, Godot export templates, and signing.
 
-Random enemies drop weapon upgrades and life pickups. Weapons progress from single to double, triple, piercing laser, and explosive rockets. Hull lives cap at three. Upgrades collectively supply one emergency life on lethal damage: weapons reset to single with one hull life remaining. Ordinary damage preserves the upgrade. Bosses guarantee a weapon drop. Surplus drops at maximum capacity score bonus points.
+Random enemies drop weapon upgrades and life pickups. Basic upgrades have a 6% chance (30-kill fallback); advanced upgrades have a 1.5% chance with at most one laser/rocket upgrade drop per boss interval. Life drops have a 6% chance. Weapons progress from single to double, triple, piercing laser, and explosive rockets. Hull lives cap at three. Upgrades collectively supply one emergency life on lethal damage: weapons reset to single with one hull life remaining. Ordinary damage preserves the upgrade. Bosses use the same rare drop rules as regular enemies. Surplus drops at maximum capacity score bonus points.
 
 Final art, difficulty balancing, and phone export remain future work. Hole attacks temporarily replace dragging with tapping; that control switch and the tapping intensity are the main things to playtest. The tap rate and attack timing are tunable in `scripts/boss.gd`.
 

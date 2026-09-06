@@ -37,6 +37,7 @@ var wave_timer := 0.5
 var asteroid_timer := 5.0
 var save_timer := 10.0
 var kills_since_drop := 0
+var advanced_drop_sector := -1
 var pickup_notice := ""
 var pickup_notice_time := 0.0
 var score := 0
@@ -126,6 +127,7 @@ func start_run(mode: String = "") -> void:
 	asteroid_timer = rng.randf_range(4.0, 7.0)
 	save_timer = 10.0
 	kills_since_drop = 0
+	advanced_drop_sector = -1
 	pickup_notice = ""
 	pickup_notice_time = 0.0
 	boss_deck.clear()
@@ -263,7 +265,8 @@ func spawn_enemy(at: Vector2, velocity: Vector2, summoned: bool = false, fold_or
 	enemy.previous_position = at
 	enemy.velocity = velocity
 	enemy.phase = rng.randf_range(0.0, TAU)
-	enemy.shot_timer = rng.randf_range(1.7, 3.4)
+	enemy.shot_timer = rng.randf_range(0.85, 1.7)
+	enemy.zigzag = not summoned and rng.randf() < 0.45
 	enemy.summoned = summoned
 	enemy.tint = Color("73eac4") if summoned else [Color("ffb86a"), Color("f1958d"), Color("baacf5")][rng.randi_range(0, 2)]
 	if fold_origin != Vector2.INF:
@@ -300,7 +303,7 @@ func defeat_boss(defeated: Node2D) -> void:
 	if was_gravity:
 		restore_cruise_position()
 	ship.invulnerable = maxf(ship.invulnerable, 2.5)
-	spawn_pickup(Vector2(ship.position.x, ship.position.y - 130.0), "weapon")
+	maybe_drop_pickup(Vector2(ship.position.x, ship.position.y - 130.0))
 	recovery_time = 3.0
 	boss_timer = rng.randf_range(40.0, 55.0)
 	wave_timer = 0.5
@@ -362,7 +365,7 @@ func update_enemies(delta: float) -> void:
 			if enemy.shot_timer <= 0.0:
 				var aim: Vector2 = (ship.position - enemy.position).normalized()
 				spawn_hostile_shot(enemy.position + Vector2(0, 24), aim * (215.0 if enemy.summoned else 180.0))
-				enemy.shot_timer = rng.randf_range(2.1, 3.8)
+				enemy.shot_timer = rng.randf_range(1.05, 1.9)
 
 func fire_player_shot() -> float:
 	return weapons.fire(self)
@@ -465,10 +468,18 @@ func remove_enemy(enemy: Node2D) -> void:
 func maybe_drop_pickup(at: Vector2) -> void:
 	kills_since_drop += 1
 	var roll := rng.randf()
-	if roll < 0.19 or kills_since_drop >= 10:
+	var pending := pickups.filter(func(drop: Node2D) -> bool: return drop.kind == "weapon").size()
+	var advanced: bool = weapons.level + pending >= 2
+	if advanced:
+		# Reserve the sector allowance when dropped, including uncollected drops.
+		if weapons.level + pending < 4 and advanced_drop_sector != bosses_defeated and roll < 0.015:
+			spawn_pickup(at, "weapon")
+			advanced_drop_sector = bosses_defeated
+			kills_since_drop = 0
+	elif roll < 0.06 or kills_since_drop >= 30:
 		spawn_pickup(at, "weapon")
 		kills_since_drop = 0
-	elif roll < 0.28:
+	if roll >= 0.94:
 		spawn_pickup(at, "life")
 
 func spawn_pickup(at: Vector2, kind: String) -> void:

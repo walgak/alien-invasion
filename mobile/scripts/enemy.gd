@@ -11,6 +11,7 @@ var age := 0.0
 var shot_timer := 2.0
 var summoned := false
 var health := 1
+var zigzag := false
 var motion_phase := "flight"
 var fold_origin := Vector2.ZERO
 var fold_life := 0.0
@@ -53,7 +54,11 @@ func advance(delta: float, target: Vector2 = Vector2.ZERO) -> void:
 	if motion_phase == "flight":
 		position += velocity * remaining
 		if not summoned:
-			position.x += (sin(age * 1.8 + phase) - sin(old_age * 1.8 + phase)) * 22.0
+			if zigzag:
+				# Triangle wave gives clear alternating diagonal legs.
+				position.x += (asin(sin(age * 2.8 + phase)) - asin(sin(old_age * 2.8 + phase))) * 60.0
+			else:
+				position.x += (sin(age * 1.8 + phase) - sin(old_age * 1.8 + phase)) * 22.0
 		fold_life = maxf(0.0, fold_life - remaining)
 	queue_redraw()
 
