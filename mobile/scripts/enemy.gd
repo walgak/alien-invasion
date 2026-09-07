@@ -11,6 +11,7 @@ var age := 0.0
 var shot_timer := 2.0
 var summoned := false
 var health := 3
+var drop_group: Dictionary = {}
 var zigzag := false
 var motion_phase := "flight"
 var fold_origin := Vector2.ZERO

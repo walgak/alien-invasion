@@ -20,7 +20,7 @@ func run() -> void:
 	game.start_run()
 	check(game.difficulty_percent() == 1 and is_equal_approx(game.difficulty_scale(), 0.02), "runs begin at one percent of the difficulty scale")
 	game.begin_boss("black")
-	check(game.boss.max_health == 20, "first boss scales down from the 50 percent reference")
+	check(game.boss.max_health == 35, "first boss scales down from the 50 percent reference")
 	game.boss.take_hit(10000)
 	check(game.difficulty_percent() == 2, "first victory advances to two percent")
 	game.start_run()
@@ -33,7 +33,7 @@ func run() -> void:
 	game.damage_target(target, "enemy", 1)
 	check(not game.enemies.has(target), "third single bullet destroys the small alien")
 	game.begin_boss("black")
-	check(game.boss.max_health == 20, "first boss has triple health")
+	check(game.boss.max_health == 35, "first boss has triple health")
 	game.bosses_defeated = 50
 	check(game.difficulty_percent() == 51 and is_equal_approx(game.difficulty_scale(), 1.02), "one victory increases difficulty from 50 to 51 percent")
 	game.begin_boss("white")

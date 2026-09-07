@@ -25,13 +25,13 @@ func run() -> void:
 		game.bosses_defeated = wins
 		game.begin_boss("black")
 		var hp: float = game.boss.max_health
-		check(hp >= 20 and hp < 100, "boss health bounded below 100")
+		check(hp >= 35 and hp < 100, "boss health bounded below 100")
 		if wins == 0:
-			check(hp == 20, "first boss takes 20 single bullets")
+			check(hp == 35, "first boss takes 35 single bullets")
 		else:
-			var curve := 100.0 - 1200.0 / (15.0 + wins)
-			var prior_curve := 100.0 - 1200.0 / (14.0 + wins)
-			var prior_gain := 1200.0 / (13.0 + wins) - 1200.0 / (14.0 + wins)
+			var curve := 100.0 - 780.0 / (12.0 + wins)
+			var prior_curve := 100.0 - 780.0 / (11.0 + wins)
+			var prior_gain := 780.0 / (10.0 + wins) - 780.0 / (11.0 + wins)
 			check(hp >= previous and curve - prior_curve <= prior_gain + 0.000001, "underlying boss health curve has shrinking gains")
 			increment = hp - previous
 		previous = hp

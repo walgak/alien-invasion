@@ -264,9 +264,11 @@ func spawn_enemy_group() -> void:
 	if count <= 0:
 		return
 	var group_center := rng.randf_range(90.0, arena.x - 90.0)
+	var reward := {"dropped": false}
 	for i in range(count):
 		var x := clampf(group_center + (i - (count - 1) * 0.5) * 66.0 + rng.randf_range(-16.0, 16.0), 38.0, arena.x - 38.0)
-		spawn_enemy(Vector2(x, -45.0 - i * 42.0), Vector2(rng.randf_range(-14.0, 14.0), rng.randf_range(95.0, 145.0)))
+		var alien = spawn_enemy(Vector2(x, -45.0 - i * 42.0), Vector2(rng.randf_range(-14.0, 14.0), rng.randf_range(95.0, 145.0)))
+		alien.drop_group = reward
 
 func spawn_enemy(at: Vector2, velocity: Vector2, summoned: bool = false, fold_origin: Vector2 = Vector2.INF) -> Node2D:
 	var enemy = Enemy.new()
@@ -292,8 +294,8 @@ func begin_boss(kind: String) -> void:
 	boss = Boss.new()
 	boss.game = self
 	boss.kind = kind if kind in BOSS_KINDS else "black"
-	# 20, 25, 29.411...: shrinking gains, asymptote at 100.
-	boss.max_health = minf(99.0, floorf(100.0 - 1200.0 / (15.0 + bosses_defeated)))
+	# 35, 40, 44...: shrinking gains, asymptote at 100.
+	boss.max_health = minf(99.0, floorf(100.0 - 780.0 / (12.0 + bosses_defeated)))
 	boss.health = boss.max_health
 	add_child(boss)
 	boss.step(0.0)
@@ -314,13 +316,13 @@ func defeat_boss(defeated: Node2D) -> void:
 	if was_gravity:
 		restore_cruise_position()
 	ship.invulnerable = maxf(ship.invulnerable, 2.5)
-	maybe_drop_pickup(Vector2(ship.position.x, ship.position.y - 130.0))
+	guaranteed_drop(Vector2(ship.position.x, ship.position.y - 130.0))
 	recovery_time = 3.0
 	boss_timer = rng.randf_range(40.0, 55.0)
 	wave_timer = 0.5
 	asteroid_timer = 4.0
 	sound.set_boss_music(false)
-	sound.play_effect("win")
+	sound.play_effect("boss_death")
 	progress.save()
 	interface.refresh()
 	refresh_space()
@@ -476,7 +478,11 @@ func destroy_enemy(enemy: Node2D) -> void:
 	if not enemies.has(enemy):
 		return
 	burst(enemy.position, enemy.tint, 18)
-	maybe_drop_pickup(enemy.position)
+	if not enemy.drop_group.is_empty() and not enemy.drop_group.dropped:
+		enemy.drop_group.dropped = true
+		guaranteed_drop(enemy.position)
+	else:
+		maybe_drop_pickup(enemy.position)
 	remove_enemy(enemy)
 	add_score(POINTS_PER_ENEMY)
 	sound.play_effect("burst")
@@ -484,6 +490,21 @@ func destroy_enemy(enemy: Node2D) -> void:
 func remove_enemy(enemy: Node2D) -> void:
 	enemies.erase(enemy)
 	enemy.queue_free()
+
+func guaranteed_drop(at: Vector2) -> void:
+	# Keep the guarantee even when old, uncollected drops fill the actor budget.
+	if pickups.size() >= 12:
+		var oldest: Node2D = pickups.pop_front()
+		oldest.queue_free()
+	var pending := pickups.filter(func(drop: Node2D) -> bool: return drop.kind == "weapon").size()
+	var projected: int = weapons.level + pending
+	var kind := "life"
+	if projected < 2:
+		kind = "weapon" if rng.randf() < 0.65 else "life"
+	elif projected < 4 and advanced_drop_sector != bosses_defeated and rng.randf() < 0.1:
+		kind = "weapon"
+		advanced_drop_sector = bosses_defeated
+	spawn_pickup(at, kind)
 
 func maybe_drop_pickup(at: Vector2) -> void:
 	kills_since_drop += 1

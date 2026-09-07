@@ -9,18 +9,23 @@ var boss_music_active := false
 var flight_music_active := false
 var paused := false
 var music := AudioStreamPlayer.new()
+var impact_voice := AudioStreamPlayer.new()
 static var music_stream: AudioStreamWAV
 static var flight_stream: AudioStreamWAV
 
 func _ready() -> void:
-	streams["shot"] = tone(1150, 430, 0.07, 0.0)
-	streams["burst"] = tone(230, 60, 0.19, 0.45)
-	streams["hit"] = tone(150, 35, 0.35, 0.6)
+	streams["shot"] = tone(180, 85, 0.10, 0.0)
+	streams["burst"] = tone(110, 42, 0.28, 0.12)
+	streams["hit"] = tone(90, 38, 0.35, 0.12)
 	streams["win"] = tone(440, 880, 0.6, 0.0)
 	streams["rift"] = rift_boom()
-	streams["pickup"] = tone(520, 1300, 0.22, 0.0)
-	streams["laser"] = tone(820, 240, 0.13, 0.1)
-	streams["rocket"] = tone(150, 45, 0.18, 0.25)
+	streams["boss_death"] = rift_boom(1.3)
+	streams["fold"] = tone(130, 55, 0.3, 0.05)
+	streams["pickup"] = tone(110, 220, 0.22, 0.0)
+	streams["laser"] = tone(160, 70, 0.13, 0.04)
+	streams["rocket"] = tone(95, 40, 0.18, 0.1)
+	impact_voice.volume_db = -15.0
+	add_child(impact_voice)
 	music.volume_db = -16.0
 	add_child(music)
 	for i in range(8):
@@ -32,12 +37,17 @@ func _ready() -> void:
 func play_effect(effect: String) -> void:
 	if not enabled or not streams.has(effect):
 		return
+	if effect in ["rift", "boss_death"]:
+		impact_voice.stream = streams[effect]
+		impact_voice.play()
+		return
 	var voice := voices[next_voice]
 	next_voice = (next_voice + 1) % voices.size()
 	voice.stream = streams[effect]
 	voice.play()
 
 func silence() -> void:
+	impact_voice.stop()
 	for voice in voices:
 		voice.stop()
 	boss_music_active = false
@@ -52,12 +62,14 @@ func set_boss_music(active: bool) -> void:
 func set_paused(value: bool) -> void:
 	paused = value
 	if paused:
+		impact_voice.stop()
 		for voice in voices:
 			voice.stop()
 	sync_enabled()
 
 func sync_enabled() -> void:
 	if not enabled:
+		impact_voice.stop()
 		for voice in voices:
 			voice.stop()
 	if not enabled or not flight_music_active:
@@ -152,9 +164,8 @@ func tone(start_hz: float, end_hz: float, duration: float, noise: float) -> Audi
 	stream.data = bytes
 	return stream
 
-func rift_boom() -> AudioStreamWAV:
+func rift_boom(duration: float = 0.88) -> AudioStreamWAV:
 	var sample_rate := 22050
-	var duration := 0.88
 	var count := int(duration * sample_rate)
 	var bytes := PackedByteArray()
 	bytes.resize(count * 2)
@@ -165,11 +176,11 @@ func rift_boom() -> AudioStreamWAV:
 	for i in range(count):
 		var t := float(i) / count
 		var bend := pow(t, 0.58)
-		main_phase += lerpf(760.0, 48.0, bend) / sample_rate
-		sub_phase += lerpf(120.0, 26.0, t) / sample_rate
+		main_phase += lerpf(95.0, 24.0, bend) / sample_rate
+		sub_phase += lerpf(52.0, 18.0, t) / sample_rate
 		var main := sin(main_phase * TAU) * 0.68
 		var sub := sin(sub_phase * TAU) * 0.42
-		var grit := random.randf_range(-1.0, 1.0) * 0.18 * pow(1.0 - t, 1.5)
+		var grit := random.randf_range(-1.0, 1.0) * 0.035 * pow(1.0 - t, 1.5)
 		var envelope := minf(t * 18.0, 1.0) * pow(1.0 - t, 1.35)
 		bytes.encode_s16(i * 2, int((main + sub + grit) * envelope * 23000))
 	var stream := AudioStreamWAV.new()

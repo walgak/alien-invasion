@@ -26,6 +26,7 @@ var cooldown := 0.0
 var shot_timer := 0.8
 var asteroid_timer := 0.0
 var swarm_count := 0
+var swarm_reward: Dictionary = {}
 var well_position := Vector2.ZERO
 var white_push_direction := Vector2.DOWN
 var neutralise_time := 0.0
@@ -151,6 +152,7 @@ func activate_special() -> void:
 	neutralise_time = 0.0
 	asteroid_timer = 0.0
 	swarm_count = 0
+	swarm_reward = {"dropped": false}
 	game.sound.play_effect("rift" if kind in ["black", "white"] else "burst")
 	if kind in ["black", "white"]:
 		game.burst(well_position, Color("b9f8ff") if kind == "white" else Color("baa3ff"), 34)
@@ -185,7 +187,7 @@ func summon_asteroid() -> void:
 	var aim_offset := Vector2(game.rng.randf_range(-65, 65), 0)
 	var velocity: Vector2 = Vector2.DOWN * game.rng.randf_range(225, 305)
 	game.spawn_asteroid(start, velocity, radius, 0, body_position + Vector2(0, 42), aim_offset)
-	game.sound.play_effect("rift")
+	game.sound.play_effect("fold")
 
 func summon_alien() -> void:
 	var side: int = game.rng.randi_range(0, 2)
@@ -199,7 +201,8 @@ func summon_alien() -> void:
 	var velocity: Vector2 = Vector2.DOWN * game.rng.randf_range(185.0, 240.0)
 	var alien: Node2D = game.spawn_enemy(start, velocity, true, body_position + Vector2(0, 42))
 	alien.shot_timer = 0.55
-	game.sound.play_effect("rift")
+	alien.drop_group = swarm_reward
+	game.sound.play_effect("fold")
 
 func position_gravity_hole() -> void:
 	# Fixed lower-middle arena region, never a ship-relative target.
