@@ -32,7 +32,8 @@ func advance(delta: float) -> void:
 	else:
 		previous_position = position
 		position += velocity * delta
-	queue_redraw()
+	if kind != "bullet":
+		queue_redraw()
 
 func intersects(center: Vector2, radius: float) -> bool:
 	# Swept collision catches targets even when a shot crosses them in one frame.

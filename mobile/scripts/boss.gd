@@ -17,8 +17,8 @@ const ASTEROID_SIZES := [
 ]
 var game: Node2D
 var kind := "black"
-var health := 60
-var max_health := 60
+var health := 20.0
+var max_health := 20.0
 var body_position := Vector2.ZERO
 var phase := "firefight"
 var phase_time := 0.0
@@ -60,7 +60,7 @@ func step(delta: float) -> void:
 			begin_special()
 		elif shot_timer <= 0:
 			fire_volley()
-			shot_timer += 1.35
+			shot_timer += 1.35 / game.difficulty_scale()
 	elif phase == "warning":
 		if cannon_active:
 			cannon_previous_position = cannon_position
@@ -127,8 +127,6 @@ func return_to_firefight() -> void:
 	shot_timer = 0.8
 	neutralise_time = 0.0
 	cannon_active = false
-	game.pointer_id = -1
-	game.ship.target_x = game.ship.position.x
 	queue_redraw()
 
 func begin_special() -> void:
@@ -186,7 +184,7 @@ func summon_asteroid() -> void:
 		start = Vector2(game.arena.x + radius + 18.0, game.rng.randf_range(game.top_inset + 145.0, game.arena.y - 260.0))
 	var aim_offset := Vector2(game.rng.randf_range(-65, 65), 0)
 	var velocity: Vector2 = Vector2.DOWN * game.rng.randf_range(225, 305)
-	game.spawn_asteroid(start, velocity, radius, int(choice.health), body_position + Vector2(0, 42), aim_offset)
+	game.spawn_asteroid(start, velocity, radius, 0, body_position + Vector2(0, 42), aim_offset)
 	game.sound.play_effect("rift")
 
 func summon_alien() -> void:
@@ -233,7 +231,7 @@ func take_hit(amount: int = 1) -> void:
 	# Called only by a friendly projectile collision in the game controller.
 	if health <= 0 or game.state != game.State.PLAYING:
 		return
-	health = maxi(0, health - maxi(amount, 0))
+	health = maxf(0.0, health - maxi(amount, 0))
 	hit_flash = 0.07
 	if health == 0:
 		visible = false

@@ -14,9 +14,9 @@ Select **Launch endless flight**. Random alien groups and asteroids arrive regul
 | Black hole | Shoot the boss. It fires a fast rift cannon that detonates into a black hole. Tap rapidly to neutralise the pull. |
 | White hole | Shoot the boss. It fires a fast rift cannon that detonates into a white hole. Tap rapidly to neutralise the push before reaching an edge. |
 | Swarm carrier | Dodge or shoot alien ships pulled from offscreen, tethered to the boss and thrown toward you. |
-| Asteroid forge | Shoot the boss as it pulls rocks from offscreen on attached space-fold strands, then slings them toward the ship. Small, medium, and large rocks take 3, 6, and 10 shots. |
+| Asteroid forge | Shoot the boss as it pulls rocks from offscreen on attached space-fold strands, then slings them toward the ship. Small, medium, and large rocks take 5, 8, and 12 shots initially. |
 
-Every boss fight repeats the same cycle: exchange fire and dodge the boss's aimed volleys, face its signature special attack, then return to the firefight. A new special is scheduled after a random 5–9 seconds of normal fighting. Surviving a special does not damage the boss or end the battle. Only player bullets hitting its core reduce its health; reaching zero wins the fight and resumes endless flight. Boss health increases as more bosses are defeated.
+Every boss fight repeats the same cycle: exchange fire and dodge the boss's aimed volleys, face its signature special attack, then return to the firefight. A new special is scheduled after a random 5–9 seconds of normal fighting. Surviving a special does not damage the boss or end the battle. Only player weapons hitting its visible core reduce its health; reaching zero wins the fight and resumes endless flight. Boss health increases as more bosses are defeated.
 
 Black-hole and white-hole attacks begin with a rift cannon fired five times faster than normal boss bullets. The cannon folds space as it travels, then explodes with an original high-to-low sci-fi blast and creates the hole. The hole stays active for four seconds of tapping. The asteroid boss warns, then pulls a finite barrage of rocks from offscreen using space-fold strands anchored to its body. Each rock pulls inward, pauses for a brief wind-up, and is slung toward the ship's position at release as its strands fade. The boss waits for the rocks to be dodged or destroyed before resuming normal shots. Damage already dealt to the boss persists between cycles.
 
@@ -34,9 +34,9 @@ Pause also activates when the application loses focus. The endless high score sa
 
 ## Prototype scope
 
-This is a desktop-playable project with mobile input and a portrait layout. It is not an App Store/Google Play release or a signed phone installation. Physical-device touch feel, cutouts, interruptions, audio behavior, battery use, and difficulty still need to be tested. Android SDK/export templates and signing are not configured in this project. iOS export requires Xcode, Godot export templates, and signing.
+This is a desktop-playable project with mobile input and a portrait layout. It is not an App Store/Google Play release or a signed phone installation. Physical-device touch feel, cutouts, interruptions, audio behavior, battery use, and difficulty still need to be tested. Android signing is not configured. The iOS preset exports an Xcode project for development signing with the configured Apple team.
 
-Random enemies drop weapon upgrades and life pickups. Basic upgrades have a 6% chance (30-kill fallback); advanced upgrades have a 1.5% chance with at most one laser/rocket upgrade drop per boss interval. Life drops have a 6% chance. Weapons progress from single to double, triple, piercing laser, and explosive rockets. Hull lives cap at three. Upgrades collectively supply one emergency life on lethal damage: weapons reset to single with one hull life remaining. Ordinary damage preserves the upgrade. Bosses use the same rare drop rules as regular enemies. Surplus drops at maximum capacity score bonus points.
+Random enemies drop weapon upgrades and life pickups. Basic upgrades have a 2% chance without guaranteed drops; advanced upgrades have a 0.5% chance with at most one laser/rocket upgrade drop per boss interval. Life drops have a 2% chance. Weapons progress from single to double, triple, piercing laser, and explosive rockets. Hull lives cap at three. Upgrades collectively supply one emergency life on lethal damage: weapons reset to single with one hull life remaining. Ordinary damage preserves the upgrade. Bosses use the same rare drop rules as regular enemies. Surplus drops at maximum capacity score bonus points.
 
 Final art, difficulty balancing, and phone export remain future work. Hole attacks temporarily replace dragging with tapping; that control switch and the tapping intensity are the main things to playtest. The tap rate and attack timing are tunable in `scripts/boss.gd`.
 
@@ -49,7 +49,7 @@ Final art, difficulty balancing, and phone export remain future work. Hole attac
 - `space_background.gd`, `space_folds.gd`, `shaders/`: layered procedural sky and background refraction. One screen-reading pass combines up to eight object lenses and six strands; actors and HUD render above it. Animation uses game time so pausing also freezes the folds.
 - `interface.gd`: menus, HUD, and attack instructions.
 - `progress.gd`: best scores and sound preference in a local ConfigFile.
-- `sound.gd`: original, synthesized effects and looping boss music generated in memory, including the rift cannon pitch drop.
+- `sound.gd`: original, synthesized effects and looping flight and boss music generated in memory, including the rift cannon pitch drop.
 
 All new artwork is drawn with Godot primitives; the icon is an original SVG. No artwork or recordings from the Python game are bundled here. Godot's bundled font is used. This document does not change the original repository's licensing.
 
@@ -68,3 +68,20 @@ ALIEN_SAVE_PATH=/tmp/alien-endless-record.cfg godot --headless --path . --script
 ```
 
 To capture screens, set `ALIEN_CAPTURE_DIR` to an existing output directory and run `tests/capture.gd` with a graphical display. The save override keeps test scores separate from your real records.
+
+Difficulty begins at 1% and rises by one point per boss defeated. It changes enemy firing frequency and drop chances, while movement, wave timing, bullet speeds, and gravity strength stay constant. Small alien ships take 3 hits initially, gaining one hit every two victories up to 9. Asteroids begin at 5/8/12 hits by size and gain one hit every two victories. Boss health follows floor(100 - 1200 / (15 + victories)): 20, 25, 29, 33… with a 99-hit ceiling. The underlying curve approaches 100 without reaching it. Single/double/triple bullets all travel at 850 units/s with a 0.17-second firing interval. Rockets travel at 660 units/s; lasers are instantaneous pulses. Original flight music switches to boss music during encounters. Planets drift through the sky and are replaced after passing offscreen.
+
+## iPhone development build
+
+The iOS preset uses bundle ID `com.walgak.alieninvasion`. Install the matching Godot iOS export template and Xcode, then run from the repository root:
+
+```sh
+mkdir -p build/ios
+godot --headless --path mobile --export-debug iOS ../build/ios/AlienInvasion.zip
+open build/ios/AlienInvasion.xcodeproj
+```
+
+Select your paired iPhone in Xcode and Run. The phone must have Developer Mode enabled and remain unlocked for installation/launch. Wireless deployment works with a paired device on the same network. Build output is ignored by Git. This is development signing, not an App Store release. See [Godot's iOS export guide](https://docs.godotengine.org/en/stable/tutorials/export/exporting_for_ios.html).
+# Drop progression
+
+Drop rates above are the 50% reference. They scale with difficulty: at 1%, basic weapon and life drops each have a 0.04% chance per kill, and advanced upgrades have a 0.01% chance. At 50%, these reach 2%, 2%, and 0.5%. The advanced drop cap still applies; there are no guaranteed drops.

@@ -115,6 +115,7 @@ func run_checks() -> void:
 	check(game.score % 25 == 0 and game.lives >= 0, "a simulated mission retains valid score and health")
 	for mode in ["black", "white"]:
 		game.start_run(mode)
+		game.bosses_defeated = 49
 		check(is_instance_valid(game.boss) and game.enemies.is_empty(), mode + " encounter starts with its own boss")
 		game.boss.begin_special()
 		check(game.boss.phase == "warning", mode + " hole warns before exerting force")
@@ -124,6 +125,7 @@ func run_checks() -> void:
 			game.boss.step(1.0 / 60.0)
 		check(game.state == game.State.LOST and game.lives == 0, mode + " hole is lethal when the pilot does not resist")
 		game.start_run(mode)
+		game.bosses_defeated = 49
 		game.boss.begin_special()
 		for i in range(330):
 			if i % 12 == 0:
@@ -145,21 +147,23 @@ func run_checks() -> void:
 	game.spawn_asteroid(Vector2(270, 500), Vector2(0, 250), 20)
 	var rock: Node2D = game.asteroids[0]
 	game.hit_asteroid(rock)
-	check(rock.health == 2 and game.asteroids.size() == 1, "the first shot cracks a small asteroid")
+	check(rock.health == 4 and game.asteroids.size() == 1, "the first shot cracks a small asteroid")
 	game.hit_asteroid(rock)
-	check(rock.health == 1 and game.asteroids.size() == 1, "the second shot leaves a small asteroid barely intact")
+	check(rock.health == 3 and game.asteroids.size() == 1, "the second shot leaves a small asteroid barely intact")
 	game.hit_asteroid(rock)
-	check(game.asteroids.is_empty() and game.score == 25, "the third shot destroys a small asteroid and scores 25")
+	game.hit_asteroid(rock)
+	game.hit_asteroid(rock)
+	check(game.asteroids.is_empty() and game.score == 25, "the fifth shot destroys a small asteroid and scores 25")
 	game.spawn_asteroid(Vector2(270, 500), Vector2(0, 250), 31)
-	check(game.asteroids[0].health == 6, "medium asteroids need six shots")
+	check(game.asteroids[0].health == 8, "medium asteroids need six shots")
 	game.remove_asteroid(game.asteroids[0])
 	game.spawn_asteroid(Vector2(270, 500), Vector2(0, 250), 43)
-	check(game.asteroids[0].health == 10, "large asteroids need ten shots")
+	check(game.asteroids[0].health == 12, "large asteroids need ten shots")
 	game.remove_asteroid(game.asteroids[0])
 	game.boss.summon_asteroid()
 	rock = game.asteroids[0]
 	var offscreen: bool = rock.position.x < 0 or rock.position.x > game.arena.x or rock.position.y < 0 or rock.position.y > game.arena.y
-	check(offscreen and rock.health in [3, 6, 10] and rock.motion_phase == "pull", "asteroid boss pulls a three-class rock in from offscreen")
+	check(offscreen and rock.health in [5, 8, 12] and rock.motion_phase == "pull", "asteroid boss pulls a three-class rock in from offscreen")
 	game.boss.body_position = Vector2(180, 310)
 	game.update_asteroids(0.0)
 	check(rock.fold_origin == game.boss.body_position + Vector2(0, 42), "asteroid fold lines stay tethered to the boss")

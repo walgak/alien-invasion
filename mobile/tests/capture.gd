@@ -94,4 +94,11 @@ func capture() -> void:
 		await RenderingServer.frame_post_draw
 		root.get_texture().get_image().save_png(destination.path_join("weapon-%d.png" % level))
 	print("Screens captured to " + destination)
+	game.start_run()
+	for time in [0.0, 25.0, 65.0]:
+		game.visual_time = time
+		game.refresh_space()
+		await process_frame
+		await RenderingServer.frame_post_draw
+		root.get_texture().get_image().save_png(destination.path_join("planet-%d.png" % int(time)))
 	quit(0)

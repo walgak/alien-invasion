@@ -2,7 +2,7 @@
 
 A space shooter that began as a Python/Pygame practice project and is being developed into a portrait mobile game with Godot.
 
-The current Godot prototype is an endless high-score shooter with random alien groups, drifting asteroids, and four bosses. It runs locally on desktop and supports touch input. Phone builds and store submission are the next development stage.
+The current Godot prototype is an endless high-score shooter with random alien groups, drifting asteroids, and four bosses. It runs locally on desktop and supports touch input. An iOS development export preset is included; store submission remains future work.
 
 ## Play the Godot game
 
@@ -37,7 +37,7 @@ Each tap fully cancels a hole's force for a brief beat. Keep tapping to hold the
 
 - **Black hole:** the boss fires a fast rift cannon that folds space, detonates beside the ship, and creates the hole. Repeated taps neutralise the pull. Being pulled into its core is lethal unless a weapon upgrade supplies an emergency life.
 - **White hole:** the boss fires its rift cannon into a fixed lower-middle area. The blast creates a white hole that pushes away from its core, usually downward. All four edges remain dangerous. Repeated taps neutralise the push; reaching an edge destroys the ship.
-- **Asteroid forge:** space-fold strands connect the boss to rocks offscreen, pulling them inward before a brief wind-up and sling toward the ship. The strands fade after release. Small, medium, and large asteroids take 3, 6, and 10 shots to destroy. Once the barrage is cleared, the firefight resumes.
+- **Asteroid forge:** space-fold strands connect the boss to rocks offscreen, pulling them inward before a brief wind-up and sling toward the ship. The strands fade after release. Small, medium, and large asteroids take 5, 8, and 12 shots initially to destroy. Once the barrage is cleared, the firefight resumes.
 
 - **Swarm carrier:** pulls alien ships from offscreen on boss-connected folds, then throws them toward the player. These ships can shoot and can be dodged or destroyed.
 
@@ -45,7 +45,7 @@ Random enemy groups and asteroids keep arriving between bosses. About 45% of reg
 
 ## Drops and survival
 
-Collect weapon drops to advance **single → double → triple → laser → rockets**. Lasers pierce targets; rockets deal splash damage. Enemy kills randomly drop upgrades or hull repairs; basic weapon drops have a 6% chance and a 30-kill fallback; laser/rocket progression has a 1.5% chance and a shared maximum of one drop per boss interval. Hull repairs restore one life up to a maximum of three.
+Collect weapon drops to advance **single → double → triple → laser → rockets**. Lasers pierce targets; rockets deal splash damage. Enemy kills randomly drop upgrades or hull repairs; basic weapon drops have a 2% chance without guaranteed drops; laser/rocket progression has a 0.5% chance and a shared maximum of one drop per boss interval. Hull repairs restore one life up to a maximum of three.
 
 Upgrades collectively provide one emergency life: losing the last hull life consumes the weapon upgrade, restores the single shooter, and leaves one hull life. Ordinary hits preserve the weapon. Another lethal hit without an upgrade ends the run. Surplus pickups at maximum capacity award points.
 
@@ -101,3 +101,8 @@ Use the left/right arrow keys to move, Space to shoot, and Q to exit. The origin
 ## Release status
 
 This is a playable development prototype, not a signed Android/iOS release. It has been checked locally on macOS; physical-phone testing, final artwork, difficulty tuning, export configuration, signing, and store submission remain. The Godot prototype uses original procedural graphics and synthesized sounds; original Python artwork is not bundled into the Godot game.
+
+Difficulty begins at 1% and rises by one point per boss defeated. It changes enemy firing frequency and drop chances, while movement, wave timing, bullet speeds, and gravity strength stay constant. Small alien ships take 3 hits initially, gaining one hit every two victories up to 9. Asteroids begin at 5/8/12 hits by size and gain one hit every two victories. Boss health follows floor(100 - 1200 / (15 + victories)): 20, 25, 29, 33… with a 99-hit ceiling. The underlying curve approaches 100 without reaching it. Single/double/triple bullets all travel at 850 units/s with a 0.17-second firing interval. Rockets travel at 660 units/s; lasers are instantaneous pulses. Original flight music switches to boss music during encounters. Planets drift through the sky and are replaced after passing offscreen.
+# Drop progression
+
+Drop rates above are the 50% reference. They scale with difficulty: at 1%, basic weapon and life drops each have a 0.04% chance per kill, and advanced upgrades have a 0.01% chance. At 50%, these reach 2%, 2%, and 0.5%. The advanced drop cap still applies; there are no guaranteed drops.

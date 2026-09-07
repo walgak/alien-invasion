@@ -134,7 +134,7 @@ func _draw() -> void:
 		draw_rect(Rect2(28, top + 127, w - 56, 4), Color("293349"))
 		draw_rect(Rect2(28, top + 127, (w - 56) * float(game.boss.health) / game.boss.max_health, 4), Color("ffb86a"))
 	else:
-		tracked("SECTOR %02d  ·  %d BOSSES DEFEATED" % [game.bosses_defeated + 1, game.bosses_defeated], top + 119, 10, 1.0, MUTED)
+		tracked("SECTOR %02d  ·  DIFFICULTY %d%%" % [game.bosses_defeated + 1, game.difficulty_percent()], top + 119, 10, 1.0, MUTED)
 	if game.state == game.State.PLAYING:
 		if game.boss_warning > 0.0:
 			centered("BOSS APPROACHING", top + 202, 25, Color("ffb86a"))

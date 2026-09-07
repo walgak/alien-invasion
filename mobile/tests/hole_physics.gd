@@ -18,6 +18,7 @@ func check(condition: bool, description: String) -> void:
 
 func prepare(mode: String, at: Vector2 = Vector2(270, 780)) -> void:
 	game.start_run(mode)
+	game.bosses_defeated = 49
 	game.ship.position = at
 	game.ship.target_x = at.x
 	game.boss.begin_special()

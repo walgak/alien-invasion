@@ -32,6 +32,10 @@ func run_checks() -> void:
 	check(game.sound.music.stream_paused, "pausing freezes boss music")
 	game.sound.set_paused(false)
 	check(not game.sound.music.stream_paused, "resuming restores boss music")
+	game.sound.set_boss_music(false)
+	check(game.sound.music.playing and game.sound.music.stream == game.sound.flight_stream, "flight music returns after boss music")
+	game.sound.silence()
+	check(not game.sound.music.playing, "leaving flight stops background music")
 	game.sound.enabled = false
 	game.sound.sync_enabled()
 	check(not game.sound.music.playing, "muting stops boss music")
@@ -92,9 +96,11 @@ func run_checks() -> void:
 	game.weapons.level = 4
 	game.spawn_enemy(game.ship.position - Vector2(13, 170), Vector2.ZERO)
 	game.spawn_enemy(game.ship.position + Vector2(45, -170), Vector2.ZERO)
+	for enemy in game.enemies:
+		enemy.health = 3
 	game.fire_player_shot()
 	game.update_projectiles(0.3)
-	check(game.enemies.is_empty(), "rocket impact destroys a nearby enemy with splash damage")
+	check(game.enemies.size() == 1 and game.enemies[0].health == 1, "rocket kills its direct target and wounds the tougher nearby alien")
 	game.start_run("swarm")
 	game.boss.summon_alien()
 	var alien = game.enemies[0]
@@ -109,6 +115,7 @@ func run_checks() -> void:
 	game.update_enemies(0.1)
 	check(alien.velocity == velocity, "thrown aliens keep a dodgeable trajectory")
 	game.start_run()
+	check(game.sound.flight_music_active and not game.sound.boss_music_active, "regular flight selects background music")
 	game.rng.seed = 2026
 	for i in range(18000):
 		game.ship.invulnerable = 10

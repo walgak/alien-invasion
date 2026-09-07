@@ -69,7 +69,12 @@ void fragment() {
 
 	// A spherical planet supplies curved surface detail and a lit horizon for
 	// the refraction pass. Its low contrast leaves bullets and ships readable.
-	vec2 planet = (p - arena_size * vec2(0.73, 0.40)) / 178.0;
+	float travel_span = arena_size.y + 600.0;
+	float travel = visual_time * 22.0 + arena_size.y * 0.40 + 300.0;
+	float planet_id = floor(travel / travel_span);
+	float variation = hash21(vec2(planet_id, 37.0));
+	vec2 planet_center = vec2(arena_size.x * mix(0.22, 0.78, variation), mod(travel, travel_span) - 300.0);
+	vec2 planet = (p - planet_center) / mix(135.0, 190.0, hash21(vec2(planet_id, 71.0)));
 	float radius = length(planet);
 	float atmosphere = exp(-abs(radius - 1.01) * 43.0);
 	vec3 light_direction = normalize(vec3(-0.69, -0.48, 0.38));
@@ -79,9 +84,10 @@ void fragment() {
 	color += vec3(0.075, 0.25, 0.35) * atmosphere * hemisphere_light * 0.70;
 	if (radius < 1.0) {
 		vec2 surface = vec2(atan(normal.x, max(normal.z, 0.001)), asin(clamp(normal.y, -1.0, 1.0)));
-		float land = cloud_noise(surface * 5.2 + vec2(11.3, 21.8));
+		float land = cloud_noise(surface * 5.2 + vec2(11.3 + planet_id * 7.0, 21.8));
 		float wisps = noise(surface * vec2(16.0, 33.0) + land * 3.0);
 		vec3 planet_color = mix(vec3(0.013, 0.043, 0.069), vec3(0.061, 0.107, 0.127), smoothstep(0.40, 0.65, land));
+		planet_color *= mix(vec3(0.8, 1.1, 1.2), vec3(1.8, 0.85, 0.55), variation);
 		planet_color += vec3(0.060, 0.098, 0.115) * smoothstep(0.51, 0.73, wisps) * 0.44;
 		planet_color *= 0.10 + sunlight * 0.95;
 		planet_color += vec3(0.028, 0.116, 0.170) * pow(1.0 - normal.z, 3.0) * sunlight;

@@ -210,6 +210,15 @@ func _physics_process(delta: float) -> void:
 		update_pickups(delta)
 	interface.queue_redraw()
 
+func difficulty_percent() -> int:
+	return 1 + bosses_defeated
+
+func difficulty_scale() -> float:
+	return float(difficulty_percent()) / 50.0
+
+func difficulty_pace() -> float:
+	return maxf(0.65, difficulty_scale())
+
 func update_director(delta: float) -> void:
 	if is_instance_valid(boss):
 		return
@@ -232,7 +241,7 @@ func update_director(delta: float) -> void:
 	wave_timer -= delta
 	if wave_timer <= 0.0:
 		spawn_enemy_group()
-		wave_timer = rng.randf_range(1.5, 2.7) / minf(1.7, 1.0 + bosses_defeated * 0.08)
+		wave_timer = rng.randf_range(1.5, 2.7)
 	asteroid_timer -= delta
 	if asteroid_timer <= 0.0:
 		var radius: float = [20.0, 31.0, 43.0][rng.randi_range(0, 2)]
@@ -251,21 +260,22 @@ func next_boss_kind() -> String:
 	return boss_deck.pop_back()
 
 func spawn_enemy_group() -> void:
-	var count := mini(rng.randi_range(1, 5 + mini(bosses_defeated / 2, 2)), MAX_ENEMIES - enemies.size())
+	var count := mini(rng.randi_range(1, 5), MAX_ENEMIES - enemies.size())
 	if count <= 0:
 		return
 	var group_center := rng.randf_range(90.0, arena.x - 90.0)
 	for i in range(count):
 		var x := clampf(group_center + (i - (count - 1) * 0.5) * 66.0 + rng.randf_range(-16.0, 16.0), 38.0, arena.x - 38.0)
-		spawn_enemy(Vector2(x, -45.0 - i * 42.0), Vector2(rng.randf_range(-14.0, 14.0), rng.randf_range(95.0, 145.0) + minf(bosses_defeated * 7.0, 80.0)))
+		spawn_enemy(Vector2(x, -45.0 - i * 42.0), Vector2(rng.randf_range(-14.0, 14.0), rng.randf_range(95.0, 145.0)))
 
 func spawn_enemy(at: Vector2, velocity: Vector2, summoned: bool = false, fold_origin: Vector2 = Vector2.INF) -> Node2D:
 	var enemy = Enemy.new()
 	enemy.position = at
 	enemy.previous_position = at
 	enemy.velocity = velocity
+	enemy.health = mini(9, 3 + floori(bosses_defeated / 2.0))
 	enemy.phase = rng.randf_range(0.0, TAU)
-	enemy.shot_timer = rng.randf_range(0.85, 1.7)
+	enemy.shot_timer = rng.randf_range(0.85, 1.7) / difficulty_scale()
 	enemy.zigzag = not summoned and rng.randf() < 0.45
 	enemy.summoned = summoned
 	enemy.tint = Color("73eac4") if summoned else [Color("ffb86a"), Color("f1958d"), Color("baacf5")][rng.randi_range(0, 2)]
@@ -282,7 +292,8 @@ func begin_boss(kind: String) -> void:
 	boss = Boss.new()
 	boss.game = self
 	boss.kind = kind if kind in BOSS_KINDS else "black"
-	boss.max_health = 75 + bosses_defeated * 20
+	# 20, 25, 29.411...: shrinking gains, asymptote at 100.
+	boss.max_health = minf(99.0, floorf(100.0 - 1200.0 / (15.0 + bosses_defeated)))
 	boss.health = boss.max_health
 	add_child(boss)
 	boss.step(0.0)
@@ -365,7 +376,7 @@ func update_enemies(delta: float) -> void:
 			if enemy.shot_timer <= 0.0:
 				var aim: Vector2 = (ship.position - enemy.position).normalized()
 				spawn_hostile_shot(enemy.position + Vector2(0, 24), aim * (215.0 if enemy.summoned else 180.0))
-				enemy.shot_timer = rng.randf_range(1.05, 1.9)
+				enemy.shot_timer = rng.randf_range(1.05, 1.9) / difficulty_scale()
 
 func fire_player_shot() -> float:
 	return weapons.fire(self)
@@ -397,13 +408,13 @@ func update_projectiles(delta: float) -> void:
 					return
 		else:
 			var targets: Array[Dictionary] = []
-			for rock in asteroids.duplicate():
-				if shot.intersects(rock.position, rock.radius):
+			for rock in asteroids:
+				if target_is_exposed(rock, "rock") and shot.intersects(rock.position, rock.radius):
 					targets.append({"actor": rock, "type": "rock", "at": rock.position})
-			if is_instance_valid(boss) and shot.intersects(boss.body_position, Boss.HIT_RADIUS):
+			if is_instance_valid(boss) and target_is_exposed(boss, "boss") and shot.intersects(boss.body_position, Boss.HIT_RADIUS):
 				targets.append({"actor": boss, "type": "boss", "at": boss.body_position})
-			for enemy in enemies.duplicate():
-				if shot.intersects(enemy.position, Enemy.HIT_RADIUS):
+			for enemy in enemies:
+				if target_is_exposed(enemy, "enemy") and shot.intersects(enemy.position, Enemy.HIT_RADIUS):
 					targets.append({"actor": enemy, "type": "enemy", "at": enemy.position})
 			targets.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 				return shot.previous_position.distance_squared_to(a.at) < shot.previous_position.distance_squared_to(b.at))
@@ -426,7 +437,16 @@ func update_projectiles(delta: float) -> void:
 		if projectiles.has(shot) and (shot.expired or shot.position.y < -50 or shot.position.y > arena.y + 50 or shot.position.x < -80 or shot.position.x > arena.x + 80):
 			remove_projectile(shot)
 
+func target_is_exposed(actor: Node2D, kind: String) -> bool:
+	var at: Vector2 = actor.body_position if kind == "boss" else actor.position
+	var radius: float = Boss.HIT_RADIUS if kind == "boss" else (actor.radius if kind == "rock" else Enemy.HIT_RADIUS)
+	if kind == "boss" and actor.phase == "arrival":
+		return false
+	return at.x - radius >= 0.0 and at.x + radius <= arena.x and at.y - radius >= top_inset + 140.0 and at.y + radius <= arena.y
+
 func damage_target(actor: Node2D, kind: String, amount: int) -> void:
+	if not target_is_exposed(actor, kind):
+		return
 	if kind == "rock" and asteroids.has(actor):
 		hit_asteroid(actor, amount)
 	elif kind == "boss" and actor == boss:
@@ -443,9 +463,9 @@ func detonate_rocket(at: Vector2, radius: float, direct_target: Node2D) -> void:
 			damage_target(enemy, "enemy", 2)
 	for rock in asteroids.duplicate():
 		if rock != direct_target and rock.position.distance_to(at) <= radius + rock.radius:
-			hit_asteroid(rock, 2)
+			damage_target(rock, "rock", 2)
 	if is_instance_valid(boss) and boss != direct_target and boss.body_position.distance_to(at) <= radius + Boss.HIT_RADIUS:
-		boss.take_hit(2)
+		damage_target(boss, "boss", 2)
 	sound.play_effect("burst")
 
 func remove_projectile(shot: Node2D) -> void:
@@ -470,16 +490,17 @@ func maybe_drop_pickup(at: Vector2) -> void:
 	var roll := rng.randf()
 	var pending := pickups.filter(func(drop: Node2D) -> bool: return drop.kind == "weapon").size()
 	var advanced: bool = weapons.level + pending >= 2
+	var drop_scale := difficulty_scale()
 	if advanced:
 		# Reserve the sector allowance when dropped, including uncollected drops.
-		if weapons.level + pending < 4 and advanced_drop_sector != bosses_defeated and roll < 0.015:
+		if weapons.level + pending < 4 and advanced_drop_sector != bosses_defeated and roll < minf(1.0, 0.005 * drop_scale):
 			spawn_pickup(at, "weapon")
 			advanced_drop_sector = bosses_defeated
 			kills_since_drop = 0
-	elif roll < 0.06 or kills_since_drop >= 30:
+	elif roll < minf(1.0, 0.02 * drop_scale):
 		spawn_pickup(at, "weapon")
 		kills_since_drop = 0
-	if roll >= 0.94:
+	if roll >= 1.0 - minf(1.0, 0.02 * drop_scale):
 		spawn_pickup(at, "life")
 
 func spawn_pickup(at: Vector2, kind: String) -> void:
@@ -548,7 +569,7 @@ func spawn_asteroid(at: Vector2, velocity: Vector2, radius: float, health: int =
 	rock.velocity = velocity
 	rock.radius = radius
 	if health <= 0:
-		health = 3 if radius < 26.0 else (6 if radius < 37.0 else 10)
+		health = (5 if radius < 26.0 else (8 if radius < 37.0 else 12)) + floori(bosses_defeated / 2.0)
 	rock.health = health
 	rock.spin = rng.randf_range(-2, 2)
 	if fold_origin != Vector2.INF:
@@ -674,7 +695,7 @@ func toggle_sound() -> void:
 	interface.refresh()
 
 func burst(at: Vector2, tint: Color, count: int) -> void:
-	for i in range(count):
+	for i in range(mini(count, maxi(0, 256 - particles.size()))):
 		var duration := rng.randf_range(0.25, 0.75)
 		particles.append({"position": at, "velocity": Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(40, 220),
 			"life": duration, "duration": duration, "tint": tint, "radius": rng.randf_range(1.5, 4.0)})
@@ -705,8 +726,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			previous_pointer_x = event.position.x
 		elif not event.pressed and event.index == pointer_id:
 			pointer_id = -1
-	elif event is InputEventScreenDrag and event.index == pointer_id:
-		drag_to(event.position.x)
+	elif event is InputEventScreenDrag:
+		# A finger held through the end of a tap-only attack can resume dragging.
+		if pointer_id == -1 and event.position.y > top_inset + 110:
+			pointer_id = event.index
+			previous_pointer_x = event.position.x - event.relative.x
+		if event.index == pointer_id:
+			drag_to(event.position.x)
 	elif event is InputEventMouseButton and event.device != InputEvent.DEVICE_ID_EMULATION and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed and pointer_id == -1 and event.position.y > top_inset + 110:
 			pointer_id = -2

@@ -26,10 +26,9 @@ func fire(game: Node2D) -> float:
 			spawn_shot(game, muzzle + Vector2(-11.0, 7.0), Vector2(0.0, -850.0))
 			spawn_shot(game, muzzle + Vector2(11.0, 7.0), Vector2(0.0, -850.0))
 		2:
-			spawn_shot(game, muzzle, Vector2(0.0, -900.0))
-			spawn_shot(game, muzzle + Vector2(-17.0, 9.0), Vector2(-110.0, -880.0))
-			spawn_shot(game, muzzle + Vector2(17.0, 9.0), Vector2(110.0, -880.0))
-			cooldown = 0.16
+			spawn_shot(game, muzzle, Vector2(0.0, -850.0))
+			spawn_shot(game, muzzle + Vector2(-17.0, 9.0), Vector2(-110.0, -880.0).normalized() * 850.0)
+			spawn_shot(game, muzzle + Vector2(17.0, 9.0), Vector2(110.0, -880.0).normalized() * 850.0)
 		3:
 			var beam = spawn_shot(game, muzzle, Vector2.ZERO)
 			beam.setup_laser(muzzle, Vector2(muzzle.x, -24.0))

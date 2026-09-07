@@ -6,9 +6,11 @@ var streams: Dictionary = {}
 var voices: Array[AudioStreamPlayer] = []
 var next_voice := 0
 var boss_music_active := false
+var flight_music_active := false
 var paused := false
 var music := AudioStreamPlayer.new()
 static var music_stream: AudioStreamWAV
+static var flight_stream: AudioStreamWAV
 
 func _ready() -> void:
 	streams["shot"] = tone(1150, 430, 0.07, 0.0)
@@ -39,10 +41,12 @@ func silence() -> void:
 	for voice in voices:
 		voice.stop()
 	boss_music_active = false
+	flight_music_active = false
 	music.stop()
 
 func set_boss_music(active: bool) -> void:
 	boss_music_active = active
+	flight_music_active = true
 	sync_enabled()
 
 func set_paused(value: bool) -> void:
@@ -56,15 +60,47 @@ func sync_enabled() -> void:
 	if not enabled:
 		for voice in voices:
 			voice.stop()
-	if not enabled or not boss_music_active:
+	if not enabled or not flight_music_active:
 		music.stop()
 		return
-	if not music.playing:
-		if music_stream == null:
-			music_stream = make_boss_music()
-		music.stream = music_stream
+	if music_stream == null:
+		music_stream = make_boss_music()
+	if flight_stream == null:
+		flight_stream = make_flight_music()
+	var desired := music_stream if boss_music_active else flight_stream
+	if not music.playing or music.stream != desired:
+		music.stream = desired
 		music.play()
 	music.stream_paused = paused
+
+func make_flight_music() -> AudioStreamWAV:
+	# Original sixteen-second space theme: soft chords and a rolling arpeggio.
+	var rate := 22050
+	var count := rate * 16
+	var bytes := PackedByteArray()
+	bytes.resize(count * 2)
+	var roots := [0, -3, -5, -2]
+	var arp := [0, 7, 12, 15, 12, 7, 19, 7]
+	for i in range(count):
+		var t := float(i) / rate
+		var chord_time := fmod(t, 4.0)
+		var root_note: int = roots[int(t / 4.0)]
+		var base := 110.0 * pow(2.0, root_note / 12.0)
+		var pad_envelope := sin(PI * chord_time / 4.0)
+		var pad := (sin(TAU * base * chord_time) + sin(TAU * base * pow(2.0, 3.0 / 12.0) * chord_time) * 0.6 + sin(TAU * base * 1.5 * chord_time) * 0.5) * pad_envelope * 0.16
+		var note_time := fmod(t, 0.25)
+		var hz := base * pow(2.0, float(arp[int(t * 4.0) % 8]) / 12.0)
+		var bell := sin(TAU * hz * note_time) * exp(-note_time * 14.0) * minf(note_time * 100.0, 1.0) * 0.18
+		var beat := fmod(t, 0.5)
+		var pulse := sin(TAU * 55.0 * beat) * exp(-beat * 14.0) * 0.12
+		bytes.encode_s16(i * 2, int(clampf(pad + bell + pulse, -1.0, 1.0) * 26000.0))
+	var stream := AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	stream.mix_rate = rate
+	stream.data = bytes
+	stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	stream.loop_end = count
+	return stream
 
 func make_boss_music() -> AudioStreamWAV:
 	# Original eight-second loop: minor bass ostinato, pulse, kick and hats.

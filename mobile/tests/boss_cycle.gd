@@ -39,6 +39,7 @@ func run_checks() -> void:
 	game.sound.enabled = false
 	for mode in ["black", "white", "asteroid", "swarm"]:
 		game.start_run(mode)
+		game.bosses_defeated = 49
 		check(game.boss.phase == "arrival", mode + ": enters from offscreen")
 		game.boss.step(1.5)
 		check(game.boss.phase == "firefight", mode + ": arrival leads to exchanging fire")
@@ -47,7 +48,7 @@ func run_checks() -> void:
 		game.update_projectiles(3.0)
 		check(game.lives == 2 and game.boss.health == game.boss.max_health, mode + ": boss bullets hurt the player, never the boss")
 		hit_core_with_bullet()
-		var remaining_health: int = game.boss.health
+		var remaining_health: float = game.boss.health
 		check(remaining_health == game.boss.max_health - 1, mode + ": a player bullet damages the boss core")
 		game.boss.begin_special()
 		if mode in ["black", "white"]:
@@ -84,7 +85,7 @@ func run_checks() -> void:
 		game.boss.health = 1
 		hit_core_with_bullet()
 		check(game.state == game.State.PLAYING and not is_instance_valid(game.boss), mode + ": the final player bullet returns to endless flight")
-		check(game.projectiles.is_empty() and game.bosses_defeated == 1, mode + ": defeated boss hazards clear")
+		check(game.projectiles.is_empty() and game.bosses_defeated == 50, mode + ": defeated boss hazards clear")
 		if mode in ["black", "white"]:
 			check(game.ship.position == game.cruise_position(), mode + ": victory restores the normal ship position")
 	game.start_run("black")
