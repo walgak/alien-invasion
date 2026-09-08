@@ -93,10 +93,17 @@ func run_checks() -> void:
 	check(game.state == game.State.PLAYING and game.boss.phase == "warning", "unsafe landing redirects cannon before a core can open")
 	prepare("white")
 	game.boss.step(0.2)
-	var pushed_y: float = game.ship.position.y
-	game.boss.return_to_firefight()
+	var pushed_position: Vector2 = game.ship.position
+	game.boss.phase_time = game.boss.well_duration
+	game.boss.resist()
+	game.boss.step(0.001)
+	check(game.returning_to_cruise and game.ship.position == pushed_position, "surviving a white hole schedules recovery without teleporting")
 	game._physics_process(1.0 / 60.0)
-	check(is_equal_approx(game.ship.position.y, pushed_y), "the firefight preserves vertical ground lost to the white hole")
+	check(game.ship.position.distance_to(game.cruise_position()) < pushed_position.distance_to(game.cruise_position()), "ship moves away from the edge during the live boss firefight")
+	check(game.ship.position.distance_to(pushed_position) <= 260.0 / 60.0 + 0.01, "white-hole recovery uses bounded physical movement")
+	for frame in range(60):
+		game._physics_process(1.0 / 60.0)
+	check(not game.returning_to_cruise and game.ship.position.is_equal_approx(game.cruise_position()), "recovery finishes at the normal flight position before the next attack")
 	# A resize must preserve the vertical ship/hole separation, not collapse it.
 	prepare("white")
 	game.boss.step(0.2)

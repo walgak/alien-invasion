@@ -122,6 +122,11 @@ func step(delta: float) -> void:
 			game.lose_ship("The white hole pushed you into the boundary.")
 			return
 		if phase_time >= well_duration:
+			# Each survived white-hole attack earns a smooth trip back from the
+			# boundary, including attacks that end while their boss is still alive.
+			# The game waits for any overlapping gravity before moving the ship.
+			if kind == "white":
+				game.returning_to_cruise = true
 			return_to_firefight()
 	queue_redraw()
 

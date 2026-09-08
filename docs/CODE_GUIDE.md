@@ -31,7 +31,7 @@ Boss phases are `arrival → firefight → warning → active → firefight`. Su
 
 Black/white bosses additionally leave a 1.8× core with an eight-second lifetime at the death position. Black death particles move inward; white particles move outward. The original well keeps its own position and remaining lifetime. One tap neutralises every active well; it never moves the ship.
 
-The ship's return flag is set at victory. Active gravity takes priority; once it ends, the ship moves toward `cruise_position()` at 260 pixels/second. The director waits until detached attacks and return motion finish. `restore_cruise_position()` is the separate instant reset used for emergency revival.
+The ship's return flag is set at victory and after every survived white-hole attack, even while the boss remains alive. Active gravity takes priority; once it ends, the ship moves toward `cruise_position()` at 260 pixels/second, giving the player distance from the boundary before the next push. The director waits until detached attacks and return motion finish. `restore_cruise_position()` is the separate instant reset used for emergency revival.
 
 ## Weapons and damage
 
