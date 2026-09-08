@@ -4,6 +4,7 @@ var velocity := Vector2(0, -850)
 var hostile := false
 var previous_position := Vector2.ZERO
 var kind := "bullet"
+var continuous := false
 var damage := 1
 var piercing := false
 var hit_ids: Dictionary = {}
@@ -13,6 +14,7 @@ var age := 0.0
 var lifetime := 8.0
 var beam_start := Vector2.ZERO
 
+## Set the beam endpoints for rendering and segment collision; game.gd owns continuous exposure timing.
 func setup_laser(from: Vector2, to: Vector2) -> void:
 	kind = "laser"
 	piercing = true
@@ -23,6 +25,7 @@ func setup_laser(from: Vector2, to: Vector2) -> void:
 	position = to
 	velocity = Vector2.ZERO
 
+## Advance this actor by delta seconds and retain its previous position for swept collision checks.
 func advance(delta: float) -> void:
 	age += delta
 	expired = age >= lifetime
@@ -35,12 +38,14 @@ func advance(delta: float) -> void:
 	if kind != "bullet":
 		queue_redraw()
 
+## Test the entire traveled segment against a target circle to prevent fast shots tunneling between frames.
 func intersects(center: Vector2, radius: float) -> bool:
 	# Swept collision catches targets even when a shot crosses them in one frame.
 	var closest := Geometry2D.get_closest_point_to_segment(center, previous_position, position)
 	var collision_radius := radius + (5.0 if kind == "laser" else 0.0)
 	return closest.distance_squared_to(center) <= collision_radius * collision_radius
 
+## Submit this object's visual geometry in local coordinates. Physics and collision rules are handled separately.
 func _draw() -> void:
 	if kind == "laser":
 		draw_laser()
@@ -55,9 +60,10 @@ func _draw() -> void:
 	draw_line(Vector2.ZERO, tail * 0.7, tint, 2.5, true)
 	draw_circle(Vector2.ZERO, 2.5, Color("e8fff6"))
 
+## Render the beam's glow and core; continuous beams remain bright instead of fading like short pulses.
 func draw_laser() -> void:
 	var muzzle := beam_start - position
-	var brightness := clampf((lifetime - age) / 0.055, 0.0, 1.0)
+	var brightness := 1.0 if continuous else clampf((lifetime - age) / 0.055, 0.0, 1.0)
 	draw_line(muzzle, Vector2.ZERO, Color(0.39, 0.74, 1.0, 0.08 * brightness), 36.0, true)
 	draw_line(muzzle, Vector2.ZERO, Color(0.39, 0.77, 1.0, 0.22 * brightness), 18.0, true)
 	draw_line(muzzle, Vector2.ZERO, Color(0.52, 0.88, 1.0, 0.85 * brightness), 7.0, true)
@@ -65,6 +71,7 @@ func draw_laser() -> void:
 	draw_circle(muzzle, 13.0, Color(0.42, 0.84, 1.0, 0.18 * brightness))
 	draw_circle(muzzle, 5.0, Color(0.86, 0.99, 1.0, brightness))
 
+## Draw the rocket body and animated exhaust around its current velocity direction.
 func draw_rocket() -> void:
 	var forward := velocity.normalized()
 	var side := Vector2(-forward.y, forward.x)

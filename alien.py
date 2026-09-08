@@ -1,3 +1,5 @@
+"""Legacy Pygame alien actor. Sprite.rect is the integer drawing/collision box; self.x retains fractional movement. Unlike the Godot game, movement here assumes the 60 FPS loop in alien_invasion.py."""
+
 import pygame
 from pygame.sprite import Sprite
 

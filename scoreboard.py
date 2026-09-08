@@ -1,3 +1,5 @@
+"""Legacy Pygame HUD. prep_* methods rebuild cached text surfaces after values change; show_score() only blits them. Life icons are Sprite instances in a separate group."""
+
 import pygame.font
 from pygame.sprite import Group
 

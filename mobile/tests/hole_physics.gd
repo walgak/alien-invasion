@@ -5,9 +5,11 @@ var checks := 0
 var failures := 0
 var game: Node2D
 
+## SceneTree test entry point; defer setup until the root viewport is ready.
 func _initialize() -> void:
 	call_deferred("run_checks")
 
+## Record a readable assertion without aborting the remaining checks, so one run reports all failures.
 func check(condition: bool, description: String) -> void:
 	if condition:
 		checks += 1
@@ -16,6 +18,7 @@ func check(condition: bool, description: String) -> void:
 		failures += 1
 		push_error("FAIL: " + description)
 
+## Reset a deterministic gravity encounter and advance it to the phase needed by the physics assertions.
 func prepare(mode: String, at: Vector2 = Vector2(270, 780)) -> void:
 	game.start_run(mode)
 	game.bosses_defeated = 49
@@ -24,6 +27,7 @@ func prepare(mode: String, at: Vector2 = Vector2(270, 780)) -> void:
 	game.boss.begin_special()
 	game.boss.step(1.3)
 
+## Run deterministic regression checks with a disposable save file; failures produce a nonzero exit status.
 func run_checks() -> void:
 	var save_path := OS.get_environment("ALIEN_SAVE_PATH")
 	if not save_path.ends_with("hole-physics-record.cfg"):

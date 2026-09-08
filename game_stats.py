@@ -1,3 +1,5 @@
+"""Legacy Pygame run statistics. reset_stats() resets lives, score and level but intentionally preserves the in-memory high score; this original version does not save it to disk."""
+
 class GameStats:
     """Tracks all game statistics"""
 

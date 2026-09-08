@@ -12,6 +12,8 @@ var shot_timer := 2.0
 var summoned := false
 var health := 3
 var drop_group: Dictionary = {}
+var shield_guard := false
+var guard_angle := 0.0
 var zigzag := false
 var motion_phase := "flight"
 var fold_origin := Vector2.ZERO
@@ -21,6 +23,7 @@ var pull_offset := Vector2.ZERO
 var phase_time := 0.0
 var launch_speed := 220.0
 
+## Capture the offscreen starting point and boss anchor, then enter the pull/windup/throw state machine.
 func begin_pull(origin: Vector2) -> void:
 	fold_origin = origin
 	pull_start = position
@@ -30,6 +33,7 @@ func begin_pull(origin: Vector2) -> void:
 	motion_phase = "pull"
 	fold_life = RELEASE_FADE_SECONDS
 
+## Advance this actor by delta seconds and retain its previous position for swept collision checks.
 func advance(delta: float, target: Vector2 = Vector2.ZERO) -> void:
 	previous_position = position
 	var old_age := age
@@ -63,6 +67,7 @@ func advance(delta: float, target: Vector2 = Vector2.ZERO) -> void:
 		fold_life = maxf(0.0, fold_life - remaining)
 	queue_redraw()
 
+## Submit this object's visual geometry in local coordinates. Physics and collision rules are handled separately.
 func _draw() -> void:
 	if fold_life > 0.0:
 		var anchor := to_local(fold_origin)

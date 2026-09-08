@@ -6,9 +6,11 @@ var failures := 0
 var checks := 0
 var game: Node2D
 
+## SceneTree test entry point; defer setup until the root viewport is ready.
 func _initialize() -> void:
 	call_deferred("run_checks")
 
+## Record a readable assertion without aborting the remaining checks, so one run reports all failures.
 func check(condition: bool, description: String) -> void:
 	if not condition:
 		push_error("FAIL: " + description)
@@ -17,6 +19,7 @@ func check(condition: bool, description: String) -> void:
 		print("PASS: " + description)
 		checks += 1
 
+## Exercise boss damage through a real swept projectile rather than calling the damage method directly.
 func hit_core_with_bullet() -> void:
 	var shot = Projectile.new()
 	shot.position = game.boss.body_position + Vector2(0, 120)
@@ -25,6 +28,7 @@ func hit_core_with_bullet() -> void:
 	game.projectiles.append(shot)
 	game.update_projectiles(0.2)
 
+## Run deterministic regression checks with a disposable save file; failures produce a nonzero exit status.
 func run_checks() -> void:
 	var save_path := OS.get_environment("ALIEN_SAVE_PATH")
 	if not save_path.ends_with("boss-cycle-record.cfg"):
@@ -85,9 +89,9 @@ func run_checks() -> void:
 		game.boss.health = 1
 		hit_core_with_bullet()
 		check(game.state == game.State.PLAYING and not is_instance_valid(game.boss), mode + ": the final player bullet returns to endless flight")
-		check(game.projectiles.is_empty() and game.bosses_defeated == 50, mode + ": defeated boss hazards clear")
+		check(game.bosses_defeated == 50 and not game.lingering_wells.is_empty(), mode + ": defeated boss attack remains independently active")
 		if mode in ["black", "white"]:
-			check(game.ship.position == game.cruise_position(), mode + ": victory restores the normal ship position")
+			check(game.returning_to_cruise, mode + ": victory schedules a smooth return after gravity expires")
 	game.start_run("black")
 	game.rng.seed = 77
 	var intervals: Array[float] = []

@@ -6,6 +6,7 @@ var sound_enabled := true
 var save_path := "user://flight_record.cfg"
 var last_error := OK
 
+## Construct defaults before this object enters the scene tree; do not depend on ready child nodes here.
 func _init() -> void:
 	var override_path := OS.get_environment("ALIEN_SAVE_PATH")
 	if not override_path.is_empty():
@@ -20,6 +21,7 @@ func _init() -> void:
 		if sound is bool:
 			sound_enabled = sound
 
+## Write scores and sound preference to ConfigFile; save_path can be redirected by test environment variables.
 func save() -> void:
 	var config := ConfigFile.new()
 	for mode in best_by_mode:
@@ -29,8 +31,10 @@ func save() -> void:
 	if last_error != OK:
 		push_warning("The local flight record could not be saved: %s" % error_string(last_error))
 
+## Return the saved best for this score category without changing storage.
 func best_for(mode: String) -> int:
 	return int(best_by_mode.get(mode, 0))
 
+## Update the in-memory high score only; game.gd decides when to flush it to disk.
 func record_score(mode: String, score: int) -> void:
 	best_by_mode[mode] = maxi(best_for(mode), score)

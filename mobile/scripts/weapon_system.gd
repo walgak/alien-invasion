@@ -6,12 +6,15 @@ const MAX_LEVEL := 4
 const NAMES := ["SINGLE", "DOUBLE", "TRIPLE", "LASER", "ROCKETS"]
 var level := 0
 
+## Translate the clamped upgrade level into the label shown in the HUD.
 func weapon_name() -> String:
 	return NAMES[clampi(level, 0, MAX_LEVEL)]
 
+## Advance one weapon tier without exceeding the final rocket tier.
 func upgrade() -> void:
 	level = clampi(level + 1, 0, MAX_LEVEL)
 
+## Emit the selected weapon pattern and return its cooldown in seconds. Laser ownership stays with game.update_laser.
 func fire(game: Node2D) -> float:
 	var ship := game.get("ship") as Node2D
 	if not is_instance_valid(ship):
@@ -30,10 +33,8 @@ func fire(game: Node2D) -> float:
 			spawn_shot(game, muzzle + Vector2(-17.0, 9.0), Vector2(-110.0, -880.0).normalized() * 850.0)
 			spawn_shot(game, muzzle + Vector2(17.0, 9.0), Vector2(110.0, -880.0).normalized() * 850.0)
 		3:
-			var beam = spawn_shot(game, muzzle, Vector2.ZERO)
-			beam.setup_laser(muzzle, Vector2(muzzle.x, -24.0))
-			cooldown = 0.22
-			effect = "laser"
+			game.update_laser(0.0)
+			return 0.17
 		4:
 			for offset in [-13.0, 13.0]:
 				var rocket = spawn_shot(game, muzzle + Vector2(offset, 7.0), Vector2(0.0, -660.0))
@@ -47,6 +48,7 @@ func fire(game: Node2D) -> float:
 		sound.call("play_effect", effect)
 	return cooldown
 
+## Create a player projectile and register it with the game's collision/update list.
 func spawn_shot(game: Node2D, at: Vector2, speed: Vector2) -> Node2D:
 	var shot = Projectile.new()
 	shot.position = at

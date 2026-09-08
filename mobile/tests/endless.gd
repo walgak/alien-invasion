@@ -3,9 +3,11 @@ extends SceneTree
 var failures := 0
 var checks := 0
 
+## SceneTree test entry point; defer setup until the root viewport is ready.
 func _initialize() -> void:
 	call_deferred("run_checks")
 
+## Record a readable assertion without aborting the remaining checks, so one run reports all failures.
 func check(ok: bool, label: String) -> void:
 	checks += 1
 	if not ok:
@@ -14,6 +16,7 @@ func check(ok: bool, label: String) -> void:
 	else:
 		print("PASS: " + label)
 
+## Run deterministic regression checks with a disposable save file; failures produce a nonzero exit status.
 func run_checks() -> void:
 	if not OS.get_environment("ALIEN_SAVE_PATH").ends_with("endless-record.cfg"):
 		push_error("Set a temporary ALIEN_SAVE_PATH ending in endless-record.cfg.")
@@ -53,8 +56,11 @@ func run_checks() -> void:
 	check(is_instance_valid(game.boss) and game.boss.phase == "arrival", "warning transitions to boss arrival")
 	game.boss.take_hit(10000)
 	check(game.bosses_defeated == 1 and game.state == game.State.PLAYING and not game.sound.boss_music_active, "boss victory resumes flight and stops boss music")
-	game.update_director(3.1)
-	game.update_director(1.0)
+	game.shot_timer = 1000
+	for i in range(900):
+		for well in game.lingering_wells:
+			well.resist()
+		game._physics_process(1.0 / 60.0)
 	check(not game.enemies.is_empty(), "random enemies resume after boss victory")
 	game.start_run()
 	for level in range(1, 5):
@@ -63,7 +69,7 @@ func run_checks() -> void:
 		check(game.weapons.level == level, "collected weapon advances to level %d" % level)
 		game.clear_hazards()
 		game.fire_player_shot()
-		var expected: int = [0, 2, 3, 1, 2][level]
+		var expected: int = [0, 2, 3, 0, 2][level]
 		check(game.projectiles.size() == expected, "weapon level %d fires its own pattern" % level)
 	game.damage_ship()
 	check(game.lives == 2 and game.weapons.level == 4, "nonlethal damage preserves the weapon")
@@ -88,10 +94,10 @@ func run_checks() -> void:
 	near.health = 3
 	far.health = 3
 	game.fire_player_shot()
-	game.update_projectiles(0.01)
-	check(near.health == 1 and far.health == 1, "laser pierces multiple enemies")
-	game.update_projectiles(0.01)
-	check(near.health == 1 and far.health == 1, "one laser pulse never damages a target twice")
+	game.update_laser(0.24)
+	check(near.health == 3 and far.health == 3, "continuous laser waits for full exposure")
+	game.update_laser(0.02)
+	check(not game.enemies.has(near) and not game.enemies.has(far), "continuous laser kills multiple exposed enemies")
 	game.clear_hazards()
 	game.weapons.level = 4
 	game.spawn_enemy(game.ship.position - Vector2(13, 170), Vector2.ZERO)
@@ -119,9 +125,14 @@ func run_checks() -> void:
 	game.rng.seed = 2026
 	for i in range(18000):
 		game.ship.invulnerable = 10
+		for well in game.lingering_wells:
+			well.resist()
 		if is_instance_valid(game.boss):
 			game.boss.resist()
 			if i % 180 == 0:
+				for enemy in game.enemies.duplicate():
+					if enemy.shield_guard:
+						game.destroy_enemy(enemy)
 				game.boss.take_hit(10000)
 		game._physics_process(1.0 / 60.0)
 		if i % 60 == 0:

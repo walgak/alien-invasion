@@ -1,3 +1,5 @@
+"""Legacy Pygame bullet. Each update moves a rectangle upward; the game owns bullet lifetime and collision removal. Settings in settings.py apply only to this original Python version."""
+
 import pygame
 
 from pygame.sprite import Sprite

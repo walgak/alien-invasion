@@ -24,7 +24,7 @@ Black-hole and white-hole attacks begin with a rift cannon fired five times fast
 
 Each tap fully cancels the hole's force for a brief beat. Keep tapping to hold the current position exactly. Tapping never pushes the ship away and never recovers ground lost; when the tap window expires, the pull or push resumes at full strength. The force meter shows whether neutralisation is active.
 
-Both gravity holes form in the lower-middle region (28–72% screen width, 57–70% screen height). Cannons aim at a fixed point rather than tracking the ship. A clearance check redirects an unsafe landing before the core opens. White holes push away from their core, usually downward. Any of the four edges can destroy the ship, and vertical displacement persists between special attacks. Defeating the gravity boss restores the normal ship position.
+Both gravity holes form in the lower-middle region (28–72% screen width, 57–70% screen height). Cannons aim at a fixed point rather than tracking the ship. A clearance check redirects an unsafe landing before the core opens. White holes push away from their core, usually downward. Any of the four edges can destroy the ship, and vertical displacement persists between special attacks. After lingering gravity ends, the ship flies smoothly back to its normal position.
 
 **Mouse:** click and drag to steer; click repeatedly to neutralise a hole.
 
@@ -69,7 +69,7 @@ ALIEN_SAVE_PATH=/tmp/alien-endless-record.cfg godot --headless --path . --script
 
 To capture screens, set `ALIEN_CAPTURE_DIR` to an existing output directory and run `tests/capture.gd` with a graphical display. The save override keeps test scores separate from your real records.
 
-Difficulty begins at 1% and rises by one point per boss defeated. It changes enemy firing frequency and drop chances, while movement, wave timing, bullet speeds, and gravity strength stay constant. Small alien ships take 3 hits initially, gaining one hit every two victories up to 9. Asteroids begin at 5/8/12 hits by size and gain one hit every two victories. Boss health follows floor(100 - 780 / (12 + victories)): 35, 40, 44, 48… with a 99-hit ceiling. The underlying curve approaches 100 without reaching it. Single/double/triple bullets all travel at 850 units/s with a 0.17-second firing interval. Rockets travel at 660 units/s; lasers are instantaneous pulses. Original flight music switches to boss music during encounters. Planets drift through the sky and are replaced after passing offscreen.
+Difficulty begins at 1% and rises by one point per boss defeated. It changes enemy firing frequency and drop chances, while movement, wave timing, bullet speeds, and gravity strength stay constant. Small alien ships take 3 hits initially, gaining one hit every two victories up to 9. Asteroids begin at 5/8/12 hits by size and gain one hit every two victories. Boss health follows floor(100 - 780 / (12 + victories)): 35, 40, 44, 48… with a 99-hit ceiling. The underlying curve approaches 100 without reaching it. Single/double/triple bullets all travel at 850 units/s with a 0.17-second firing interval. Rockets travel at 660 units/s; the continuous laser kills non-bosses after 0.25 seconds of uninterrupted exposure and deals one boss hit per 0.25 seconds. Original flight music switches to boss music during encounters. Planets drift through the sky and are replaced after passing offscreen.
 
 ## iPhone development build
 
@@ -87,3 +87,11 @@ Select your paired iPhone in Xcode and Run. The phone must have Developer Mode e
 Drop rates above are the 50% reference. They scale with difficulty: at 1%, basic weapon and life drops each have a 0.04% chance per kill, and advanced upgrades have a 0.01% chance. At 50%, these reach 2%, 2%, and 0.5%. The advanced drop cap still applies; each regular or summoned swarm guarantees a drop on its first defeated alien, and each boss guarantees one drop. Extra drops retain these scaled chances.
 
 Shooting and explosion effects use a low-bass palette. Gravity spawns and boss deaths descend to an 18 Hz sub-bass tail with audible harmonics; a dedicated impact voice prevents gunfire from interrupting them. Guaranteed rewards choose weapons or life pickups while preserving the one-advanced-weapon-per-boss-interval limit. At a full pickup budget, the oldest uncollected pickup is replaced by the guaranteed reward.
+
+## Boss shields, death attacks, and continuous laser
+
+Surviving aliens remain when a boss arrives and physically form its shield. The boss is invulnerable until every guard is defeated. Unfinished attacks keep their own remaining lifetime after boss death. Black bosses implode; white bosses explode. Each leaves a larger hole lasting eight seconds, in addition to any existing well. Keep tapping until gravity ends; the ship then returns smoothly to cruise position.
+
+Weapon pickups add visible barrels and progressively wider ship hulls. The laser is a continuous electric beam: 0.25 seconds of uninterrupted contact kills a non-boss, while bosses lose one health every 0.25 seconds. Leaving the beam resets exposure. Ship hits have dedicated audio, and explosions are louder.
+
+Read [the commented-code guide](../docs/CODE_GUIDE.md) for ownership, update order, tuning values, test commands and the iPhone workflow.

@@ -1,3 +1,5 @@
+"""Legacy Pygame player ship. Keyboard events toggle movement flags, update() moves the ship, and blitme() draws it. self.x is the authoritative float position; rect is the visible integer position."""
+
 import pygame
 from pygame.sprite import Sprite
 

@@ -1,3 +1,5 @@
+"""Legacy Pygame tuning values. Dynamic speeds reset on a new game or ship hit and multiply when a fleet is cleared. These values are independent of mobile/scripts/game.gd."""
+
 class Settings:
     """A class that stores all game settings"""
 

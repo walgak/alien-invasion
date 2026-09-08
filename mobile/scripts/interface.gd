@@ -12,6 +12,7 @@ var pause_button: Button
 var sound_button: Button
 var font: Font
 
+## Godot calls this once after the node joins the scene; initialize child nodes and cached resources here.
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	font = ThemeDB.fallback_font
@@ -33,6 +34,7 @@ func _ready() -> void:
 	sound_button.add_theme_font_size_override("font_size", 13)
 	sound_button.pressed.connect(game.toggle_sound)
 
+## Create a real GUI button with shared colors and focus styling so touch and keyboard navigation work.
 func make_button(accent: bool) -> Button:
 	var button := Button.new()
 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -49,6 +51,7 @@ func make_button(accent: bool) -> Button:
 	add_child(button)
 	return button
 
+## Build the reusable rounded panel style used by menus and buttons.
 func panel(fill: Color, border: Color) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
 	style.bg_color = fill
@@ -57,6 +60,7 @@ func panel(fill: Color, border: Color) -> StyleBoxFlat:
 	style.set_corner_radius_all(14)
 	return style
 
+## Update button visibility, positions and labels after state or layout changes; redraw-only HUD values need no new nodes.
 func refresh() -> void:
 	if not is_inside_tree():
 		return
@@ -85,13 +89,16 @@ func refresh() -> void:
 		focused.release_focus()
 	queue_redraw()
 
+## Draw one string at a baseline position using the shared UI font.
 func text_at(value: String, at: Vector2, font_size: int, tint: Color = INK) -> void:
 	draw_string(font, at, value, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, tint)
 
+## Measure a string and center its baseline horizontally in the viewport.
 func centered(value: String, y: float, font_size: int, tint: Color = INK) -> void:
 	var width := font.get_string_size(value, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 	text_at(value, Vector2((size.x - width) * 0.5, y), font_size, tint)
 
+## Draw centered lettering with explicit spacing between glyphs for small HUD headings.
 func tracked(value: String, y: float, font_size: int, tracking: float, tint: Color) -> void:
 	var width := 0.0
 	for letter in value:
@@ -101,6 +108,7 @@ func tracked(value: String, y: float, font_size: int, tracking: float, tint: Col
 		text_at(letter, Vector2(x, y), font_size, tint)
 		x += font.get_string_size(letter, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x + tracking
 
+## Submit this object's visual geometry in local coordinates. Physics and collision rules are handled separately.
 func _draw() -> void:
 	if not font:
 		return
@@ -130,23 +138,28 @@ func _draw() -> void:
 		text_at("+ BACKUP", Vector2(152, top + 84), 10, Color("ffc56e"))
 	text_at(game.weapons.weapon_name(), Vector2(w - 125, top + 84), 12, Color("ffc56e"))
 	if is_instance_valid(game.boss):
-		centered(BOSS_NAMES.get(game.boss.kind, "BOSS"), top + 112, 12, Color("ffb86a"))
+		var boss_label: String = BOSS_NAMES.get(game.boss.kind, "BOSS")
+		if game.boss_is_shielded():
+			boss_label += " · DESTROY ALIEN SHIELD"
+		centered(boss_label, top + 112, 12, Color("ffb86a"))
 		draw_rect(Rect2(28, top + 127, w - 56, 4), Color("293349"))
 		draw_rect(Rect2(28, top + 127, (w - 56) * float(game.boss.health) / game.boss.max_health, 4), Color("ffb86a"))
 	else:
 		tracked("SECTOR %02d  ·  DIFFICULTY %d%%" % [game.bosses_defeated + 1, game.difficulty_percent()], top + 119, 10, 1.0, MUTED)
 	if game.state == game.State.PLAYING:
+		if game.gravity_is_active() and not is_instance_valid(game.boss):
+			centered("KEEP TAPPING · GRAVITY REMAINS", h * 0.43, 19, MINT)
 		if game.boss_warning > 0.0:
 			centered("BOSS APPROACHING", top + 202, 25, Color("ffb86a"))
 			centered(BOSS_NAMES.get(game.pending_boss, "UNKNOWN SIGNAL"), top + 231, 13, INK)
-		elif game.recovery_time > 0.0:
+		elif game.recovery_time > 0.0 and not game.gravity_is_active():
 			centered("BOSS DEFEATED", h * 0.43, 26, MINT)
 			centered("Keep flying. The next sector awaits.", h * 0.43 + 29, 14, MUTED)
 		elif is_instance_valid(game.boss):
 			draw_boss_notice()
 		if game.pickup_notice_time > 0.0:
 			centered(game.pickup_notice, h - game.bottom_inset - 220, 15, Color("ffc56e"))
-		centered("DRAG TO STEER", h - game.bottom_inset - 5, 10, MUTED)
+		centered("TAP TO NEUTRALISE" if game.gravity_is_active() else "DRAG TO STEER", h - game.bottom_inset - 5, 10, MUTED)
 		if game.damage_flash > 0.0:
 			draw_rect(Rect2(Vector2.ZERO, size), Color(1, 0.26, 0.22, game.damage_flash * 0.13))
 		return
@@ -161,6 +174,7 @@ func _draw() -> void:
 	centered("%d BOSSES DEFEATED" % game.bosses_defeated, y + 156, 11, MUTED)
 	centered("NEW HIGH SCORE" if not paused and game.score > game.best_at_start else "HIGH SCORE  %06d" % game.progress.best_for("endless"), y + 188, 12, MINT)
 
+## Show phase-specific instructions for shooting, dodging, or neutralising gravity.
 func draw_boss_notice() -> void:
 	var boss: Node2D = game.boss
 	# Keep instructions clear of the white hole that now often appears above the ship.

@@ -1,3 +1,5 @@
+"""Legacy Pygame button rendering. The game checks click coordinates; this class only caches text and draws its rectangle. It is not used by the Godot touch UI."""
+
 import pygame.font
 
 class Button:

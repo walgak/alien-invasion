@@ -1,9 +1,11 @@
 extends SceneTree
 ## Developer-only rendering check. Captures actual Godot frames, then exits.
 
+## SceneTree test entry point; defer setup until the root viewport is ready.
 func _initialize() -> void:
 	call_deferred("capture")
 
+## Freeze automatic updates, stage representative game states, and save actual rendered frames for visual review.
 func capture() -> void:
 	var destination := OS.get_environment("ALIEN_CAPTURE_DIR")
 	if destination.is_empty():
@@ -80,9 +82,11 @@ func capture() -> void:
 		await RenderingServer.frame_post_draw
 		root.get_texture().get_image().save_png(destination.path_join(mode + "-no-refraction.png"))
 		game.space_folds.material.set_shader_parameter("refraction_strength", 1.0)
-	for level in [3, 4]:
+	for level in [1, 2, 3, 4]:
 		game.start_run()
 		game.weapons.level = level
+		game.ship.weapon_level = level
+		game.ship.queue_redraw()
 		game.spawn_enemy(Vector2(220, 240), Vector2.DOWN * 100)
 		game.spawn_pickup(Vector2(160, 540), "weapon")
 		game.spawn_pickup(Vector2(330, 590), "life")
@@ -94,6 +98,27 @@ func capture() -> void:
 		await RenderingServer.frame_post_draw
 		root.get_texture().get_image().save_png(destination.path_join("weapon-%d.png" % level))
 	print("Screens captured to " + destination)
+	game.start_run()
+	for x in [160, 230, 310, 380]:
+		game.spawn_enemy(Vector2(x, 350), Vector2.ZERO)
+	game.begin_boss("black")
+	game.boss.step(1.5)
+	for i in range(60):
+		game.update_enemies(1.0 / 60.0)
+	game.interface.refresh()
+	await process_frame
+	await RenderingServer.frame_post_draw
+	root.get_texture().get_image().save_png(destination.path_join("alien-shield.png"))
+	for enemy in game.enemies.duplicate():
+		game.destroy_enemy(enemy)
+	game.boss.begin_special()
+	game.boss.step(1.3)
+	game.boss.take_hit(10000)
+	game.refresh_space()
+	game.interface.refresh()
+	await process_frame
+	await RenderingServer.frame_post_draw
+	root.get_texture().get_image().save_png(destination.path_join("death-wells.png"))
 	game.start_run()
 	for time in [0.0, 25.0, 65.0]:
 		game.visual_time = time

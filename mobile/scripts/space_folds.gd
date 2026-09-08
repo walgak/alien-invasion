@@ -7,12 +7,14 @@ const FoldShader = preload("res://shaders/space_folds.gdshader")
 var lens_count := 0
 var strand_count := 0
 
+## Construct defaults before this object enters the scene tree; do not depend on ready child nodes here.
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	z_index = -20
 	material = ShaderMaterial.new()
 	material.shader = FoldShader
 
+## Pack visible lens and tether geometry into fixed-size shader arrays, keeping GPU work bounded.
 func update_effects(game: Node2D) -> void:
 	size = game.arena
 	var lenses := PackedVector4Array()
@@ -20,6 +22,13 @@ func update_effects(game: Node2D) -> void:
 	var strands := PackedVector4Array()
 	var strand_styles := PackedVector4Array()
 	var boss: Node2D = game.boss
+	for well in game.lingering_wells:
+		if well.kind not in ["black", "white"]:
+			continue
+		if lenses.size() >= MAX_LENSES:
+			break
+		lenses.append(Vector4(well.well_position.x, well.well_position.y, 164.0 * well.well_scale, 1.0))
+		styles.append(Vector4(31.0 * well.well_scale, 1.0 if well.kind == "white" else -1.0, 0.0, well.animation_time))
 	if is_instance_valid(boss) and boss.visible:
 		if boss.kind in ["black", "white"] and boss.phase in ["warning", "active"]:
 			var active: bool = boss.phase == "active"

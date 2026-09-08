@@ -22,11 +22,13 @@ var aim_offset := Vector2.ZERO
 var launch_speed := 260.0
 var swing_direction := 1.0
 
+## Godot calls this once after the node joins the scene; initialize child nodes and cached resources here.
 func _ready() -> void:
 	for i in range(9):
 		outline.append(Vector2.from_angle(i * TAU / 9.0) * radius * (0.8 if i % 3 == 0 else 1.0))
 	max_health = max(health, 1)
 
+## Capture the offscreen starting point and boss anchor, then enter the pull/windup/throw state machine.
 func begin_pull(origin: Vector2, target_offset: Vector2) -> void:
 	fold_origin = origin
 	pull_start = position
@@ -39,6 +41,7 @@ func begin_pull(origin: Vector2, target_offset: Vector2) -> void:
 	phase_time = 0.0
 	fold_life = RELEASE_FADE_SECONDS
 
+## Advance this actor by delta seconds and retain its previous position for swept collision checks.
 func advance(delta: float, target: Vector2 = Vector2.ZERO) -> void:
 	previous_position = position
 	var remaining := delta
@@ -66,6 +69,7 @@ func advance(delta: float, target: Vector2 = Vector2.ZERO) -> void:
 	flash = maxf(0, flash - delta)
 	queue_redraw()
 
+## Submit this object's visual geometry in local coordinates. Physics and collision rules are handled separately.
 func _draw() -> void:
 	draw_fold_lines()
 	draw_colored_polygon(outline, Color("fff0d5") if flash > 0 else Color("495065"))
@@ -88,6 +92,7 @@ func _draw() -> void:
 	if damage_ratio > 0.62:
 		draw_polyline(PackedVector2Array([Vector2(-radius * 0.25, -radius), Vector2(-radius * 0.05, -radius * 0.2), Vector2(radius * 0.32, radius * 0.1)]), Color("ffd19d"), 1.6, true)
 
+## Draw boss-to-rock tethers in the rock's rotated local space; fade them after release.
 func draw_fold_lines() -> void:
 	if fold_life <= 0:
 		return

@@ -5,9 +5,11 @@ const Projectile = preload("res://scripts/projectile.gd")
 var checks := 0
 var failures := 0
 
+## SceneTree test entry point; defer setup until the root viewport is ready.
 func _initialize() -> void:
 	call_deferred("run_checks")
 
+## Record a readable assertion without aborting the remaining checks, so one run reports all failures.
 func check(condition: bool, description: String) -> void:
 	if not condition:
 		push_error("FAIL: " + description)
@@ -16,6 +18,7 @@ func check(condition: bool, description: String) -> void:
 	checks += 1
 	print("PASS: " + description)
 
+## Run deterministic regression checks with a disposable save file; failures produce a nonzero exit status.
 func run_checks() -> void:
 	root.size = Vector2i(540, 960)
 	var save_path := OS.get_environment("ALIEN_SAVE_PATH")

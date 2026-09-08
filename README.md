@@ -33,7 +33,7 @@ Each tap fully cancels a hole's force for a brief beat. Keep tapping to hold the
 
 ## Boss fights
 
-**Exchange fire → randomly timed special attack → survive → exchange fire again.** This cycle repeats until the boss has no health left. Only player shots hitting the boss damage it. Surviving an attack does not reduce its health, and health never resets between cycles.
+**Exchange fire → randomly timed special attack → survive → exchange fire again.** This cycle repeats until the boss has no health left. Only player weapons damage the boss, and only after all surrounding alien guards are destroyed. Surviving an attack does not reduce its health, and health never resets between cycles.
 
 - **Black hole:** the boss fires a fast rift cannon that folds space, detonates beside the ship, and creates the hole. Repeated taps neutralise the pull. Being pulled into its core is lethal unless a weapon upgrade supplies an emergency life.
 - **White hole:** the boss fires its rift cannon into a fixed lower-middle area. The blast creates a white hole that pushes away from its core, usually downward. All four edges remain dangerous. Repeated taps neutralise the push; reaching an edge destroys the ship.
@@ -41,7 +41,7 @@ Each tap fully cancels a hole's force for a brief beat. Keep tapping to hold the
 
 - **Swarm carrier:** pulls alien ships from offscreen on boss-connected folds, then throws them toward the player. These ships can shoot and can be dodged or destroyed.
 
-Random enemy groups and asteroids keep arriving between bosses. About 45% of regular aliens zigzag, and aliens fire every 1.05–1.9 seconds. Boss music gives a three-second warning before an entrance, roughly every 40–55 seconds of regular flight. Each set of four bosses contains all four types in shuffled order. Defeating a boss awards points, drops one pickup, clears its hazards, and continues the run. Gravity-boss victories restore the ship to its normal position.
+Random enemy groups and asteroids keep arriving between bosses. About 45% of regular aliens zigzag, and aliens fire every 1.05–1.9 seconds. Boss music gives a three-second warning before an entrance, roughly every 40–55 seconds of regular flight. Each set of four bosses contains all four types in shuffled order. Defeating a boss awards points, drops one pickup, preserves its unfinished attack, and continues after the hazards expire. The ship returns smoothly to normal position.
 
 ## Drops and survival
 
@@ -102,9 +102,17 @@ Use the left/right arrow keys to move, Space to shoot, and Q to exit. The origin
 
 This is a playable development prototype, not a signed Android/iOS release. It has been checked locally on macOS; physical-phone testing, final artwork, difficulty tuning, export configuration, signing, and store submission remain. The Godot prototype uses original procedural graphics and synthesized sounds; original Python artwork is not bundled into the Godot game.
 
-Difficulty begins at 1% and rises by one point per boss defeated. It changes enemy firing frequency and drop chances, while movement, wave timing, bullet speeds, and gravity strength stay constant. Small alien ships take 3 hits initially, gaining one hit every two victories up to 9. Asteroids begin at 5/8/12 hits by size and gain one hit every two victories. Boss health follows floor(100 - 780 / (12 + victories)): 35, 40, 44, 48… with a 99-hit ceiling. The underlying curve approaches 100 without reaching it. Single/double/triple bullets all travel at 850 units/s with a 0.17-second firing interval. Rockets travel at 660 units/s; lasers are instantaneous pulses. Original flight music switches to boss music during encounters. Planets drift through the sky and are replaced after passing offscreen.
+Difficulty begins at 1% and rises by one point per boss defeated. It changes enemy firing frequency and drop chances, while movement, wave timing, bullet speeds, and gravity strength stay constant. Small alien ships take 3 hits initially, gaining one hit every two victories up to 9. Asteroids begin at 5/8/12 hits by size and gain one hit every two victories. Boss health follows floor(100 - 780 / (12 + victories)): 35, 40, 44, 48… with a 99-hit ceiling. The underlying curve approaches 100 without reaching it. Single/double/triple bullets all travel at 850 units/s with a 0.17-second firing interval. Rockets travel at 660 units/s; the continuous laser kills non-bosses after 0.25 seconds of uninterrupted exposure and deals one boss hit per 0.25 seconds. Original flight music switches to boss music during encounters. Planets drift through the sky and are replaced after passing offscreen.
 # Drop progression
 
 Drop rates above are the 50% reference. They scale with difficulty: at 1%, basic weapon and life drops each have a 0.04% chance per kill, and advanced upgrades have a 0.01% chance. At 50%, these reach 2%, 2%, and 0.5%. The advanced drop cap still applies; each regular or summoned swarm guarantees a drop on its first defeated alien, and each boss guarantees one drop. Extra drops retain these scaled chances.
 
 Shooting and explosion effects use a low-bass palette. Gravity spawns and boss deaths descend to an 18 Hz sub-bass tail with audible harmonics; a dedicated impact voice prevents gunfire from interrupting them. Guaranteed rewards choose weapons or life pickups while preserving the one-advanced-weapon-per-boss-interval limit. At a full pickup budget, the oldest uncollected pickup is replaced by the guaranteed reward.
+
+## Boss shields, death attacks, and continuous laser
+
+Surviving aliens remain when a boss arrives and physically form its shield. The boss is invulnerable until every guard is defeated. Unfinished attacks keep their own remaining lifetime after boss death. Black bosses implode; white bosses explode. Each leaves a larger hole lasting eight seconds, in addition to any existing well. Keep tapping until gravity ends; the ship then returns smoothly to cruise position.
+
+Weapon pickups add visible barrels and progressively wider ship hulls. The laser is a continuous electric beam: 0.25 seconds of uninterrupted contact kills a non-boss, while bosses lose one health every 0.25 seconds. Leaving the beam resets exposure. Ship hits have dedicated audio, and explosions are louder.
+
+Read [the commented-code guide](docs/CODE_GUIDE.md) for ownership, update order, tuning values, test commands and the iPhone workflow.

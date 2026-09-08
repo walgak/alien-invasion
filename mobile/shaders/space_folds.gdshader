@@ -1,4 +1,6 @@
 shader_type canvas_item;
+// Sample only the already-drawn background. Foreground actors render after this pass.
+// The matching controller in space_folds.gd must keep array capacities synchronized.
 render_mode unshaded;
 
 uniform sampler2D screen_texture : hint_screen_texture, repeat_disable, filter_linear;
@@ -12,6 +14,8 @@ uniform vec4 strand_styles[6]; // width, strength, simulation time, travel direc
 uniform float refraction_strength : hint_range(0.0, 1.0) = 1.0;
 
 void fragment() {
+	// Sum a bounded set of well/rock lenses and tethers before sampling the sky once.
+	// Final red/blue offset samples add subtle dispersion along the same displacement.
 	vec2 pixel = UV * arena_size;
 	vec2 displacement = vec2(0.0);
 	vec3 gleam = vec3(0.0);

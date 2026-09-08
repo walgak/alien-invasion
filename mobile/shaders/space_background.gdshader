@@ -1,4 +1,6 @@
 shader_type canvas_item;
+// Opaque background layer. This runs per pixel, before ships and the refraction pass.
+// Coordinates are logical viewport pixels; visual_time is frozen by the pause menu.
 render_mode unshaded;
 
 uniform vec2 arena_size = vec2(540.0, 960.0);
@@ -7,12 +9,14 @@ uniform float visual_time = 0.0;
 varying vec2 canvas_position;
 
 float hash21(vec2 p) {
+	// Stable pseudo-random value: the same cell or planet ID always produces the same art.
 	p = fract(p * vec2(123.34, 456.21));
 	p += dot(p, p + 45.32);
 	return fract(p.x * p.y);
 }
 
 float noise(vec2 p) {
+	// Interpolate four hashed grid corners to avoid hard square boundaries.
 	vec2 cell = floor(p);
 	vec2 f = fract(p);
 	f = f * f * (3.0 - 2.0 * f);
@@ -21,6 +25,7 @@ float noise(vec2 p) {
 }
 
 float cloud_noise(vec2 p) {
+	// Four rotated noise octaves add large clouds and progressively finer surface detail.
 	float value = 0.0;
 	float amplitude = 0.53;
 	for (int octave = 0; octave < 4; octave++) {
@@ -32,6 +37,7 @@ float cloud_noise(vec2 p) {
 }
 
 vec3 star_layer(vec2 p, float spacing, float seed) {
+	// One candidate star per grid cell, with separate halo, size, tint and twinkle.
 	vec2 grid = p / spacing;
 	vec2 cell = floor(grid);
 	float chance = hash21(cell + seed);
@@ -48,10 +54,12 @@ vec3 star_layer(vec2 p, float spacing, float seed) {
 }
 
 void vertex() {
+	// Preserve logical pixel coordinates for the fragment shader.
 	canvas_position = VERTEX;
 }
 
 void fragment() {
+	// Composite nebula, scrolling star layers, one passing planet, then the vignette.
 	vec2 p = canvas_position;
 	vec2 uv = p / max(arena_size, vec2(1.0));
 	vec2 sky = p / 410.0;

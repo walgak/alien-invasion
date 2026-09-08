@@ -1,3 +1,5 @@
+"""Original Python practice game, retained as a separate runnable project. The central loop processes input, updates active gameplay, draws, then limits to 60 FPS. It does not contain the Godot bosses, upgrades, or mobile export logic."""
+
 import sys
 from time import sleep
 
@@ -68,6 +70,7 @@ class AlienInvasion:
                 self._check_play_button(mouse_pos)
     
     def _check_keydowns(self, event):
+        """Set movement flags or fire once when a key is pressed; Q exits."""
         if event.key == pygame.K_RIGHT:
             #Move the ship to the right.
             self.ship.moving_right = True
@@ -81,6 +84,7 @@ class AlienInvasion:
 
     
     def _check_keyups(self, event):
+        """Clear movement flags on release so the ship stops steering."""
         if event.key == pygame.K_RIGHT:
             self.ship.moving_right = False
         elif event.key == pygame.K_LEFT:
@@ -249,4 +253,3 @@ if __name__ == '__main__':
     #Make a game instance, and run the game.
     ai = AlienInvasion()
     ai.run_game()
-                    

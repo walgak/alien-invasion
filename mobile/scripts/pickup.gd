@@ -8,6 +8,7 @@ var age := 0.0
 var velocity := Vector2(0.0, 82.0)
 var phase := 0.0
 
+## Advance this actor by delta seconds and retain its previous position for swept collision checks.
 func advance(delta: float) -> void:
 	previous_position = position
 	var sway_before := sin(age * 2.1 + phase)
@@ -17,6 +18,7 @@ func advance(delta: float) -> void:
 	position.x += (sin(age * 2.1 + phase) - sway_before) * 8.0
 	queue_redraw()
 
+## Submit this object's visual geometry in local coordinates. Physics and collision rules are handled separately.
 func _draw() -> void:
 	var tint := Color("7cf3b7") if kind == "life" else Color("ffc56e")
 	var pulse := 0.5 + 0.5 * sin(age * 4.5)

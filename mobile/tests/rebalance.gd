@@ -1,13 +1,16 @@
 extends SceneTree
 var failures := 0
+## SceneTree test entry point; defer setup until the root viewport is ready.
 func _initialize() -> void:
 	call_deferred("run")
+## Record a readable assertion without aborting the remaining checks, so one run reports all failures.
 func check(ok: bool, label: String) -> void:
 	if not ok:
 		failures += 1
 		push_error(label)
 	else:
 		print("PASS: " + label)
+## Create an isolated test game, exercise the stated behavior, and exit nonzero on a failed assertion.
 func run() -> void:
 	if not OS.get_environment("ALIEN_SAVE_PATH").ends_with("rebalance-record.cfg"):
 		quit(1)
@@ -22,6 +25,7 @@ func run() -> void:
 	var previous := 0.0
 	var increment := 100.0
 	for wins in range(25):
+		game.start_run()
 		game.bosses_defeated = wins
 		game.begin_boss("black")
 		var hp: float = game.boss.max_health
@@ -51,7 +55,7 @@ func run() -> void:
 	var hp: float = game.boss.health
 	game.weapons.level = 3
 	game.fire_player_shot()
-	game.update_projectiles(0.01)
+	game.update_laser(0.01)
 	check(game.boss.health == hp, "laser cannot hit an arriving boss")
 	game.boss.step(1.5)
 	check(game.pointer_id == 0, "arrival completion preserves active touch")
@@ -64,7 +68,7 @@ func run() -> void:
 	game.weapons.level = 3
 	var hidden = game.spawn_enemy(Vector2(270, -10), Vector2.ZERO)
 	game.fire_player_shot()
-	game.update_projectiles(0.01)
+	game.update_laser(0.01)
 	check(hidden.health == 3, "laser never damages an offscreen ship")
 	game.detonate_rocket(Vector2(270, 0), 65, null)
 	check(hidden.health == 3, "rocket splash never damages an offscreen ship")

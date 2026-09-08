@@ -4,9 +4,11 @@ extends SceneTree
 var failures := 0
 var game: Node2D
 
+## SceneTree test entry point; defer setup until the root viewport is ready.
 func _initialize() -> void:
 	call_deferred("run_checks")
 
+## Record a readable assertion without aborting the remaining checks, so one run reports all failures.
 func check(condition: bool, description: String) -> void:
 	if condition:
 		print("PASS: " + description)
@@ -14,6 +16,7 @@ func check(condition: bool, description: String) -> void:
 		push_error("FAIL: " + description)
 		failures += 1
 
+## Send real mouse press/release events through Godot's input routing, yielding frames for GUI handling.
 func click(at: Vector2) -> void:
 	var move := InputEventMouseMotion.new()
 	move.position = at
@@ -30,6 +33,7 @@ func click(at: Vector2) -> void:
 		Input.parse_input_event(event)
 		await process_frame
 
+## Run deterministic regression checks with a disposable save file; failures produce a nonzero exit status.
 func run_checks() -> void:
 	root.size = Vector2i(540, 960)
 	game = load("res://main.tscn").instantiate()

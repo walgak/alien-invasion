@@ -1,13 +1,16 @@
 extends SceneTree
 var failures := 0
+## SceneTree test entry point; defer setup until the root viewport is ready.
 func _initialize() -> void:
 	call_deferred("run")
+## Record a readable assertion without aborting the remaining checks, so one run reports all failures.
 func check(ok: bool, label: String) -> void:
 	if not ok:
 		failures += 1
 		push_error(label)
 	else:
 		print("PASS: " + label)
+## Create an isolated test game, exercise the stated behavior, and exit nonzero on a failed assertion.
 func run() -> void:
 	if not OS.get_environment("ALIEN_SAVE_PATH").ends_with("balance-record.cfg"):
 		quit(1)

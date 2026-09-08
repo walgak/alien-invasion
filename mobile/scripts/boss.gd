@@ -37,11 +37,20 @@ var cannon_velocity := Vector2.ZERO
 var tap_flash := 0.0
 var hit_flash := 0.0
 var animation_time := 0.0
+var lingering := false
+## Detached attacks skip boss-body rendering and free themselves when their phase ends.
+var well_duration := ACTIVE_SECONDS
+## Normal force lasts four seconds; the death-created well overrides this to eight.
+var well_scale := 1.0
 
+## Godot calls this once after the node joins the scene; initialize child nodes and cached resources here.
 func _ready() -> void:
+	if lingering:
+		return
 	return_to_firefight()
 	phase = "arrival"
 
+## Advance the boss phase machine or a detached residual attack; all attack timers use seconds.
 func step(delta: float) -> void:
 	if health <= 0 or game.state != game.State.PLAYING:
 		return
@@ -49,7 +58,8 @@ func step(delta: float) -> void:
 	phase_time += delta
 	tap_flash = maxf(0.0, tap_flash - delta)
 	hit_flash = maxf(0.0, hit_flash - delta)
-	body_position = Vector2(game.arena.x * 0.5 + sin(animation_time * 0.63) * 80, game.top_inset + 250)
+	if not lingering:
+		body_position = Vector2(game.arena.x * 0.5 + sin(animation_time * 0.63) * 80, game.top_inset + 250)
 	if phase == "arrival":
 		body_position.y = lerpf(-100.0, game.top_inset + 250.0, smoothstep(0.0, 1.5, phase_time))
 		if phase_time >= 1.5:
@@ -105,23 +115,29 @@ func step(delta: float) -> void:
 			game.ship.position += direction * strength * delta
 		game.ship.target_x = game.ship.position.x
 		var closest := Geometry2D.get_closest_point_to_segment(well_position, previous_position, game.ship.position)
-		if kind == "black" and closest.distance_to(well_position) < 29:
+		if kind == "black" and closest.distance_to(well_position) < 29 * well_scale:
 			game.lose_ship("Caught in the black hole.")
 			return
 		if kind == "white" and touches_screen_edge():
 			game.lose_ship("The white hole pushed you into the boundary.")
 			return
-		if phase_time >= ACTIVE_SECONDS:
+		if phase_time >= well_duration:
 			return_to_firefight()
 	queue_redraw()
 
+## Aim three enemy projectiles at the ship's current position; their trajectories remain dodgeable after firing.
 func fire_volley() -> void:
 	var muzzle := body_position + Vector2(0, 45)
 	var aim: Vector2 = (game.ship.position - muzzle).normalized()
 	for angle in [-0.2, 0.0, 0.2]:
 		game.spawn_hostile_shot(muzzle, aim.rotated(angle) * 245.0)
 
+## Finish a special and schedule another firefight. Detached attacks free themselves instead of restarting.
 func return_to_firefight() -> void:
+	if lingering:
+		game.lingering_wells.erase(self)
+		queue_free()
+		return
 	phase = "firefight"
 	phase_time = 0.0
 	cooldown = game.rng.randf_range(FIREFIGHT_MIN_SECONDS, FIREFIGHT_MAX_SECONDS)
@@ -130,6 +146,7 @@ func return_to_firefight() -> void:
 	cannon_active = false
 	queue_redraw()
 
+## Enter the telegraph phase and launch a rift cannon or prepare a finite summoned barrage.
 func begin_special() -> void:
 	phase = "warning"
 	phase_time = 0.0
@@ -141,8 +158,9 @@ func begin_special() -> void:
 		cannon_active = false
 	queue_redraw()
 
+## Start the force/barrage timer only after the warning or cannon landing; unsafe gravity landings are redirected.
 func activate_special() -> void:
-	if kind in ["black", "white"] and well_position.distance_to(game.ship.position) < minf(130.0, game.arena.x * 0.22):
+	if not lingering and kind in ["black", "white"] and well_position.distance_to(game.ship.position) < minf(130.0, game.arena.x * 0.22):
 		position_gravity_hole()
 		aim_cannon_at_hole()
 		return
@@ -163,16 +181,19 @@ func activate_special() -> void:
 		game.pointer_id = -1
 		game.ship.target_x = game.ship.position.x
 
+## Spawn the fast visual cannon at the boss muzzle and aim it at the chosen fixed well location.
 func launch_rift_cannon() -> void:
 	cannon_active = true
 	cannon_position = body_position + Vector2(0, 46)
 	cannon_previous_position = cannon_position
 	aim_cannon_at_hole()
 
+## Compute the fixed-speed cannon velocity from its current position to the well destination.
 func aim_cannon_at_hole() -> void:
 	var aim := well_position - cannon_position
 	cannon_velocity = aim.normalized() * RIFT_CANNON_SPEED if aim.length() > 0.001 else Vector2.ZERO
 
+## Choose a rock size and offscreen origin, then let the rock's pull/windup state machine throw it.
 func summon_asteroid() -> void:
 	var choice: Dictionary = ASTEROID_SIZES[game.rng.randi_range(0, ASTEROID_SIZES.size() - 1)]
 	var radius: float = choice.radius
@@ -189,6 +210,7 @@ func summon_asteroid() -> void:
 	game.spawn_asteroid(start, velocity, radius, 0, body_position + Vector2(0, 42), aim_offset)
 	game.sound.play_effect("fold")
 
+## Create a tethered alien and attach the barrage's shared reward token so the swarm guarantees one drop.
 func summon_alien() -> void:
 	var side: int = game.rng.randi_range(0, 2)
 	var start := Vector2.ZERO
@@ -204,6 +226,7 @@ func summon_alien() -> void:
 	alien.drop_group = swarm_reward
 	game.sound.play_effect("fold")
 
+## Choose a lower-middle landing region, maximizing clearance if the random point is too close to the ship.
 func position_gravity_hole() -> void:
 	# Fixed lower-middle arena region, never a ship-relative target.
 	var region := Rect2(game.arena * Vector2(0.28, 0.57), game.arena * Vector2(0.44, 0.13))
@@ -216,21 +239,27 @@ func position_gravity_hole() -> void:
 	well_position = candidate
 	white_push_direction = (game.ship.position - well_position).normalized()
 
+## Check the ship's collision margin against all four screen boundaries for white-hole defeat.
 func touches_screen_edge() -> bool:
 	var at: Vector2 = game.ship.position
 	return at.x <= EDGE_COLLISION_DISTANCE or at.x >= game.arena.x - EDGE_COLLISION_DISTANCE \
 		or at.y <= EDGE_COLLISION_DISTANCE or at.y >= game.arena.y - EDGE_COLLISION_DISTANCE
 
+## Return a normalized on/off meter value; tapping cancels force completely rather than weakening it.
 func neutralisation() -> float:
 	return 1.0 if neutralise_time > 0.0 else 0.0
 
+## Refresh the short neutralisation window without applying any positional impulse to the ship.
 func resist() -> void:
 	if phase == "active" and kind in ["black", "white"]:
 		neutralise_time = TAP_NEUTRALISE_SECONDS
 		tap_flash = 0.18
 		queue_redraw()
 
+## Ignore damage while guards remain; otherwise reduce boss health and hand victory handling to game.gd.
 func take_hit(amount: int = 1) -> void:
+	if game.boss_is_shielded():
+		return
 	# Called only by a friendly projectile collision in the game controller.
 	if health <= 0 or game.state != game.State.PLAYING:
 		return
@@ -240,37 +269,41 @@ func take_hit(amount: int = 1) -> void:
 		visible = false
 		game.defeat_boss(self)
 
+## Report whether this active gravity attack replaces horizontal dragging with tap-to-neutralise input.
 func holds_steering() -> bool:
 	return phase == "active" and kind in ["black", "white"]
 
+## Submit this object's visual geometry in local coordinates. Physics and collision rules are handled separately.
 func _draw() -> void:
 	if kind == "swarm":
-		draw_swarm_body()
+		if not lingering:
+			draw_swarm_body()
 		return
 	var tint := Color("baa3ff") if kind == "black" else (Color("b9f8ff") if kind == "white" else Color("ffb86a"))
-	draw_set_transform(body_position)
-	draw_circle(Vector2.ZERO, 74, Color(tint, 0.035))
-	draw_arc(Vector2.ZERO, 64, animation_time * 0.3, animation_time * 0.3 + TAU * 0.85, 60, Color(tint, 0.35), 2, true)
-	for i in range(6):
-		var angle := i * TAU / 6 + animation_time * 0.12
-		var outer := Vector2.from_angle(angle) * 55
-		var wing := PackedVector2Array([outer + Vector2.from_angle(angle) * 10, Vector2.from_angle(angle - 0.3) * 33, Vector2.from_angle(angle + 0.3) * 33])
-		draw_colored_polygon(wing, tint.darkened(0.3))
-	draw_circle(Vector2.ZERO, 36, Color("202d43"))
-	draw_arc(Vector2.ZERO, 36, 0, TAU, 60, tint, 2, true)
-	draw_circle(Vector2.ZERO, 23, Color("f0fcff") if kind == "white" else Color("050714"))
-	if kind == "black":
-		draw_arc(Vector2.ZERO, 26, 0, TAU, 48, Color("c0a4ff"), 3, true)
-	elif kind == "asteroid":
-		draw_colored_polygon(PackedVector2Array([Vector2(0,-18), Vector2(20,10),Vector2(-20,10)]), tint)
-		draw_circle(Vector2(0, 3), 5, Color("33283c"))
-	if hit_flash > 0:
-		draw_circle(Vector2.ZERO, 38, Color(1, 1, 1, 0.55))
-	draw_set_transform(Vector2.ZERO)
+	if not lingering:
+		draw_set_transform(body_position)
+		draw_circle(Vector2.ZERO, 74, Color(tint, 0.035))
+		draw_arc(Vector2.ZERO, 64, animation_time * 0.3, animation_time * 0.3 + TAU * 0.85, 60, Color(tint, 0.35), 2, true)
+		for i in range(6):
+			var angle := i * TAU / 6 + animation_time * 0.12
+			var outer := Vector2.from_angle(angle) * 55
+			var wing := PackedVector2Array([outer + Vector2.from_angle(angle) * 10, Vector2.from_angle(angle - 0.3) * 33, Vector2.from_angle(angle + 0.3) * 33])
+			draw_colored_polygon(wing, tint.darkened(0.3))
+		draw_circle(Vector2.ZERO, 36, Color("202d43"))
+		draw_arc(Vector2.ZERO, 36, 0, TAU, 60, tint, 2, true)
+		draw_circle(Vector2.ZERO, 23, Color("f0fcff") if kind == "white" else Color("050714"))
+		if kind == "black":
+			draw_arc(Vector2.ZERO, 26, 0, TAU, 48, Color("c0a4ff"), 3, true)
+		elif kind == "asteroid":
+			draw_colored_polygon(PackedVector2Array([Vector2(0,-18), Vector2(20,10),Vector2(-20,10)]), tint)
+			draw_circle(Vector2(0, 3), 5, Color("33283c"))
+		if hit_flash > 0:
+			draw_circle(Vector2.ZERO, 38, Color(1, 1, 1, 0.55))
+		draw_set_transform(Vector2.ZERO)
 	if phase not in ["warning", "active"] or kind not in ["black", "white"]:
 		return
 	var active := phase == "active"
-	var radius := 31.0 if active else 25.0
+	var radius := (31.0 if active else 25.0) * well_scale
 	if cannon_active:
 		draw_rift_cannon(tint)
 	draw_space_folds(well_position, radius, tint, active)
@@ -290,6 +323,7 @@ func _draw() -> void:
 	if tap_flash > 0:
 		draw_arc(game.ship.position, 42 + (0.18 - tap_flash) * 110, 0, TAU, 56, Color("6cf4d4"), 2, true)
 
+## Render the carrier's distinctive body and hangars; this is cosmetic geometry, not collision geometry.
 func draw_swarm_body() -> void:
 	var tint := Color("79f4c4")
 	var pulse := 0.5 + sin(animation_time * 4.0) * 0.5
@@ -325,12 +359,13 @@ func draw_swarm_body() -> void:
 		draw_circle(Vector2.ZERO, 40.0, Color(1, 1, 1, 0.5))
 	draw_set_transform(Vector2.ZERO)
 
+## Draw inward or outward animated rings around a well; the screen shader provides background distortion.
 func draw_space_folds(center: Vector2, core_radius: float, tint: Color, active: bool) -> void:
 	# The background shader bends the sky. These sparse glints sit on its ridges.
 	var direction := 1.0 if kind == "white" else -1.0
 	var spacing := TAU / 0.255
 	var offset := fposmod(animation_time * direction * 5.5 / 0.255, spacing)
-	var outer := 164.0 if active else 112.0
+	var outer := (164.0 if active else 112.0) * well_scale
 	for i in range(6):
 		var ring_radius := core_radius + offset + i * spacing
 		if ring_radius > outer:
@@ -342,6 +377,7 @@ func draw_space_folds(center: Vector2, core_radius: float, tint: Color, active: 
 			points.append(center + Vector2(cos(angle), sin(angle) * 0.83) * ring_radius)
 		draw_polyline(points, Color(tint, envelope * (0.17 if active else 0.05)), 1.0, true)
 
+## Render the traveling space-fold projectile and its luminous tail.
 func draw_rift_cannon(tint: Color) -> void:
 	var trail := PackedVector2Array()
 	var direction := cannon_velocity.normalized()
