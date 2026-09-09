@@ -10,6 +10,7 @@ var primary: Button
 var secondary: Button
 var pause_button: Button
 var sound_button: Button
+var vibration_button: Button
 var font: Font
 
 ## Godot calls this once after the node joins the scene; initialize child nodes and cached resources here.
@@ -33,6 +34,9 @@ func _ready() -> void:
 	sound_button = make_button(false)
 	sound_button.add_theme_font_size_override("font_size", 13)
 	sound_button.pressed.connect(game.toggle_sound)
+	vibration_button = make_button(false)
+	vibration_button.add_theme_font_size_override("font_size", 13)
+	vibration_button.pressed.connect(game.toggle_vibration)
 
 ## Create a real GUI button with shared colors and focus styling so touch and keyboard navigation work.
 func make_button(accent: bool) -> Button:
@@ -72,6 +76,7 @@ func refresh() -> void:
 	secondary.visible = not playing and not menu
 	pause_button.visible = playing
 	sound_button.visible = not playing
+	vibration_button.visible = not playing
 	primary.text = "Launch endless flight  →" if menu else ("Resume flight  →" if game.state == game.State.PAUSED else "Fly again  →")
 	secondary.text = "Return to title"
 	primary.position = Vector2(40, h - game.bottom_inset - 170) if menu else Vector2(64, h * 0.36 + 215)
@@ -80,8 +85,11 @@ func refresh() -> void:
 	secondary.size = primary.size
 	pause_button.position = Vector2(w - 88, game.top_inset)
 	pause_button.size = Vector2(56, 56)
-	sound_button.position = Vector2(w * 0.5 - 75, h - game.bottom_inset - 74)
-	sound_button.size = Vector2(150, 46)
+	sound_button.position = Vector2(32, h - game.bottom_inset - 74)
+	sound_button.size = Vector2((w - 76) * 0.5, 46)
+	vibration_button.position = Vector2(w * 0.5 + 6, h - game.bottom_inset - 74)
+	vibration_button.size = sound_button.size
+	vibration_button.text = "VIBRATION  " + ("ON" if game.progress.vibration_enabled else "OFF")
 	sound_button.text = "SOUND  " + ("ON" if game.progress.sound_enabled else "OFF")
 	# Clear focus after a click; keyboard users can still Tab through visible buttons.
 	var focused := get_viewport().gui_get_focus_owner()
@@ -121,10 +129,10 @@ func _draw() -> void:
 		tracked("INVASION", top + 205, 56, 4.0, INK)
 		centered("Keep flying. Make every life count.", top + 250, 17, MUTED)
 		tracked("HIGH SCORE  %06d" % game.progress.best_for("endless"), top + 290, 12, 1.5, MINT)
-		centered("Single → Double → Triple → Laser → Rockets", h - game.bottom_inset - 292, 16, Color("ffc56e"))
-		centered("Catch weapon drops for power and one emergency life.", h - game.bottom_inset - 262, 13, MUTED)
-		centered("Hull drops restore lives. Carry up to three.", h - game.bottom_inset - 239, 13, MUTED)
-		centered("Drag to steer · auto-fire · tap against gravity", h - game.bottom_inset - 200, 13, INK)
+		centered("Hold your ship to fire · drag to steer", h - game.bottom_inset - 292, 16, Color("ffc56e"))
+		centered("Tap enemies for rockets · hold above to charge gravity", h - game.bottom_inset - 262, 13, MUTED)
+		centered("Release after 1–5 seconds · tap to resist gravity", h - game.bottom_inset - 239, 13, MUTED)
+		centered("Shield and laser pickups last 10 seconds", h - game.bottom_inset - 200, 13, INK)
 		return
 	draw_rect(Rect2(0, 0, w, top + 143), Color("080e20"))
 	text_at("SCORE", Vector2(28, top + 12), 11, MUTED)
@@ -147,6 +155,14 @@ func _draw() -> void:
 	else:
 		tracked("SECTOR %02d  ·  DIFFICULTY %d%%" % [game.bosses_defeated + 1, game.difficulty_percent()], top + 119, 10, 1.0, MUTED)
 	if game.state == game.State.PLAYING:
+		var timed := ""
+		if game.combat.shield_time > 0.0:
+			timed += "SHIELD %.1fs  " % game.combat.shield_time
+		if game.combat.laser_time > 0.0:
+			timed += "LASER %.1fs" % game.combat.laser_time
+		centered(timed, top + 162, 12, MINT)
+		if game.combat.gesture == "aim":
+			centered("GRAVITY CHARGE %.1f / 5s" % game.combat.held, h - game.bottom_inset - 38, 13, Color("c7a0ff"))
 		if game.gravity_is_active() and not is_instance_valid(game.boss):
 			centered("KEEP TAPPING · GRAVITY REMAINS", h * 0.43, 19, MINT)
 		if game.boss_warning > 0.0:

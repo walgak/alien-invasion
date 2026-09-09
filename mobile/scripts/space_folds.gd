@@ -3,6 +3,7 @@ extends ColorRect
 
 const MAX_LENSES := 8
 const MAX_STRANDS := 6
+const PlayerWell = preload("res://scripts/player_well.gd")
 const FoldShader = preload("res://shaders/space_folds.gdshader")
 var lens_count := 0
 var strand_count := 0
@@ -27,6 +28,10 @@ func update_effects(game: Node2D) -> void:
 			continue
 		if lenses.size() >= MAX_LENSES:
 			break
+		if well is PlayerWell and well.phase == "warning":
+			lenses.append(Vector4(well.cannon_position.x, well.cannon_position.y, 57.0, 0.85))
+			styles.append(Vector4(10.0, -1.0, 1.0, well.animation_time))
+			continue
 		lenses.append(Vector4(well.well_position.x, well.well_position.y, 164.0 * well.well_scale, 1.0))
 		styles.append(Vector4(31.0 * well.well_scale, 1.0 if well.kind == "white" else -1.0, 0.0, well.animation_time))
 	if is_instance_valid(boss) and boss.visible:

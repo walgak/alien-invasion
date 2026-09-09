@@ -138,6 +138,7 @@ func run_checks() -> void:
 		game.boss.phase = "active"
 		game.boss.neutralise_time = 0
 		var click := InputEventMouseButton.new()
+		click.position = game.ship.position
 		click.pressed = true
 		click.button_index = MOUSE_BUTTON_LEFT
 		game._unhandled_input(click)
@@ -184,10 +185,12 @@ func run_checks() -> void:
 	game.remove_asteroid(rock)
 	game.spawn_asteroid(game.ship.position - Vector2(0, 100), Vector2(0, 1000), 24)
 	game.update_asteroids(0.12)
-	check(game.lives == 2, "an asteroid crossing the ship deals one hit")
+	check(game.lives == 0 and game.state == game.State.LOST, "an asteroid crossing the ship ends the run")
+	game.start_run("asteroid")
+	game.score = 25 # Keep the earlier rock reward in the independent boss assertion.
 	game.spawn_asteroid(game.ship.position + Vector2(100, -100), Vector2(0, 1000), 24)
 	game.update_asteroids(0.12)
-	check(game.lives == 2, "a dodged asteroid does not damage the ship")
+	check(game.lives == 3, "a dodged asteroid does not damage the ship")
 	game.boss.take_hit(game.boss.max_health)
 	check(game.state == game.State.PLAYING and not is_instance_valid(game.boss) and game.score == 1525, "destroying the boss continues the endless run")
 	check(game.progress.best_for("endless") >= 1525, "boss points count toward the endless record")

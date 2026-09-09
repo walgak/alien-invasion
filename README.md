@@ -27,7 +27,7 @@ godot --path mobile
 | Mouse | Click and drag | Click repeatedly | Pause button |
 | Keyboard | Arrow keys or A/D | Press Space repeatedly | P or Esc |
 
-Weapons fire automatically. During a hole attack, tapping temporarily replaces steering. Holding a button does not count as repeated taps.
+Weapons fire only while holding or dragging the lower flight area; release to stop firing. During a hole attack, tapping temporarily replaces steering. Holding a button does not count as repeated taps.
 
 Each tap fully cancels a hole's force for a brief beat. Keep tapping to hold the ship exactly where it is. Tapping never pushes the ship away and never recovers distance already lost; when the tap window expires, the pull or push returns at full strength.
 
@@ -45,7 +45,7 @@ Random enemy groups and asteroids keep arriving between bosses. About 45% of reg
 
 ## Drops and survival
 
-Collect weapon drops to advance **single → double → triple → laser → rockets**. Lasers pierce targets; rockets deal splash damage. Enemy kills randomly drop upgrades or hull repairs; extra basic weapon drops have a 2% chance; laser/rocket progression has a 0.5% chance and a shared maximum of one drop per boss interval. Hull repairs restore one life up to a maximum of three.
+Collect weapon drops to advance **single → double → triple → rockets**. Lasers pierce targets; rockets deal splash damage. Enemy kills randomly drop upgrades or hull repairs; extra basic weapon drops have a 2% chance; laser/rocket progression has a 0.5% chance and a shared maximum of one drop per boss interval. Hull repairs restore one life up to a maximum of three.
 
 Upgrades collectively provide one emergency life: losing the last hull life consumes the weapon upgrade, restores the single shooter, and leaves one hull life. Ordinary hits preserve the weapon. Another lethal hit without an upgrade ends the run. Surplus pickups at maximum capacity award points.
 
@@ -100,9 +100,9 @@ Use the left/right arrow keys to move, Space to shoot, and Q to exit. The origin
 
 ## Release status
 
-This is a playable development prototype, not a signed Android/iOS release. It has been checked locally on macOS; physical-phone testing, final artwork, difficulty tuning, export configuration, signing, and store submission remain. The Godot prototype uses original procedural graphics and synthesized sounds; original Python artwork is not bundled into the Godot game.
+This is a playable development prototype, not a store release. It has been checked locally on macOS; final artwork, further phone playtesting, difficulty tuning, and store submission remain; iOS development signing is configured. The Godot prototype uses original procedural graphics and synthesized sounds; original Python artwork is not bundled into the Godot game.
 
-Difficulty begins at 1% and rises by one point per boss defeated. It changes enemy firing frequency and drop chances, while movement, wave timing, bullet speeds, and gravity strength stay constant. Small alien ships take 3 hits initially, gaining one hit every two victories up to 9. Asteroids begin at 5/8/12 hits by size and gain one hit every two victories. Boss health follows floor(100 - 780 / (12 + victories)): 35, 40, 44, 48… with a 99-hit ceiling. The underlying curve approaches 100 without reaching it. Single/double/triple bullets all travel at 850 units/s with a 0.17-second firing interval. Rockets travel at 660 units/s; the continuous laser kills non-bosses after 0.25 seconds of uninterrupted exposure and deals one boss hit per 0.25 seconds. Original flight music switches to boss music during encounters. Planets drift through the sky and are replaced after passing offscreen.
+Difficulty begins at 1% and rises by one point per boss defeated. It changes enemy firing frequency and drop chances, while movement, wave timing, bullet speeds, and gravity strength stay constant. Small alien ships take 3 hits initially, gaining one hit every two victories up to 9. Asteroids begin at 5/8/12 hits by size and gain one hit every two victories. Boss health follows floor(100 - 780 / (12 + victories)): 35, 40, 44, 48… with a 99-hit ceiling. The underlying curve approaches 100 without reaching it. Single/double/triple bullets all travel at 850 units/s with a 0.17-second firing interval. Rockets travel at 660 units/s; the ten-second laser instantly kills aliens, reflects harmlessly off asteroids, and deals one boss hit per 0.25 seconds. Original flight music switches to boss music during encounters. Planets drift through the sky and are replaced after passing offscreen.
 # Drop progression
 
 Drop rates above are the 50% reference. They scale with difficulty: at 1%, basic weapon and life drops each have a 0.04% chance per kill, and advanced upgrades have a 0.01% chance. At 50%, these reach 2%, 2%, and 0.5%. The advanced drop cap still applies; each regular or summoned swarm guarantees a drop on its first defeated alien, and each boss guarantees one drop. Extra drops retain these scaled chances.
@@ -113,6 +113,8 @@ Shooting and explosion effects use a low-bass palette. Gravity spawns and boss d
 
 Surviving aliens remain when a boss arrives and physically form its shield. The boss is invulnerable until every guard is defeated. Unfinished attacks keep their own remaining lifetime after boss death. Black bosses implode; white bosses explode. Each leaves a larger hole lasting eight seconds, in addition to any existing well. Keep tapping until gravity ends; the ship then returns smoothly to cruise position.
 
-Weapon pickups add visible barrels and progressively wider ship hulls. The laser is a continuous electric beam: 0.25 seconds of uninterrupted contact kills a non-boss, while bosses lose one health every 0.25 seconds. Leaving the beam resets exposure. Ship hits have dedicated audio, and explosions are louder.
+Weapon pickups add visible barrels and progressively wider ship hulls. The laser is a continuous electric beam: ordinary aliens die instantly, asteroids reflect the beam away from the player, and bosses lose one health every 0.25 seconds. Leaving the beam resets exposure. Ship hits have dedicated audio, and explosions are louder.
 
 Read [the commented-code guide](docs/CODE_GUIDE.md) for ownership, update order, tuning values, test commands and the iPhone workflow.
+
+Shields last ten seconds and drop at one third the hull-repair rate. Asteroid impact and an escaped alien’s homing black-hole cannon are instant losses unless shielded; direct alien contact costs one life. Hold the upper playfield for 1–5 seconds and release to launch a player black hole. Gravity cancels firing, and surviving pulled actors return smoothly afterward. Each survived white-hole attack also returns the player toward the normal flight position.

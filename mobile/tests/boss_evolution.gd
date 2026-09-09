@@ -38,20 +38,14 @@ func run() -> void:
 	check(game.boss.health == hp - 1, "last guard destruction unlocks boss damage")
 	game.start_run()
 	game.weapons.level = 3
+	game.combat.press(0, game.ship.position)
 	var enemy = game.spawn_enemy(Vector2(270, 400), Vector2.ZERO)
 	enemy.health = 9
-	game.update_laser(0.24)
+	game.update_laser(0.001)
 	var beam = game.laser
-	check(game.enemies.has(enemy) and enemy.health == 9, "laser needs a quarter-second exposure")
-	game.update_laser(0.011)
-	check(not game.enemies.has(enemy) and game.laser == beam, "continuous beam kills a non-boss at quarter second without respawning")
-	enemy = game.spawn_enemy(Vector2(270, 400), Vector2.ZERO)
-	game.update_laser(0.2)
-	enemy.position.x = 100
+	check(not game.enemies.has(enemy), "temporary laser instantly kills ordinary aliens")
 	game.update_laser(0.1)
-	enemy.position.x = 270
-	game.update_laser(0.1)
-	check(game.enemies.has(enemy), "leaving the beam resets exposure")
+	check(game.laser == beam, "continuous beam reuses its node")
 	game.clear_hazards()
 	game.begin_boss("asteroid")
 	game.boss.phase = "firefight"

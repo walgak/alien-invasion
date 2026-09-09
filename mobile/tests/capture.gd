@@ -84,6 +84,7 @@ func capture() -> void:
 		game.space_folds.material.set_shader_parameter("refraction_strength", 1.0)
 	for level in [1, 2, 3, 4]:
 		game.start_run()
+		game.combat.press(0, game.ship.position)
 		game.weapons.level = level
 		game.ship.weapon_level = level
 		game.ship.queue_redraw()

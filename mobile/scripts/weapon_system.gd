@@ -13,6 +13,8 @@ func weapon_name() -> String:
 ## Advance one weapon tier without exceeding the final rocket tier.
 func upgrade() -> void:
 	level = clampi(level + 1, 0, MAX_LEVEL)
+	if level == 3:
+		level = 4 # Laser is a timed pickup, never a permanent rung.
 
 ## Emit the selected weapon pattern and return its cooldown in seconds. Laser ownership stays with game.update_laser.
 func fire(game: Node2D) -> float:

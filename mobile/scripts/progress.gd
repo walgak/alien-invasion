@@ -3,6 +3,7 @@ extends RefCounted
 
 var best_by_mode := {"endless": 0, "fleet": 0, "black": 0, "white": 0, "asteroid": 0}
 var sound_enabled := true
+var vibration_enabled := true
 var save_path := "user://flight_record.cfg"
 var last_error := OK
 
@@ -20,6 +21,7 @@ func _init() -> void:
 		var sound = config.get_value("settings", "sound", true)
 		if sound is bool:
 			sound_enabled = sound
+		vibration_enabled = config.get_value("settings", "vibration", true) == true
 
 ## Write scores and sound preference to ConfigFile; save_path can be redirected by test environment variables.
 func save() -> void:
@@ -27,6 +29,7 @@ func save() -> void:
 	for mode in best_by_mode:
 		config.set_value("records", mode, best_by_mode[mode])
 	config.set_value("settings", "sound", sound_enabled)
+	config.set_value("settings", "vibration", vibration_enabled)
 	last_error = config.save(save_path)
 	if last_error != OK:
 		push_warning("The local flight record could not be saved: %s" % error_string(last_error))

@@ -1,7 +1,7 @@
 extends Node2D
 ## Collection and attraction are handled by the game, so drops pause with play.
 
-const HIT_RADIUS := 20.0
+const HIT_RADIUS := 12.0
 var kind := "weapon"
 var previous_position := Vector2.ZERO
 var age := 0.0
@@ -20,7 +20,13 @@ func advance(delta: float) -> void:
 
 ## Submit this object's visual geometry in local coordinates. Physics and collision rules are handled separately.
 func _draw() -> void:
+	# A small luminous badge has a distinct silhouette from solid hostile ships.
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE * 0.6)
 	var tint := Color("7cf3b7") if kind == "life" else Color("ffc56e")
+	if kind == "shield":
+		tint = Color("73d5ff")
+	elif kind == "laser":
+		tint = Color("d2a3ff")
 	var pulse := 0.5 + 0.5 * sin(age * 4.5)
 	draw_circle(Vector2.ZERO, 29.0 + pulse * 3.0, Color(tint, 0.045))
 	draw_circle(Vector2.ZERO, 23.0, Color(tint, 0.08))
@@ -32,7 +38,13 @@ func _draw() -> void:
 	draw_polyline(diamond, Color(tint, 0.9), 1.8, true)
 	draw_arc(Vector2.ZERO, 25.0, age * 1.2, age * 1.2 + 1.1, 16, Color(tint, 0.65), 1.5, true)
 	draw_arc(Vector2.ZERO, 25.0, age * 1.2 + PI, age * 1.2 + PI + 1.1, 16, Color(tint, 0.35), 1.5, true)
-	if kind == "life":
+	if kind == "shield":
+		draw_arc(Vector2(0, -3), 10, 0, PI, 20, tint, 3, true)
+		draw_line(Vector2(-10, -3), Vector2(10, -3), tint, 3, true)
+	elif kind == "laser":
+		draw_line(Vector2(0, -12), Vector2(0, 12), tint, 4, true)
+		draw_line(Vector2(-6, -5), Vector2(6, -5), Color.WHITE, 2, true)
+	elif kind == "life":
 		draw_line(Vector2(0.0, -8.0), Vector2(0.0, 8.0), tint, 5.0, true)
 		draw_line(Vector2(-8.0, 0.0), Vector2(8.0, 0.0), tint, 5.0, true)
 	else:

@@ -35,11 +35,21 @@ The ship's return flag is set at victory and after every survived white-hole att
 
 ## Weapons and damage
 
-Weapon levels are 0 single, 1 double, 2 triple, 3 laser, 4 rockets. Single/double/triple bullets all use 850 pixels/second and a 0.17-second interval. Rockets use 660 pixels/second, direct damage plus splash, and their own interval.
+Weapon levels are 0 single, 1 double, 2 triple, 3 temporary laser, 4 rockets. Permanent upgrades skip level 3. `combat_controls.gd` remembers the previous weapon and restores it after ten gameplay seconds; another laser refreshes the timer, and permanent upgrades collected during the laser improve the remembered weapon. Single/double/triple bullets all use 850 pixels/second and a 0.17-second interval. Rockets use 660 pixels/second, direct damage plus splash, and their own interval.
 
-The laser is one persistent visual node, not a stream of projectiles. Each physics step updates its endpoints and a dictionary of target exposure. A non-boss needs 0.25 uninterrupted seconds, regardless of its health. Leaving the beam clears its accumulated exposure. An unshielded boss loses one health per 0.25 seconds; longer steps account for multiple intervals. The beam pierces targets. Offscreen/arriving actors are rejected before exposure or ordinary damage.
+The laser is one persistent visual node, not a stream of projectiles. Each physics step updates its endpoints and a dictionary of target exposure. Ordinary aliens die immediately. Asteroids are unharmed and reflect the beam at their surface; a downward reflection is redirected along the outward tangent so it cannot reach the player. The ray trace has at most three segments. Leaving the beam clears accumulated boss exposure. An unshielded boss loses one health per 0.25 seconds; longer steps account for multiple intervals. The beam pierces targets. Offscreen/arriving actors are rejected before exposure or ordinary damage.
 
 The ship draws wider hulls and matching barrels for each upgrade. Its collision radius stays small and constant so an upgrade does not make dodging unexpectedly harder. New shapes belong in `ship._draw()`; projectile muzzle positions belong in `weapon_system.fire()`.
+
+## Touch controls, fatal hazards and player gravity
+
+`combat_controls.gd` owns one active pointer. Holding the ship/lower flight region fires; dragging steers; release or leaving the viewport cancels control and the old movement target. Enemy taps launch homing rockets. An upper-field hold of 1–5 seconds launches a gravity rocket on release, provided the position is outside the lower 28% and at least 75 pixels from the ship. A second finger cannot change the first gesture. `_input()` handles release before GUI consumption; presses use `_unhandled_input()` so menus keep their clicks.
+
+Active gravity cancels equipped fire, targeting and charging. Taps neutralise all wells without applying thrust. Ordinary aliens stop shooting during gravity; bosses resist player gravity and retain their attacks. `player_well.gd` flies the charged rocket at 1225 pixels/second, opens a well for the charge duration, and pulls non-boss actors at a constant 90 pixels/second. Its minimum core matches the 1.8× boss death well; radius scales with the square root of charge. Survivors' pre-well positions are stored once and restored at 260 pixels/second. Deleted actors are never revived. `combat.controls_actor()` suspends ordinary movement during pull and restoration. Shots instead bend toward black holes or away from white holes while preserving speed.
+
+Asteroid contact and an escaped alien's homing doom cannon call `instant_loss()`, bypassing hull, upgrade backups and normal hit invulnerability. Asteroids exiting the screen do nothing. Direct alien contact still costs one hull. A ten-second shield blocks all damage and gravity movement; it is not consumed on contact. Support rewards choose hull/shield with 75%/25% probability, giving shields one third of the hull rate. Each swarm and boss still guarantees a drop; laser/rocket rarity shares the sector allowance.
+
+`combat.vibrate()` uses a brief enemy-death tick, a longer gravity rumble and a double hit pulse. The queue is bounded and muted by the saved vibration preference independently of sound. iOS supplies the physical feedback through Godot's `Input.vibrate_handheld`; evaluate its feel on the device.
 
 ## Tuning map
 
@@ -71,6 +81,7 @@ Ordinary bullet geometry is cached while the node moves. Only animated beam/rock
 From the repository root:
 
 ```sh
+ALIEN_SAVE_PATH=/tmp/combat-rules-record.cfg godot --headless --path mobile --script res://tests/combat_rules.gd
 ALIEN_SAVE_PATH=/tmp/boss-evolution-record.cfg godot --headless --path mobile --script res://tests/boss_evolution.gd
 ALIEN_SAVE_PATH=/tmp/hole-physics-record.cfg godot --headless --path mobile --script res://tests/hole_physics.gd
 ```
@@ -82,3 +93,5 @@ See `mobile/README.md` for the iOS export workflow. The `build/` directory is ge
 ## The original Python version
 
 `alien_invasion.py` owns a 60 FPS Pygame loop. `settings.py` holds its separate tuning values; `ship.py`, `alien.py`, and `bullet.py` are actors. `game_stats.py`, `scoreboard.py`, and `button.py` handle state and display. Unlike the Godot version, this older code uses per-frame movement and does not save its high score to disk. Its existing method docstrings and added module comments explain these differences.
+
+Godot 4.7’s iOS haptic implementation can log “Could not vibrate using haptic engine: (null)” even when feedback succeeds. This is an upstream logging bug, not a failed game assertion: https://github.com/godotengine/godot/issues/121614. The actual vibration feel still needs hands-on testing.

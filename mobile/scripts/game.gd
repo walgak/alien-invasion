@@ -69,6 +69,7 @@ var sound = Sound.new()
 var interface = Interface.new()
 var space_background = SpaceBackground.new()
 var space_folds = SpaceFolds.new()
+var combat = preload("res://scripts/combat_controls.gd").new()
 
 ## Godot calls this once after the node joins the scene; initialize child nodes and cached resources here.
 func _ready() -> void:
@@ -77,6 +78,8 @@ func _ready() -> void:
 	add_child(space_background)
 	add_child(space_folds)
 	add_child(ship)
+	combat.game = self
+	add_child(combat)
 	add_child(sound)
 	sound.enabled = progress.sound_enabled
 	interface.game = self
@@ -170,6 +173,7 @@ func restore_cruise_position() -> void:
 
 ## Free every run-owned actor, including persistent laser and detached attacks, when restarting or returning to title.
 func clear_actors() -> void:
+	combat.reset()
 	if is_instance_valid(laser):
 		laser.queue_free()
 	laser = null
@@ -198,6 +202,7 @@ func _physics_process(delta: float) -> void:
 	if state != State.PLAYING:
 		return
 	elapsed += delta
+	combat.step(delta)
 	pickup_notice_time = maxf(0.0, pickup_notice_time - delta)
 	save_timer -= delta
 	if save_timer <= 0.0:
@@ -211,7 +216,7 @@ func _physics_process(delta: float) -> void:
 	if Input.is_physical_key_pressed(KEY_D):
 		direction += 1.0
 	ship.weapon_level = weapons.level
-	if gravity_is_active():
+	if gravity_is_active() or combat.controls_actor(ship):
 		ship.animate(delta)
 		ship.invulnerable = maxf(0, ship.invulnerable - delta)
 	elif returning_to_cruise:
@@ -224,8 +229,8 @@ func _physics_process(delta: float) -> void:
 	else:
 		ship.move_ship(delta, clampf(direction, -1, 1), arena.x)
 	shot_timer -= delta
-	if weapons.level != 3 and shot_timer <= 0.0:
-		shot_timer += fire_player_shot()
+	if weapons.level != 3 and shot_timer <= 0.0 and combat.firing():
+		shot_timer = fire_player_shot()
 	if is_instance_valid(boss):
 		boss.step(delta)
 		if state != State.PLAYING:
@@ -356,6 +361,7 @@ func defeat_boss(defeated: Node2D) -> void:
 	if state != State.PLAYING or defeated != boss:
 		return
 	var was_gravity: bool = defeated.kind in ["black", "white"]
+	combat.vibrate("gravity" if was_gravity else "enemy")
 	var at: Vector2 = defeated.body_position
 	burst(at, Color("ffca8d"), 60)
 	add_score(1500 + bosses_defeated * 250)
@@ -419,9 +425,9 @@ func create_lingering_well(source: Node2D, death_well: bool) -> void:
 	add_child(well)
 	lingering_wells.append(well)
 
-## Maintain one beam node and uninterrupted per-target exposure. Non-bosses die at 0.25 s; bosses take four hits/second.
+## Maintain one beam node and uninterrupted per-target exposure. Aliens die immediately; bosses take four hits/second.
 func update_laser(delta: float) -> void:
-	var active: bool = state == State.PLAYING and weapons.level == 3
+	var active: bool = state == State.PLAYING and weapons.level == 3 and combat.firing()
 	sound.set_laser(active)
 	if not active:
 		if is_instance_valid(laser):
@@ -434,11 +440,11 @@ func update_laser(delta: float) -> void:
 		laser.continuous = true
 		add_child(laser)
 	laser.setup_laser(ship.position + Vector2(0, -44), Vector2(ship.position.x, top_inset + 140))
+	laser.beam_segments = reflected_laser(ship.position + Vector2(0, -44))
 	laser.queue_redraw()
 	var contacts: Dictionary = {}
 	var targets: Array[Node2D] = []
 	targets.append_array(enemies)
-	targets.append_array(asteroids)
 	if is_instance_valid(boss) and not boss_is_shielded():
 		targets.append(boss)
 	for actor in targets:
@@ -451,7 +457,7 @@ func update_laser(delta: float) -> void:
 			continue
 		var id := actor.get_instance_id()
 		var exposure: float = laser_exposure.get(id, 0.0) + delta
-		if exposure >= 0.25:
+		if kind != "boss" or exposure >= 0.25:
 			if kind == "boss":
 				damage_target(actor, kind, int(exposure / 0.25))
 				exposure = fmod(exposure, 0.25)
@@ -460,6 +466,46 @@ func update_laser(delta: float) -> void:
 				continue
 		contacts[id] = exposure
 	laser_exposure = contacts
+
+## Trace at most three segments. The nearest asteroid reflects the beam at its
+## surface normal; enforce an upward outgoing ray so reflection never aims at us.
+func reflected_laser(start: Vector2) -> Array[Vector2]:
+	var segments: Array[Vector2] = []
+	var origin := start
+	var direction := Vector2.UP
+	var visited: Array[Node2D] = []
+	for bounce in range(3):
+		var distance := 2000.0
+		var reflector: Node2D
+		for rock in asteroids:
+			if visited.has(rock) or not target_is_exposed(rock, "rock"):
+				continue
+			var offset: Vector2 = origin - rock.position
+			var projection := offset.dot(direction)
+			var discriminant: float = projection * projection - offset.length_squared() + rock.radius * rock.radius
+			if discriminant < 0.0:
+				continue
+			var hit := -projection - sqrt(discriminant)
+			if hit > 0.1 and hit < distance:
+				distance = hit
+				reflector = rock
+		var end := origin + direction * distance
+		segments.append(origin)
+		segments.append(end)
+		if reflector == null:
+			break
+		visited.append(reflector)
+		var normal: Vector2 = (end - reflector.position).normalized()
+		direction = direction - 2.0 * direction.dot(normal) * normal
+		# Downward reflections slide along the outward tangent instead. A
+		# central hit travels sideways; neither case crosses the rock or player.
+		if direction.y > 0.0:
+			direction = Vector2(normal.y, -normal.x)
+			if direction.y > 0.0:
+				direction = -direction
+		direction = direction.normalized()
+		origin = end + direction * 1.0
+	return segments
 
 ## Explicitly remove hostile actors/projectiles for emergency recovery; ordinary boss victory does not call this.
 func clear_hazards() -> void:
@@ -496,6 +542,8 @@ func update_enemies(delta: float) -> void:
 	for enemy in enemies.duplicate():
 		if not enemies.has(enemy):
 			continue
+		if combat.controls_actor(enemy):
+			continue
 		if is_instance_valid(boss) and enemy.summoned:
 			enemy.fold_origin = boss.body_position + Vector2(0, 42)
 		if enemy.shield_guard:
@@ -516,18 +564,21 @@ func update_enemies(delta: float) -> void:
 			if state != State.PLAYING:
 				return
 			continue
-		if enemy.position.y > arena.y + 65.0:
+		if enemy.position.y > arena.y + Enemy.HIT_RADIUS:
+			spawn_escape_cannon(enemy.position)
 			remove_enemy(enemy)
 			continue
-		if enemy.motion_phase == "flight" and enemy.position.y > top_inset + 110.0 and enemy.position.y < ship.position.y - 90.0:
+		if not gravity_is_active() and enemy.motion_phase == "flight" and enemy.position.y > top_inset + 110.0 and enemy.position.y < ship.position.y - 90.0:
 			enemy.shot_timer -= delta
 			if enemy.shot_timer <= 0.0:
 				var aim: Vector2 = (ship.position - enemy.position).normalized()
 				spawn_hostile_shot(enemy.position + Vector2(0, 24), aim * (215.0 if enemy.summoned else 180.0))
 				enemy.shot_timer = rng.randf_range(1.05, 1.9) / difficulty_scale()
 
-## Delegate the current weapon pattern and return its cooldown to the automatic fire timer.
+## Delegate the current weapon pattern and return its cooldown to the held-control fire timer.
 func fire_player_shot() -> float:
+	if gravity_is_active():
+		return 0.17
 	return weapons.fire(self)
 
 ## Legacy single-enemy volley helper; normal enemies now fire using their individual timers.
@@ -551,11 +602,20 @@ func update_projectiles(delta: float) -> void:
 	for shot in projectiles.duplicate():
 		if not projectiles.has(shot):
 			continue
+		if is_instance_valid(shot.homing_target) and not shot.homing_target.is_queued_for_deletion():
+			var aim: Vector2 = shot.homing_target.body_position if shot.homing_target == boss else shot.homing_target.position
+			shot.velocity = (aim - shot.position).normalized() * (1225.0 if shot.kind == "doom" else 660.0)
+		bend_projectile(shot, delta)
 		shot.advance(delta)
 		if shot.hostile:
 			if shot.intersects(ship.position, Ship.HIT_RADIUS + 3.0):
 				remove_projectile(shot)
-				damage_ship()
+				if shot.kind == "doom":
+					burst(ship.position, Color("b894ff"), 42)
+					sound.play_effect("rift")
+					instant_loss("An escaped alien collapsed your ship.")
+				else:
+					damage_ship()
 				if state != State.PLAYING:
 					return
 		else:
@@ -586,7 +646,7 @@ func update_projectiles(delta: float) -> void:
 					break
 		if state != State.PLAYING:
 			return
-		if projectiles.has(shot) and (shot.expired or shot.position.y < -50 or shot.position.y > arena.y + 50 or shot.position.x < -80 or shot.position.x > arena.x + 80):
+		if projectiles.has(shot) and (shot.expired or shot.position.y < -50 or (shot.position.y > arena.y + 100 and shot.kind != "doom") or shot.position.x < -80 or shot.position.x > arena.x + 80):
 			remove_projectile(shot)
 
 ## Reject targets outside the playable area or still in boss arrival, including hits from lasers and splash.
@@ -634,6 +694,7 @@ func destroy_enemy(enemy: Node2D) -> void:
 	if not enemies.has(enemy):
 		return
 	burst(enemy.position, enemy.tint, 18)
+	combat.vibrate("enemy")
 	if not enemy.drop_group.is_empty() and not enemy.drop_group.dropped:
 		enemy.drop_group.dropped = true
 		guaranteed_drop(enemy.position)
@@ -659,8 +720,8 @@ func guaranteed_drop(at: Vector2) -> void:
 	var kind := "life"
 	if projected < 2:
 		kind = "weapon" if rng.randf() < 0.65 else "life"
-	elif projected < 4 and advanced_drop_sector != bosses_defeated and rng.randf() < 0.1:
-		kind = "weapon"
+	elif advanced_drop_sector != bosses_defeated and rng.randf() < 0.1:
+		kind = "laser" if projected >= 4 else "weapon"
 		advanced_drop_sector = bosses_defeated
 	spawn_pickup(at, kind)
 
@@ -673,8 +734,8 @@ func maybe_drop_pickup(at: Vector2) -> void:
 	var drop_scale := difficulty_scale()
 	if advanced:
 		# Reserve the sector allowance when dropped, including uncollected drops.
-		if weapons.level + pending < 4 and advanced_drop_sector != bosses_defeated and roll < minf(1.0, 0.005 * drop_scale):
-			spawn_pickup(at, "weapon")
+		if advanced_drop_sector != bosses_defeated and roll < minf(1.0, 0.005 * drop_scale):
+			spawn_pickup(at, "laser" if weapons.level >= 4 else "weapon")
 			advanced_drop_sector = bosses_defeated
 			kills_since_drop = 0
 	elif roll < minf(1.0, 0.02 * drop_scale):
@@ -688,6 +749,12 @@ func spawn_pickup(at: Vector2, kind: String) -> void:
 	if pickups.size() >= 12:
 		return
 	var pickup = Pickup.new()
+	# Support drops are 3:1 hull to shield. Rare advanced rolls may grant a
+	# temporary laser instead of the final permanent rocket upgrade.
+	if kind == "life" and rng.randf() < 0.25:
+		kind = "shield"
+	if kind == "weapon" and weapons.level >= 2 and rng.randf() < 0.5:
+		kind = "laser"
 	pickup.kind = kind
 	pickup.position = Vector2(clampf(at.x, 30.0, arena.x - 30.0), maxf(at.y, top_inset + 110.0))
 	pickup.previous_position = pickup.position
@@ -701,6 +768,8 @@ func update_pickups(delta: float) -> void:
 	if gravity_is_active():
 		return
 	for pickup in pickups.duplicate():
+		if combat.controls_actor(pickup):
+			continue
 		pickup.advance(delta)
 		if pickup.position.distance_to(ship.position) < 135.0:
 			pickup.position = pickup.position.move_toward(ship.position, 210.0 * delta)
@@ -715,7 +784,13 @@ func update_pickups(delta: float) -> void:
 func collect_pickup(pickup: Node2D) -> void:
 	if not pickups.has(pickup):
 		return
-	if pickup.kind == "life":
+	if pickup.kind == "shield":
+		combat.shield_time = 10.0
+		pickup_notice = "SHIELD · 10 SECONDS"
+	elif pickup.kind == "laser":
+		combat.equip_laser()
+		pickup_notice = "LASER · 10 SECONDS"
+	elif pickup.kind == "life":
 		if lives < MAX_LIVES:
 			lives += 1
 			pickup_notice = "HULL RESTORED +1"
@@ -723,6 +798,8 @@ func collect_pickup(pickup: Node2D) -> void:
 			add_score(100)
 			pickup_notice = "FULL HULL  +100"
 	else:
+		if combat.laser_time > 0.0:
+			weapons.level = combat.previous_weapon
 		if weapons.level < WeaponSystem.MAX_LEVEL:
 			weapons.upgrade()
 			shot_timer = 0.0
@@ -730,6 +807,9 @@ func collect_pickup(pickup: Node2D) -> void:
 		else:
 			add_score(150)
 			pickup_notice = "MAX WEAPON  +150"
+		if combat.laser_time > 0.0:
+			combat.previous_weapon = weapons.level
+			weapons.level = 3
 	pickup_notice_time = 2.0
 	burst(pickup.position, Color("7cf3b7") if pickup.kind == "life" else Color("ffc56e"), 14)
 	pickups.erase(pickup)
@@ -768,13 +848,15 @@ func update_asteroids(delta: float) -> void:
 	for rock in asteroids.duplicate():
 		if not asteroids.has(rock):
 			continue
+		if combat.controls_actor(rock):
+			continue
 		if is_instance_valid(boss) and boss.kind == "asteroid":
 			rock.fold_origin = boss.body_position + Vector2(0, 42)
 		rock.advance(delta, ship.position)
 		var closest := Geometry2D.get_closest_point_to_segment(ship.position, rock.previous_position, rock.position)
 		if closest.distance_to(ship.position) <= rock.radius + Ship.HIT_RADIUS:
 			remove_asteroid(rock)
-			damage_ship()
+			instant_loss("An asteroid struck your ship.")
 			if state != State.PLAYING:
 				return
 		elif rock.position.y > arena.y + 60:
@@ -785,6 +867,7 @@ func hit_asteroid(rock: Node2D, amount: int = 1) -> void:
 	rock.health -= amount
 	rock.flash = 0.08
 	if rock.health <= 0:
+		combat.vibrate("enemy")
 		burst(rock.position, Color("d6b899"), 15)
 		remove_asteroid(rock)
 		add_score(25)
@@ -797,7 +880,7 @@ func remove_asteroid(rock: Node2D) -> void:
 
 ## Handle lethal gravity contact, consuming an upgrade-backed emergency life if one is available.
 func lose_ship(reason: String) -> void:
-	if state != State.PLAYING:
+	if state != State.PLAYING or combat.shield_time > 0.0:
 		return
 	lives = 0
 	if use_emergency_life():
@@ -810,8 +893,9 @@ func lose_ship(reason: String) -> void:
 
 ## Apply one hull hit unless invulnerable, play dedicated feedback, and handle emergency life or game over.
 func damage_ship() -> void:
-	if state != State.PLAYING or ship.invulnerable > 0.0:
+	if state != State.PLAYING or ship.invulnerable > 0.0 or combat.shield_time > 0.0:
 		return
+	combat.vibrate("hit")
 	lives -= 1
 	damage_flash = 0.6
 	burst(ship.position, Color("ff816f"), 28)
@@ -832,6 +916,8 @@ func use_emergency_life() -> bool:
 	if weapons.level <= 0:
 		return false
 	weapons.level = 0
+	combat.laser_time = 0.0
+	combat.previous_weapon = 0
 	lives = 1
 	ship.visible = true
 	ship.invulnerable = 2.5
@@ -868,6 +954,7 @@ func pause_run() -> void:
 	if state != State.PLAYING:
 		return
 	state = State.PAUSED
+	combat.cancel()
 	pointer_id = -1
 	ship.target_x = ship.position.x
 	sound.set_paused(true)
@@ -891,6 +978,54 @@ func toggle_sound() -> void:
 	progress.save()
 	interface.refresh()
 
+## Persist haptics independently of sound; disable any queued second hit pulse.
+func toggle_vibration() -> void:
+	progress.vibration_enabled = not progress.vibration_enabled
+	combat.haptic_followup = 0.0
+	progress.save()
+	interface.refresh()
+
+## Asteroid impact and the escaped-alien cannon bypass all hull and backup lives.
+## A live shield is the sole exception and is never consumed by a single impact.
+func instant_loss(reason: String) -> void:
+	if state != State.PLAYING or combat.shield_time > 0.0:
+		return
+	lives = 0
+	ship.visible = false
+	loss_reason = reason
+	combat.vibrate("hit")
+	burst(ship.position, Color("ff816f"), 42)
+	sound.play_effect("hit")
+	finish_run(false)
+
+## The escaped alien attacks from below the viewport with a homing gravity cannon.
+func spawn_escape_cannon(at: Vector2) -> void:
+	var shot = weapons.spawn_shot(self, at, (ship.position - at).normalized() * 1225.0)
+	shot.kind = "doom"
+	shot.hostile = true
+	shot.homing_target = ship
+	sound.play_effect("rift")
+	combat.vibrate("gravity")
+
+## Bend ordinary shots around all active wells without changing their speed.
+func bend_projectile(shot: Node2D, delta: float) -> void:
+	if shot.kind in ["doom", "laser"]:
+		return
+	var wells: Array = lingering_wells.duplicate()
+	if is_instance_valid(boss):
+		wells.append(boss)
+	for well in wells:
+		if not well.holds_steering():
+			continue
+		var offset: Vector2 = well.well_position - shot.position
+		var distance := offset.length()
+		if distance > 460.0 or distance < 1.0:
+			continue
+		var speed: float = shot.velocity.length()
+		var force: Vector2 = offset.normalized() * (1.0 if well.kind == "black" else -1.0)
+		shot.velocity = (shot.velocity + force * 1100.0 * (1.0 - distance / 460.0) * delta).normalized() * speed
+		shot.queue_redraw()
+
 ## Append bounded short-lived particles; the cap prevents explosion-heavy weapons from growing work without limit.
 func burst(at: Vector2, tint: Color, count: int) -> void:
 	for i in range(mini(count, maxi(0, 256 - particles.size()))):
@@ -898,51 +1033,44 @@ func burst(at: Vector2, tint: Color, count: int) -> void:
 		particles.append({"position": at, "velocity": Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(40, 220),
 			"life": duration, "duration": duration, "tint": tint, "radius": rng.randf_range(1.5, 4.0)})
 
-## Route unconsumed GUI input to dragging or tap neutralisation, including every surviving gravity well.
+## Release is captured before GUI handling so lifting over a button cannot leave
+## firing latched. Presses still pass through the GUI before gameplay sees them.
+func _input(event: InputEvent) -> void:
+	if state != State.PLAYING:
+		return
+	if event is InputEventScreenTouch and not event.pressed:
+		combat.release(event.index, event.position, event.canceled)
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed and event.device != InputEvent.DEVICE_ID_EMULATION:
+		combat.release(-2, event.position)
+
+## Menus own their clicks; remaining input enters the exclusive gesture controller.
 func _unhandled_input(event: InputEvent) -> void:
-	if state == State.PLAYING and gravity_is_active():
-		var pressed_touch: bool = event is InputEventScreenTouch and event.pressed
-		var pressed_mouse: bool = event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and event.device != InputEvent.DEVICE_ID_EMULATION
-		var pressed_space: bool = event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE
-		if pressed_touch or pressed_mouse or pressed_space:
-			if is_instance_valid(boss):
-				boss.resist()
-			for well in lingering_wells:
-				well.resist()
-		# Pause remains available during a gravity attack; dragging is suspended.
-		if not (event is InputEventKey and event.keycode in [KEY_ESCAPE, KEY_P]):
-			return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode in [KEY_ESCAPE, KEY_P]:
 			if state == State.PLAYING:
 				pause_run()
 			elif state == State.PAUSED:
 				resume_run()
-		elif event.keycode in [KEY_ENTER, KEY_SPACE] and state in [State.MENU, State.WON, State.LOST]:
+		elif event.keycode in [KEY_ENTER, KEY_SPACE] and state in [State.MENU, State.LOST]:
 			start_run()
+		elif event.keycode == KEY_SPACE and state == State.PLAYING and gravity_is_active():
+			combat.press(-3, ship.position)
 	if state != State.PLAYING:
 		return
 	if event is InputEventScreenTouch:
-		if event.pressed and pointer_id == -1 and event.position.y > top_inset + 110:
-			pointer_id = event.index
-			previous_pointer_x = event.position.x
-		elif not event.pressed and event.index == pointer_id:
-			pointer_id = -1
+		if event.pressed:
+			combat.press(event.index, event.position)
+		else:
+			combat.release(event.index, event.position, event.canceled)
 	elif event is InputEventScreenDrag:
-		# A finger held through the end of a tap-only attack can resume dragging.
-		if pointer_id == -1 and event.position.y > top_inset + 110:
-			pointer_id = event.index
-			previous_pointer_x = event.position.x - event.relative.x
-		if event.index == pointer_id:
-			drag_to(event.position.x)
+		combat.move(event.index, event.position)
 	elif event is InputEventMouseButton and event.device != InputEvent.DEVICE_ID_EMULATION and event.button_index == MOUSE_BUTTON_LEFT:
-		if event.pressed and pointer_id == -1 and event.position.y > top_inset + 110:
-			pointer_id = -2
-			previous_pointer_x = event.position.x
-		elif not event.pressed and pointer_id == -2:
-			pointer_id = -1
-	elif event is InputEventMouseMotion and pointer_id == -2:
-		drag_to(event.position.x)
+		if event.pressed:
+			combat.press(-2, event.position)
+		else:
+			combat.release(-2, event.position)
+	elif event is InputEventMouseMotion and event.device != InputEvent.DEVICE_ID_EMULATION:
+		combat.move(-2, event.position)
 
 ## Apply finger displacement to the steering target instead of teleporting the ship beneath the finger.
 func drag_to(x: float) -> void:

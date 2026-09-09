@@ -13,6 +13,8 @@ var expired := false
 var age := 0.0
 var lifetime := 8.0
 var beam_start := Vector2.ZERO
+var homing_target: Node2D
+var beam_segments: Array[Vector2] = []
 
 ## Set the beam endpoints for rendering and segment collision; game.gd owns continuous exposure timing.
 func setup_laser(from: Vector2, to: Vector2) -> void:
@@ -40,6 +42,11 @@ func advance(delta: float) -> void:
 
 ## Test the entire traveled segment against a target circle to prevent fast shots tunneling between frames.
 func intersects(center: Vector2, radius: float) -> bool:
+	if kind == "laser" and not beam_segments.is_empty():
+		for i in range(0, beam_segments.size(), 2):
+			if Geometry2D.get_closest_point_to_segment(center, beam_segments[i], beam_segments[i + 1]).distance_to(center) <= radius + 5.0:
+				return true
+		return false
 	# Swept collision catches targets even when a shot crosses them in one frame.
 	var closest := Geometry2D.get_closest_point_to_segment(center, previous_position, position)
 	var collision_radius := radius + (5.0 if kind == "laser" else 0.0)
@@ -47,6 +54,10 @@ func intersects(center: Vector2, radius: float) -> bool:
 
 ## Submit this object's visual geometry in local coordinates. Physics and collision rules are handled separately.
 func _draw() -> void:
+	if kind == "doom":
+		draw_circle(Vector2.ZERO, 12, Color("03020c"))
+		draw_arc(Vector2.ZERO, 16, 0, TAU, 32, Color("b894ff"), 4, true)
+		return
 	if kind == "laser":
 		draw_laser()
 		return
@@ -62,6 +73,15 @@ func _draw() -> void:
 
 ## Render the beam's glow and core; continuous beams remain bright instead of fading like short pulses.
 func draw_laser() -> void:
+	if not beam_segments.is_empty():
+		for i in range(0, beam_segments.size(), 2):
+			var a := beam_segments[i] - position
+			var b := beam_segments[i + 1] - position
+			draw_line(a, b, Color(0.39, 0.74, 1.0, 0.08), 30, true)
+			draw_line(a, b, Color(0.39, 0.77, 1.0, 0.3), 14, true)
+			draw_line(a, b, Color("a9efff"), 5, true)
+			draw_line(a, b, Color.WHITE, 2, true)
+		return
 	var muzzle := beam_start - position
 	var brightness := 1.0 if continuous else clampf((lifetime - age) / 0.055, 0.0, 1.0)
 	draw_line(muzzle, Vector2.ZERO, Color(0.39, 0.74, 1.0, 0.08 * brightness), 36.0, true)

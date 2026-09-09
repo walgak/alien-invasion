@@ -104,7 +104,7 @@ func step(delta: float) -> void:
 		if summons_cleared:
 			return_to_firefight()
 	elif phase == "active" and kind in ["black", "white"]:
-		var force_blocked := neutralise_time > 0.0
+		var force_blocked: bool = neutralise_time > 0.0 or game.combat.shield_time > 0.0
 		neutralise_time = maxf(0.0, neutralise_time - delta)
 		var previous_position: Vector2 = game.ship.position
 		if not force_blocked:
@@ -165,6 +165,8 @@ func begin_special() -> void:
 
 ## Start the force/barrage timer only after the warning or cannon landing; unsafe gravity landings are redirected.
 func activate_special() -> void:
+	game.combat.cancel()
+	game.combat.vibrate("gravity")
 	if not lingering and kind in ["black", "white"] and well_position.distance_to(game.ship.position) < minf(130.0, game.arena.x * 0.22):
 		position_gravity_hole()
 		aim_cannon_at_hole()

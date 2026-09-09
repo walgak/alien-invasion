@@ -44,8 +44,7 @@ func run() -> void:
 		game.spawn_asteroid(Vector2(270, 500), Vector2.DOWN * 100, 20)
 		check(game.asteroids[0].health == 5 + wins / 2, "small asteroid minimum five and rising")
 	game.start_run()
-	game.pointer_id = 0
-	game.previous_pointer_x = 200
+	game.combat.press(0, Vector2(200, 780))
 	game.ship.target_x = 270
 	game.boss_timer = 0
 	game.update_director(0.1)
@@ -54,6 +53,7 @@ func run() -> void:
 	check(game.pointer_id == 0, "boss creation preserves active touch")
 	var hp: float = game.boss.health
 	game.weapons.level = 3
+	game.combat.press(0, game.ship.position)
 	game.fire_player_shot()
 	game.update_laser(0.01)
 	check(game.boss.health == hp, "laser cannot hit an arriving boss")
@@ -66,6 +66,7 @@ func run() -> void:
 	check(game.ship.target_x == 310, "same held finger continues steering after arrival")
 	game.start_run()
 	game.weapons.level = 3
+	game.combat.press(0, game.ship.position)
 	var hidden = game.spawn_enemy(Vector2(270, -10), Vector2.ZERO)
 	game.fire_player_shot()
 	game.update_laser(0.01)

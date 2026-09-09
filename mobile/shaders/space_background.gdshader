@@ -62,14 +62,14 @@ void fragment() {
 	// Composite nebula, scrolling star layers, one passing planet, then the vignette.
 	vec2 p = canvas_position;
 	vec2 uv = p / max(arena_size, vec2(1.0));
-	vec2 sky = p / 410.0;
+	vec2 sky = (p - vec2(0.0, visual_time * 5.0)) / 410.0;
 	float broad = cloud_noise(sky * 1.3 + vec2(6.2, 3.8));
 	float cloud = cloud_noise(sky * 4.2 + vec2(broad * 2.5, broad * -1.8));
 	float band_distance = (uv.x - 0.73 + 0.40 * sin(uv.y * 4.0 + 0.5)) * 1.75;
 	float band = exp(-band_distance * band_distance);
 	float filaments = smoothstep(0.34, 0.83, cloud) * band;
 	vec3 color = mix(vec3(0.007, 0.013, 0.032), vec3(0.013, 0.027, 0.061), broad);
-	vec3 nebula_tint = mix(vec3(0.047, 0.058, 0.155), vec3(0.021, 0.127, 0.166), broad);
+	vec3 nebula_tint = mix(vec3(0.19, 0.035, 0.20), vec3(0.02, 0.18, 0.19), 0.5 + 0.5 * sin(sky.y * 0.7 + broad * 4.0));
 	color += nebula_tint * filaments * 0.78;
 	color += vec3(0.030, 0.026, 0.061) * pow(cloud, 4.0) * band;
 	color += star_layer(p - vec2(0.0, visual_time * 20.0), 62.0, 11.7) * 0.72;
@@ -84,6 +84,14 @@ void fragment() {
 	vec2 planet_center = vec2(arena_size.x * mix(0.22, 0.78, variation), mod(travel, travel_span) - 300.0);
 	vec2 planet = (p - planet_center) / mix(135.0, 190.0, hash21(vec2(planet_id, 71.0)));
 	float radius = length(planet);
+	// Some worlds have tilted ice rings; only their outer annulus is painted,
+	// leaving the sphere to occlude the central ring section below.
+	if (variation > 0.48) {
+		vec2 ring = mat2(vec2(0.94, 0.34), vec2(-0.34, 0.94)) * planet;
+		float ring_r = length(ring * vec2(1.0, 3.1));
+		float annulus = smoothstep(1.18, 1.25, ring_r) * (1.0 - smoothstep(1.8, 1.88, ring_r));
+		color += vec3(0.19, 0.15, 0.13) * annulus * (0.45 + 0.15 * sin(ring_r * 180.0));
+	}
 	float atmosphere = exp(-abs(radius - 1.01) * 43.0);
 	vec3 light_direction = normalize(vec3(-0.69, -0.48, 0.38));
 	vec3 normal = vec3(planet, sqrt(max(0.0, 1.0 - dot(planet, planet))));
@@ -102,6 +110,24 @@ void fragment() {
 		float silhouette = 1.0 - smoothstep(0.992, 1.0, radius);
 		color = mix(color, planet_color, silhouette);
 	}
+	// A small cratered moon passes beside each planet with a different parallax
+	// speed. These bounded analytic shapes avoid textures and extra draw nodes.
+	vec2 moon_center = planet_center + vec2(mix(-170.0, 170.0, variation), -165.0);
+	vec2 moon = (p - moon_center) / (26.0 + variation * 22.0);
+	float moon_r = length(moon);
+	if (moon_r < 1.0) {
+		vec3 moon_normal = vec3(moon, sqrt(max(0.0, 1.0 - dot(moon, moon))));
+		float craters = noise(moon * 15.0 + planet_id);
+		vec3 moon_color = vec3(0.16, 0.17, 0.21) * (0.12 + max(0.0, dot(moon_normal, light_direction))) * (0.55 + craters * 0.45);
+		color = mix(color, moon_color, 1.0 - smoothstep(0.97, 1.0, moon_r));
+	}
+	// Nearby warm stars drift faster than planets, with a compact glowing corona.
+	float sun_travel = visual_time * 33.0;
+	float sun_id = floor(sun_travel / (arena_size.y + 400.0));
+	vec2 sun_center = vec2(arena_size.x * mix(0.12, 0.88, hash21(vec2(sun_id, 91.0))), mod(sun_travel, arena_size.y + 400.0) - 180.0);
+	float sun_distance = length(p - sun_center);
+	color += vec3(0.42, 0.20, 0.065) * exp(-sun_distance * sun_distance / 1500.0);
+	color += vec3(0.8, 0.65, 0.35) * (1.0 - smoothstep(8.0, 11.0, sun_distance));
 	float vignette = 1.0 - 0.30 * smoothstep(0.2, 0.83, length(uv - vec2(0.5)));
 	COLOR = vec4(color * vignette, 1.0);
 }

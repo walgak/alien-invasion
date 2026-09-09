@@ -64,7 +64,7 @@ func run() -> void:
 	for i in range(1000):
 		game.maybe_drop_pickup(Vector2(270, 300))
 		for drop in game.pickups.duplicate():
-			if drop.kind == "weapon":
+			if drop.kind in ["weapon", "laser"]:
 				drops += 1
 			game.pickups.erase(drop)
 			drop.queue_free()
@@ -72,7 +72,7 @@ func run() -> void:
 	game.bosses_defeated += 1
 	for i in range(1000):
 		game.maybe_drop_pickup(Vector2(270, 300))
-	check(game.pickups.filter(func(drop): return drop.kind == "weapon").size() <= 1, "next sector retains advanced drop cap")
+	check(game.pickups.filter(func(drop): return drop.kind in ["weapon", "laser"]).size() <= 1, "next sector retains advanced drop cap")
 	var totals: Array[int] = []
 	for victories in [0, 49]:
 		game.start_run()

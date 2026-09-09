@@ -63,8 +63,9 @@ func run_checks() -> void:
 		game._physics_process(1.0 / 60.0)
 	check(not game.enemies.is_empty(), "random enemies resume after boss victory")
 	game.start_run()
-	for level in range(1, 5):
+	for level in [1, 2, 4]:
 		game.spawn_pickup(game.ship.position, "weapon")
+		game.pickups.back().kind = "weapon" # Test collection separately from random reward selection.
 		game.update_pickups(0)
 		check(game.weapons.level == level, "collected weapon advances to level %d" % level)
 		game.clear_hazards()
@@ -85,17 +86,19 @@ func run_checks() -> void:
 	game.lives = 1
 	for i in range(4):
 		game.spawn_pickup(game.ship.position, "life")
+		game.pickups.back().kind = "life"
 		game.update_pickups(0)
 	check(game.lives == 3, "life drops cannot exceed three hull lives")
 	game.clear_hazards()
 	game.weapons.level = 3
+	game.combat.press(0, game.ship.position)
 	var near = game.spawn_enemy(game.ship.position - Vector2(0, 150), Vector2.ZERO)
 	var far = game.spawn_enemy(game.ship.position - Vector2(0, 300), Vector2.ZERO)
 	near.health = 3
 	far.health = 3
 	game.fire_player_shot()
 	game.update_laser(0.24)
-	check(near.health == 3 and far.health == 3, "continuous laser waits for full exposure")
+	check(not game.enemies.has(near) and not game.enemies.has(far), "temporary laser kills ordinary enemies immediately")
 	game.update_laser(0.02)
 	check(not game.enemies.has(near) and not game.enemies.has(far), "continuous laser kills multiple exposed enemies")
 	game.clear_hazards()
@@ -124,6 +127,7 @@ func run_checks() -> void:
 	check(game.sound.flight_music_active and not game.sound.boss_music_active, "regular flight selects background music")
 	game.rng.seed = 2026
 	for i in range(18000):
+		game.combat.shield_time = 10 # Isolate endurance from the newly fatal impacts.
 		game.ship.invulnerable = 10
 		for well in game.lingering_wells:
 			well.resist()
