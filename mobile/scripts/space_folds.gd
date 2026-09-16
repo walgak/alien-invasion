@@ -24,6 +24,10 @@ func update_effects(game: Node2D) -> void:
 	var strand_styles := PackedVector4Array()
 	var boss: Node2D = game.boss
 	for well in game.lingering_wells:
+		if well.kind in ["asteroid", "swarm"] and lenses.size() < MAX_LENSES:
+			var core: Vector2 = well.body_position + Vector2(0, 42)
+			lenses.append(Vector4(core.x, core.y, 65.0, 0.4))
+			styles.append(Vector4(15.0, -1.0, 1.0, well.animation_time))
 		if well.kind not in ["black", "white"]:
 			continue
 		if lenses.size() >= MAX_LENSES:
@@ -37,8 +41,8 @@ func update_effects(game: Node2D) -> void:
 	if is_instance_valid(boss) and boss.visible:
 		if boss.kind in ["black", "white"] and boss.phase in ["warning", "active"]:
 			var active: bool = boss.phase == "active"
-			lenses.append(Vector4(boss.well_position.x, boss.well_position.y, 164.0 if active else 112.0, 1.0 if active else 0.3))
-			styles.append(Vector4(31.0 if active else 25.0, 1.0 if boss.kind == "white" else -1.0, 0.0, boss.animation_time))
+			lenses.append(Vector4(boss.well_position.x, boss.well_position.y, 164.0 * boss.well_scale if active else 112.0, 1.0 if active else 0.3))
+			styles.append(Vector4(31.0 * boss.well_scale if active else 25.0, 1.0 if boss.kind == "white" else -1.0, 0.0, boss.animation_time))
 			if boss.cannon_active:
 				lenses.append(Vector4(boss.cannon_position.x, boss.cannon_position.y, 57.0, 0.85))
 				styles.append(Vector4(10.0, 1.0, 1.0, boss.animation_time))
@@ -48,24 +52,24 @@ func update_effects(game: Node2D) -> void:
 		elif boss.kind in ["asteroid", "swarm"] and boss.phase in ["active", "clearing"]:
 			lenses.append(Vector4(boss.body_position.x, boss.body_position.y, 87.0, 0.28))
 			styles.append(Vector4(36.0, -1.0, 1.0, boss.animation_time))
-		for rock in game.asteroids:
-			if lenses.size() < MAX_LENSES:
-				var strength := 0.65 if rock.motion_phase != "flight" else 0.3
-				lenses.append(Vector4(rock.position.x, rock.position.y, rock.radius + 39.0, strength))
-				styles.append(Vector4(rock.radius * 0.85, -1.0, 1.0, boss.animation_time))
-			if rock.fold_life > 0.0 and strands.size() < MAX_STRANDS:
-				var alpha: float = rock.fold_life / rock.RELEASE_FADE_SECONDS
-				strands.append(Vector4(rock.fold_origin.x, rock.fold_origin.y, rock.position.x, rock.position.y))
-				strand_styles.append(Vector4(16.0 + rock.radius * 0.2, alpha, boss.animation_time, -1.0))
-		for enemy in game.enemies:
-			if not enemy.summoned or enemy.fold_life <= 0.0:
-				continue
-			if lenses.size() < MAX_LENSES:
-				lenses.append(Vector4(enemy.position.x, enemy.position.y, 58.0, 0.5))
-				styles.append(Vector4(22.0, -1.0, 1.0, boss.animation_time))
-			if strands.size() < MAX_STRANDS:
-				strands.append(Vector4(enemy.fold_origin.x, enemy.fold_origin.y, enemy.position.x, enemy.position.y))
-				strand_styles.append(Vector4(20.0, enemy.fold_life / enemy.RELEASE_FADE_SECONDS, boss.animation_time, -1.0))
+	for rock in game.asteroids:
+		if lenses.size() < MAX_LENSES:
+			var strength := 0.65 if rock.motion_phase != "flight" else 0.3
+			lenses.append(Vector4(rock.position.x, rock.position.y, rock.radius + 39.0, strength))
+			styles.append(Vector4(rock.radius * 0.85, -1.0, 1.0, game.visual_time))
+		if rock.fold_life > 0.0 and strands.size() < MAX_STRANDS:
+			var alpha: float = rock.fold_life / rock.RELEASE_FADE_SECONDS
+			strands.append(Vector4(rock.fold_origin.x, rock.fold_origin.y, rock.position.x, rock.position.y))
+			strand_styles.append(Vector4(16.0 + rock.radius * 0.2, alpha, game.visual_time, -1.0))
+	for enemy in game.enemies:
+		if not enemy.summoned or enemy.fold_life <= 0.0:
+			continue
+		if lenses.size() < MAX_LENSES:
+			lenses.append(Vector4(enemy.position.x, enemy.position.y, 58.0, 0.5))
+			styles.append(Vector4(22.0, -1.0, 1.0, game.visual_time))
+		if strands.size() < MAX_STRANDS:
+			strands.append(Vector4(enemy.fold_origin.x, enemy.fold_origin.y, enemy.position.x, enemy.position.y))
+			strand_styles.append(Vector4(20.0, enemy.fold_life / enemy.RELEASE_FADE_SECONDS, game.visual_time, -1.0))
 	lens_count = lenses.size()
 	strand_count = strands.size()
 	lenses.resize(MAX_LENSES)

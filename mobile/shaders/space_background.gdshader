@@ -5,6 +5,8 @@ render_mode unshaded;
 
 uniform vec2 arena_size = vec2(540.0, 960.0);
 uniform float visual_time = 0.0;
+uniform vec3 sector_light = vec3(-0.4, -0.3, 0.8);
+uniform float light_period = 0.0;
 
 varying vec2 canvas_position;
 
@@ -93,7 +95,14 @@ void fragment() {
 		color += vec3(0.19, 0.15, 0.13) * annulus * (0.45 + 0.15 * sin(ring_r * 180.0));
 	}
 	float atmosphere = exp(-abs(radius - 1.01) * 43.0);
-	vec3 light_direction = normalize(vec3(-0.69, -0.48, 0.38));
+	float sun_travel = visual_time * 33.0;
+	float sun_id = floor(sun_travel / (arena_size.y + 400.0)) + light_period * 13.0;
+	vec2 sun_center = vec2(arena_size.x * mix(0.12, 0.88, hash21(vec2(sun_id, 91.0))), mod(sun_travel, arena_size.y + 400.0) - 180.0);
+	vec3 light_direction = normalize(sector_light);
+	if (sun_center.y > arena_size.y * 0.2 && sun_center.y < arena_size.y) {
+		light_direction = normalize(vec3((sun_center - planet_center) / arena_size.x, 0.65));
+	}
+
 	vec3 normal = vec3(planet, sqrt(max(0.0, 1.0 - dot(planet, planet))));
 	float sunlight = max(0.0, dot(normal, light_direction));
 	float hemisphere_light = 0.19 + 0.81 * max(0.0, dot(normalize(vec3(planet, 0.17)), light_direction));
@@ -105,7 +114,7 @@ void fragment() {
 		vec3 planet_color = mix(vec3(0.013, 0.043, 0.069), vec3(0.061, 0.107, 0.127), smoothstep(0.40, 0.65, land));
 		planet_color *= mix(vec3(0.8, 1.1, 1.2), vec3(1.8, 0.85, 0.55), variation);
 		planet_color += vec3(0.060, 0.098, 0.115) * smoothstep(0.51, 0.73, wisps) * 0.44;
-		planet_color *= 0.10 + sunlight * 0.95;
+		planet_color *= 0.14 + sunlight * 2.8;
 		planet_color += vec3(0.028, 0.116, 0.170) * pow(1.0 - normal.z, 3.0) * sunlight;
 		float silhouette = 1.0 - smoothstep(0.992, 1.0, radius);
 		color = mix(color, planet_color, silhouette);
@@ -118,13 +127,10 @@ void fragment() {
 	if (moon_r < 1.0) {
 		vec3 moon_normal = vec3(moon, sqrt(max(0.0, 1.0 - dot(moon, moon))));
 		float craters = noise(moon * 15.0 + planet_id);
-		vec3 moon_color = vec3(0.16, 0.17, 0.21) * (0.12 + max(0.0, dot(moon_normal, light_direction))) * (0.55 + craters * 0.45);
+		vec3 moon_color = vec3(0.24, 0.26, 0.31) * (0.12 + max(0.0, dot(moon_normal, light_direction))) * (0.55 + craters * 0.45);
 		color = mix(color, moon_color, 1.0 - smoothstep(0.97, 1.0, moon_r));
 	}
 	// Nearby warm stars drift faster than planets, with a compact glowing corona.
-	float sun_travel = visual_time * 33.0;
-	float sun_id = floor(sun_travel / (arena_size.y + 400.0));
-	vec2 sun_center = vec2(arena_size.x * mix(0.12, 0.88, hash21(vec2(sun_id, 91.0))), mod(sun_travel, arena_size.y + 400.0) - 180.0);
 	float sun_distance = length(p - sun_center);
 	color += vec3(0.42, 0.20, 0.065) * exp(-sun_distance * sun_distance / 1500.0);
 	color += vec3(0.8, 0.65, 0.35) * (1.0 - smoothstep(8.0, 11.0, sun_distance));

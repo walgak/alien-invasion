@@ -13,6 +13,7 @@ const SpaceBackground = preload("res://scripts/space_background.gd")
 const SpaceFolds = preload("res://scripts/space_folds.gd")
 const WeaponSystem = preload("res://scripts/weapon_system.gd")
 const Pickup = preload("res://scripts/pickup.gd")
+const PlayerWell = preload("res://scripts/player_well.gd")
 const POINTS_PER_ENEMY := 100
 const MAX_LIVES := 3
 const MAX_ENEMIES := 14
@@ -70,6 +71,12 @@ var interface = Interface.new()
 var space_background = SpaceBackground.new()
 var space_folds = SpaceFolds.new()
 var combat = preload("res://scripts/combat_controls.gd").new()
+var gravity_fields = preload("res://scripts/gravity_interactions.gd").new()
+var sector_light := Vector3(-0.4, -0.3, 0.8)
+var death_time := 0.0
+var death_origin := Vector2.ZERO
+var death_target := Vector2.ZERO
+var death_is_gravity := false
 
 ## Godot calls this once after the node joins the scene; initialize child nodes and cached resources here.
 func _ready() -> void:
@@ -80,6 +87,8 @@ func _ready() -> void:
 	add_child(ship)
 	combat.game = self
 	add_child(combat)
+	gravity_fields.game = self
+	add_child(gravity_fields)
 	add_child(sound)
 	sound.enabled = progress.sound_enabled
 	interface.game = self
@@ -126,6 +135,7 @@ func show_title() -> void:
 
 ## Reset run-local score, lives, weapons, timers and actors. An optional boss kind is a developer/test shortcut.
 func start_run(mode: String = "") -> void:
+	choose_sector_light()
 	clear_actors()
 	encounter = "endless"
 	selected_mode = "endless"
@@ -174,6 +184,8 @@ func restore_cruise_position() -> void:
 ## Free every run-owned actor, including persistent laser and detached attacks, when restarting or returning to title.
 func clear_actors() -> void:
 	combat.reset()
+	gravity_fields.shockwaves.clear()
+	death_time = 0.0
 	if is_instance_valid(laser):
 		laser.queue_free()
 	laser = null
@@ -203,6 +215,7 @@ func _physics_process(delta: float) -> void:
 		return
 	elapsed += delta
 	combat.step(delta)
+	gravity_fields.step(delta)
 	pickup_notice_time = maxf(0.0, pickup_notice_time - delta)
 	save_timer -= delta
 	if save_timer <= 0.0:
@@ -216,15 +229,15 @@ func _physics_process(delta: float) -> void:
 	if Input.is_physical_key_pressed(KEY_D):
 		direction += 1.0
 	ship.weapon_level = weapons.level
-	if gravity_is_active() or combat.controls_actor(ship):
+	if combat.gravity_blocks_control() or combat.controls_actor(ship):
 		ship.animate(delta)
 		ship.invulnerable = maxf(0, ship.invulnerable - delta)
 	elif returning_to_cruise:
-		ship.position = ship.position.move_toward(cruise_position(), 260.0 * delta)
-		ship.target_x = ship.position.x
+		ship.position.y = move_toward(ship.position.y, cruise_position().y, 260.0 * delta)
+		ship.move_ship(delta, clampf(direction, -1, 1), arena.x)
 		ship.invulnerable = maxf(ship.invulnerable, 0.2)
 		ship.animate(delta)
-		if ship.position.distance_to(cruise_position()) < 0.1:
+		if absf(ship.position.y - cruise_position().y) < 0.1:
 			returning_to_cruise = false
 	else:
 		ship.move_ship(delta, clampf(direction, -1, 1), arena.x)
@@ -366,6 +379,7 @@ func defeat_boss(defeated: Node2D) -> void:
 	burst(at, Color("ffca8d"), 60)
 	add_score(1500 + bosses_defeated * 250)
 	bosses_defeated += 1
+	choose_sector_light()
 	if defeated.phase in ["warning", "active", "clearing"]:
 		create_lingering_well(defeated, false)
 	if was_gravity:
@@ -518,6 +532,8 @@ func clear_hazards() -> void:
 
 ## Animate background and transient particles outside physics; freeze all visual time while paused.
 func _process(delta: float) -> void:
+	if death_time > 0.0:
+		update_death_animation(delta)
 	if state != State.PAUSED:
 		visual_time += delta
 		if state != State.PLAYING:
@@ -535,6 +551,8 @@ func _process(delta: float) -> void:
 ## Synchronize background and refraction shader data with the current actors and visual clock.
 func refresh_space() -> void:
 	space_background.update_background(arena, visual_time)
+	space_background.sky_material.set_shader_parameter("sector_light", sector_light)
+	space_background.sky_material.set_shader_parameter("light_period", float(bosses_defeated))
 	space_folds.update_effects(self)
 
 ## Move ordinary aliens or orbit guards, resolve swept ship contact, and fire aimed shots at per-enemy intervals.
@@ -560,7 +578,7 @@ func update_enemies(delta: float) -> void:
 		var closest := Geometry2D.get_closest_point_to_segment(ship.position, enemy.previous_position, enemy.position)
 		if closest.distance_to(ship.position) < Ship.HIT_RADIUS + Enemy.HIT_RADIUS:
 			remove_enemy(enemy)
-			damage_ship()
+			damage_ship("An alien collided with your ship.")
 			if state != State.PLAYING:
 				return
 			continue
@@ -577,7 +595,7 @@ func update_enemies(delta: float) -> void:
 
 ## Delegate the current weapon pattern and return its cooldown to the held-control fire timer.
 func fire_player_shot() -> float:
-	if gravity_is_active():
+	if combat.gravity_blocks_control():
 		return 0.17
 	return weapons.fire(self)
 
@@ -676,12 +694,12 @@ func detonate_rocket(at: Vector2, radius: float, direct_target: Node2D) -> void:
 	burst(at, Color("ffb86a"), 24)
 	for enemy in enemies.duplicate():
 		if enemy != direct_target and enemy.position.distance_to(at) <= radius + Enemy.HIT_RADIUS:
-			damage_target(enemy, "enemy", 2)
+			damage_target(enemy, "enemy", 3)
 	for rock in asteroids.duplicate():
 		if rock != direct_target and rock.position.distance_to(at) <= radius + rock.radius:
-			damage_target(rock, "rock", 2)
+			damage_target(rock, "rock", 3)
 	if is_instance_valid(boss) and boss != direct_target and boss.body_position.distance_to(at) <= radius + Boss.HIT_RADIUS:
-		damage_target(boss, "boss", 2)
+		damage_target(boss, "boss", 3)
 	sound.play_effect("burst")
 
 ## Remove a shot from the active list before queueing deletion to keep same-frame iterations safe.
@@ -749,6 +767,8 @@ func spawn_pickup(at: Vector2, kind: String) -> void:
 	if pickups.size() >= 12:
 		return
 	var pickup = Pickup.new()
+	if kind == "life" and rng.randf() < 0.25:
+		kind = "missiles"
 	# Support drops are 3:1 hull to shield. Rare advanced rolls may grant a
 	# temporary laser instead of the final permanent rocket upgrade.
 	if kind == "life" and rng.randf() < 0.25:
@@ -765,7 +785,7 @@ func spawn_pickup(at: Vector2, kind: String) -> void:
 ## Drift and magnetize drops, then collect using swept collision; suspend collection during tap-only gravity.
 func update_pickups(delta: float) -> void:
 	# Drops wait while gravity replaces steering with tapping.
-	if gravity_is_active():
+	if combat.gravity_blocks_control():
 		return
 	for pickup in pickups.duplicate():
 		if combat.controls_actor(pickup):
@@ -784,7 +804,10 @@ func update_pickups(delta: float) -> void:
 func collect_pickup(pickup: Node2D) -> void:
 	if not pickups.has(pickup):
 		return
-	if pickup.kind == "shield":
+	if pickup.kind == "missiles":
+		combat.missiles += 5
+		pickup_notice = "TARGETED MISSILES +5"
+	elif pickup.kind == "shield":
 		combat.shield_time = 10.0
 		pickup_notice = "SHIELD · 10 SECONDS"
 	elif pickup.kind == "laser":
@@ -850,16 +873,30 @@ func update_asteroids(delta: float) -> void:
 			continue
 		if combat.controls_actor(rock):
 			continue
+		# Asteroids keep inertia: gravity bends their flight permanently and never
+		# enters them into the surviving ships' return-position dictionary.
+		for well in lingering_wells:
+			if well is PlayerWell and well.holds_steering():
+				rock.motion_phase = "flight"
+				rock.velocity += (well.well_position - rock.position).normalized() * 90.0 * delta
 		if is_instance_valid(boss) and boss.kind == "asteroid":
 			rock.fold_origin = boss.body_position + Vector2(0, 42)
 		rock.advance(delta, ship.position)
+		var swallowed := false
+		for well in lingering_wells:
+			if well is PlayerWell and well.holds_steering() and rock.position.distance_to(well.well_position) < 29.0 * well.well_scale:
+				hit_asteroid(rock, rock.health)
+				swallowed = true
+				break
+		if swallowed:
+			continue
 		var closest := Geometry2D.get_closest_point_to_segment(ship.position, rock.previous_position, rock.position)
 		if closest.distance_to(ship.position) <= rock.radius + Ship.HIT_RADIUS:
 			remove_asteroid(rock)
 			instant_loss("An asteroid struck your ship.")
 			if state != State.PLAYING:
 				return
-		elif rock.position.y > arena.y + 60:
+		elif rock.motion_phase == "flight" and (rock.position.y > arena.y + 80 or rock.position.y < -140 or rock.position.x < -140 or rock.position.x > arena.x + 140):
 			remove_asteroid(rock)
 
 ## Subtract durability, flash the rock, and award points only once when it breaks.
@@ -892,7 +929,7 @@ func lose_ship(reason: String) -> void:
 	finish_run(false)
 
 ## Apply one hull hit unless invulnerable, play dedicated feedback, and handle emergency life or game over.
-func damage_ship() -> void:
+func damage_ship(reason: String = "Enemy fire destroyed your ship.") -> void:
 	if state != State.PLAYING or ship.invulnerable > 0.0 or combat.shield_time > 0.0:
 		return
 	combat.vibrate("hit")
@@ -903,6 +940,7 @@ func damage_ship() -> void:
 	if lives == 0:
 		if use_emergency_life():
 			return
+		loss_reason = reason
 		ship.visible = false
 		finish_run(false)
 		return
@@ -941,6 +979,7 @@ func finish_run(won: bool) -> void:
 			defeat_boss(boss)
 		return
 	state = State.LOST
+	start_death_animation()
 	update_laser(0.0)
 	sound.silence()
 	pointer_id = -1
@@ -948,6 +987,46 @@ func finish_run(won: bool) -> void:
 		remove_projectile(shot)
 	progress.save()
 	interface.refresh()
+
+## Randomize illumination only at a sector boundary. All bodies share it until
+## the next victory; an onscreen sun overrides its horizontal direction in shader.
+func choose_sector_light() -> void:
+	var angle := rng.randf_range(0.0, TAU)
+	sector_light = Vector3(cos(angle), sin(angle), rng.randf_range(-0.55, 2.5)).normalized()
+
+## Freeze gameplay immediately but hold the menu until the cause is animated.
+func start_death_animation() -> void:
+	death_time = 1.8
+	death_origin = ship.position
+	death_target = ship.position
+	death_is_gravity = "black" in loss_reason.to_lower() or "collapsed" in loss_reason.to_lower()
+	if death_is_gravity:
+		var nearest := INF
+		for well in gravity_fields.active_wells():
+			var distance: float = ship.position.distance_to(well.well_position)
+			if well.kind == "black" and distance < nearest:
+				nearest = distance
+				death_target = well.well_position
+	ship.visible = true
+	ship.invulnerable = 0.0
+	combat.cancel()
+
+## A gravity death stretches and crumbles the hull into its core. Impact deaths
+## break outward. The loss menu is shown only after the 1.8-second sequence ends.
+func update_death_animation(delta: float) -> void:
+	death_time = maxf(0.0, death_time - delta)
+	var age := 1.8 - death_time
+	var progress := clampf(age / 1.2, 0.0, 1.0)
+	if death_is_gravity:
+		ship.position = death_origin.lerp(death_target, progress * progress)
+		ship.rotation += delta * progress * 4.0
+		ship.scale = Vector2(maxf(0.01, 1.0 - progress), maxf(0.01, (1.0 - progress) * (1.0 + progress)))
+	else:
+		ship.rotation += delta * 1.8
+		ship.scale = Vector2.ONE * maxf(0.01, 1.0 - progress)
+	ship.visible = age < 1.2
+	if death_time == 0.0:
+		interface.refresh()
 
 ## Freeze gameplay and sound while releasing the active drag to avoid stale input.
 func pause_run() -> void:
@@ -1051,7 +1130,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				pause_run()
 			elif state == State.PAUSED:
 				resume_run()
-		elif event.keycode in [KEY_ENTER, KEY_SPACE] and state in [State.MENU, State.LOST]:
+		elif event.keycode in [KEY_ENTER, KEY_SPACE] and state in [State.MENU, State.LOST] and death_time <= 0.0:
 			start_run()
 		elif event.keycode == KEY_SPACE and state == State.PLAYING and gravity_is_active():
 			combat.press(-3, ship.position)
@@ -1069,7 +1148,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			combat.press(-2, event.position)
 		else:
 			combat.release(-2, event.position)
-	elif event is InputEventMouseMotion and event.device != InputEvent.DEVICE_ID_EMULATION:
+	elif event is InputEventMouseMotion and event.device != InputEvent.DEVICE_ID_EMULATION and event.button_mask & MOUSE_BUTTON_MASK_LEFT:
 		combat.move(-2, event.position)
 
 ## Apply finger displacement to the steering target instead of teleporting the ship beneath the finger.
@@ -1087,6 +1166,18 @@ func _notification(what: int) -> void:
 
 ## Submit this object's visual geometry in local coordinates. Physics and collision rules are handled separately.
 func _draw() -> void:
+	if death_time > 0.0:
+		var age := 1.8 - death_time
+		var fraction := clampf(age / 1.5, 0, 1)
+		for i in range(18):
+			var angle := float(i) * 2.39996 + age * (2.0 if death_is_gravity else 0.3)
+			var origin := death_origin + Vector2.from_angle(angle) * (15 + i % 5 * 5)
+			var at := origin.lerp(death_target, fraction * fraction) if death_is_gravity else origin + Vector2.from_angle(angle) * age * (40 + i * 5)
+			var radius := maxf(0.5, 5 * (1 - fraction))
+			draw_colored_polygon(PackedVector2Array([at + Vector2(0, -radius), at + Vector2(radius, radius), at - Vector2(radius, -radius)]), Color(0.65, 0.85, 1.0, 1 - fraction))
+		if death_is_gravity:
+			draw_circle(death_target, 18, Color("03020c"))
+			draw_arc(death_target, 23, 0, TAU, 48, Color("b894ff"), 2, true)
 	if state == State.MENU:
 		var center := Vector2(arena.x * 0.5, arena.y * 0.475)
 		draw_arc(center, 106, 0.0, TAU, 90, Color("203248"), 1, true)

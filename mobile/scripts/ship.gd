@@ -41,8 +41,8 @@ func _draw() -> void:
 	draw_set_transform(Vector2.ZERO, 0, Vector2(width, 1.0))
 	if invulnerable > 0.0:
 		draw_arc(Vector2.ZERO, 41.0, 0.0, TAU, 48, Color(0.35, 0.91, 0.82, 0.35), 1.5, true)
-		if fmod(invulnerable, 0.18) < 0.07:
-			return
+		# Keep the full hull visible during recovery; a refreshed immunity timer
+		# must never pin the ship inside the invisible portion of a blink cycle.
 	var flame := 33.0 + sin(animation_time * 32.0) * 6.0
 	draw_colored_polygon(PackedVector2Array([Vector2(-7, 22), Vector2(0, flame + 15), Vector2(7, 22)]), Color("ff9a62"))
 	draw_colored_polygon(PackedVector2Array([Vector2(-3, 23), Vector2(0, flame), Vector2(3, 23)]), Color("fff3c0"))

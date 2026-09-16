@@ -103,7 +103,7 @@ func run_checks() -> void:
 	check(game.ship.position.distance_to(pushed_position) <= 260.0 / 60.0 + 0.01, "white-hole recovery uses bounded physical movement")
 	for frame in range(60):
 		game._physics_process(1.0 / 60.0)
-	check(not game.returning_to_cruise and game.ship.position.is_equal_approx(game.cruise_position()), "recovery finishes at the normal flight position before the next attack")
+	check(not game.returning_to_cruise and is_equal_approx(game.ship.position.y, game.cruise_position().y), "recovery finishes at the normal flight position before the next attack")
 	# A resize must preserve the vertical ship/hole separation, not collapse it.
 	prepare("white")
 	game.boss.step(0.2)

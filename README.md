@@ -118,3 +118,7 @@ Weapon pickups add visible barrels and progressively wider ship hulls. The laser
 Read [the commented-code guide](docs/CODE_GUIDE.md) for ownership, update order, tuning values, test commands and the iPhone workflow.
 
 Shields last ten seconds and drop at one third the hull-repair rate. Asteroid impact and an escaped alien’s homing black-hole cannon are instant losses unless shielded; direct alien contact costs one life. Hold the upper playfield for 1–5 seconds and release to launch a player black hole. Gravity cancels firing, and surviving pulled actors return smoothly afterward. Each survived white-hole attack also returns the player toward the normal flight position.
+
+### Latest combat behavior
+
+Targeting missiles start at 30 and missile drops add five. Laser time drains only while firing. A shield allows movement and shooting during gravity; another gravity charge remains blocked. Player holes last 1.5 times their 1–5-second charge. Black holes attract and merge, white holes repel, and opposite holes cancel into a player-safe shockwave. Asteroids keep altered trajectories; surviving ships recover with visible thrust, and player recovery changes only height. Tractor bosses leave a glowing remnant until their current barrage finishes. A death animation explains the loss before the menu appears. Lighting changes at each sector boundary.

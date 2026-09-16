@@ -16,6 +16,7 @@ var rocket_cooldown := 0.0
 var haptic_cooldown := 0.0
 var haptic_followup := 0.0
 var returns: Dictionary = {}
+var missiles := 30
 
 ## Forget run-owned state without changing saved sound/vibration preferences.
 func reset() -> void:
@@ -26,6 +27,7 @@ func reset() -> void:
 	haptic_cooldown = 0.0
 	haptic_followup = 0.0
 	returns.clear()
+	missiles = 30
 
 ## Stop all control immediately; the ship must not coast toward an old drag target.
 func cancel() -> void:
@@ -38,7 +40,11 @@ func cancel() -> void:
 
 ## Equipped weapons fire only while a ship-control gesture is held, outside gravity.
 func firing() -> bool:
-	return gesture == "control" and finger != -1 and not game.gravity_is_active()
+	return gesture == "control" and finger != -1 and not gravity_blocks_control()
+
+## Shields allow movement and weapons during gravity, but never a new gravity charge.
+func gravity_blocks_control() -> bool:
+	return game.gravity_is_active() and shield_time <= 0.0
 
 ## Tick equipment, charge display, haptics, and smooth restoration of surviving actors.
 func step(delta: float) -> void:
@@ -49,11 +55,11 @@ func step(delta: float) -> void:
 		haptic_followup -= delta
 		if haptic_followup <= 0.0 and game.progress.vibration_enabled:
 			Input.vibrate_handheld(45, 1.0)
-	if laser_time > 0.0:
+	if laser_time > 0.0 and firing():
 		laser_time = maxf(0.0, laser_time - delta)
 		if laser_time == 0.0:
 			game.weapons.level = previous_weapon
-	if game.gravity_is_active():
+	if gravity_blocks_control():
 		cancel()
 	elif finger != -1:
 		held = minf(5.0, held + delta)
@@ -63,13 +69,16 @@ func step(delta: float) -> void:
 			continue
 		if game.gravity_is_active():
 			continue
-		actor.position = actor.position.move_toward(returns[actor], 260.0 * delta)
+		var destination: Vector2 = returns[actor]
+		if actor == game.ship:
+			destination.x = actor.position.x
+		actor.position = actor.position.move_toward(destination, 260.0 * delta)
 		if actor == game.ship:
 			actor.target_x = actor.position.x
 			actor.invulnerable = maxf(actor.invulnerable, 0.2)
 		else:
 			actor.previous_position = actor.position
-		if actor.position.distance_to(returns[actor]) < 0.1:
+		if actor.position.distance_to(destination) < 0.1:
 			returns.erase(actor)
 	queue_redraw()
 
@@ -78,7 +87,7 @@ func step(delta: float) -> void:
 func press(id: int, at: Vector2) -> void:
 	if finger != -1 or at.y <= game.top_inset + 143 or not Rect2(Vector2.ZERO, game.arena).has_point(at):
 		return
-	if game.gravity_is_active():
+	if gravity_blocks_control():
 		if is_instance_valid(game.boss):
 			game.boss.resist()
 		for well in game.lingering_wells:
@@ -101,6 +110,10 @@ func press(id: int, at: Vector2) -> void:
 
 ## Leaving the viewport cancels firing even if the OS has not sent a release yet.
 func move(id: int, at: Vector2) -> void:
+	# A real drag proves the finger is still down after a gravity transition.
+	# Reacquire only ship control, never silently restart a charge or target tap.
+	if finger == -1 and not gravity_blocks_control() and at.y >= game.arena.y * 0.72:
+		press(id, at)
 	if id != finger:
 		return
 	if not Rect2(Vector2.ZERO, game.arena).has_point(at):
@@ -113,8 +126,8 @@ func move(id: int, at: Vector2) -> void:
 func release(id: int, at: Vector2, canceled: bool = false) -> void:
 	if id != finger:
 		return
-	if not canceled and Rect2(Vector2.ZERO, game.arena).has_point(at) and not game.gravity_is_active() and gesture == "aim":
-		if held >= 1.0 and aim.y < game.arena.y * 0.72 and aim.distance_to(game.ship.position) >= 75.0:
+	if not canceled and Rect2(Vector2.ZERO, game.arena).has_point(at) and not gravity_blocks_control() and gesture == "aim":
+		if held >= 1.0 and not game.gravity_is_active() and aim.y < game.arena.y * 0.72 and aim.distance_to(game.ship.position) >= 75.0:
 			var well = PlayerWell.new()
 			well.game = game
 			well.well_position = aim
@@ -123,12 +136,13 @@ func release(id: int, at: Vector2, canceled: bool = false) -> void:
 			game.add_child(well)
 			game.lingering_wells.append(well)
 			game.sound.play_effect("rocket")
-		elif held < 1.0 and is_instance_valid(target) and not target.is_queued_for_deletion() and rocket_cooldown <= 0.0:
+		elif held < 1.0 and is_instance_valid(target) and not target.is_queued_for_deletion() and rocket_cooldown <= 0.0 and missiles > 0:
 			var shot = game.weapons.spawn_shot(game, game.ship.position + Vector2(0, -44), Vector2(0, -660))
 			shot.kind = "rocket"
 			shot.homing_target = target
 			shot.damage = 3
 			shot.blast_radius = 65.0
+			missiles -= 1
 			rocket_cooldown = 0.25
 			game.sound.play_effect("rocket")
 	cancel()
@@ -155,6 +169,8 @@ func vibrate(event: String) -> void:
 ## Non-gravity actors pause their normal travel while a player well pulls them or
 ## while they return. Bosses never enter this list and remain immune to the pull.
 func controls_actor(actor: Node2D) -> bool:
+	if game.asteroids.has(actor) or (actor == game.ship and shield_time > 0.0):
+		return false
 	if returns.has(actor):
 		return true
 	for well in game.lingering_wells:
@@ -171,3 +187,13 @@ func _draw() -> void:
 		draw_arc(game.ship.position, 43, 0, TAU, 64, Color(0.5, 0.9, 1.0, 0.8), 2, true)
 	if gesture == "aim":
 		draw_arc(aim, 24 + held * 5, -PI / 2, -PI / 2 + TAU * held / 5, 64, Color("c7a0ff"), 3, true)
+	# Exhaust points into the well, making the opposite resisting thrust readable.
+	for well in game.lingering_wells:
+		if well is PlayerWell and well.holds_steering():
+			for actor in well.origins:
+				if not is_instance_valid(actor) or actor.is_queued_for_deletion() or (actor != game.ship and not game.enemies.has(actor)):
+					continue
+				var exhaust: Vector2 = (well.well_position - actor.position).normalized()
+				var start: Vector2 = actor.position + exhaust * 20.0
+				draw_line(start, start + exhaust * (40 + sin(game.elapsed * 35) * 6), Color(0.3, 0.7, 1, 0.22), 14, true)
+				draw_line(start, start + exhaust * 30, Color("b8eaff"), 4, true)

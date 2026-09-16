@@ -72,6 +72,11 @@ func refresh() -> void:
 	var h: float = game.arena.y
 	var menu: bool = game.state == game.State.MENU
 	var playing: bool = game.state == game.State.PLAYING
+	if game.death_time > 0.0:
+		for button in [primary, secondary, pause_button, sound_button, vibration_button]:
+			button.visible = false
+		queue_redraw()
+		return
 	primary.visible = not playing
 	secondary.visible = not playing and not menu
 	pause_button.visible = playing
@@ -123,6 +128,10 @@ func _draw() -> void:
 	var w: float = game.arena.x
 	var h: float = game.arena.y
 	var top: float = game.top_inset
+	if game.death_time > 0.0:
+		centered("GRAVITY COLLAPSE" if game.death_is_gravity else "SHIP DESTROYED", h * 0.3, 24, Color("ffb18f"))
+		centered(game.loss_reason, h * 0.3 + 30, 13, INK)
+		return
 	if game.state == game.State.MENU:
 		tracked("ENDLESS FLIGHT", top + 28, 12, 3.0, MINT)
 		tracked("ALIEN", top + 142, 58, 9.0, INK)
@@ -156,14 +165,15 @@ func _draw() -> void:
 		tracked("SECTOR %02d  ·  DIFFICULTY %d%%" % [game.bosses_defeated + 1, game.difficulty_percent()], top + 119, 10, 1.0, MUTED)
 	if game.state == game.State.PLAYING:
 		var timed := ""
+		text_at("MISSILES %d" % game.combat.missiles, Vector2(28, top + 181), 12, Color("ffc56e"))
 		if game.combat.shield_time > 0.0:
 			timed += "SHIELD %.1fs  " % game.combat.shield_time
 		if game.combat.laser_time > 0.0:
 			timed += "LASER %.1fs" % game.combat.laser_time
 		centered(timed, top + 162, 12, MINT)
-		if game.combat.gesture == "aim":
+		if game.combat.gesture == "aim" and not game.gravity_is_active():
 			centered("GRAVITY CHARGE %.1f / 5s" % game.combat.held, h - game.bottom_inset - 38, 13, Color("c7a0ff"))
-		if game.gravity_is_active() and not is_instance_valid(game.boss):
+		if game.combat.gravity_blocks_control() and not is_instance_valid(game.boss):
 			centered("KEEP TAPPING · GRAVITY REMAINS", h * 0.43, 19, MINT)
 		if game.boss_warning > 0.0:
 			centered("BOSS APPROACHING", top + 202, 25, Color("ffb86a"))
@@ -175,7 +185,7 @@ func _draw() -> void:
 			draw_boss_notice()
 		if game.pickup_notice_time > 0.0:
 			centered(game.pickup_notice, h - game.bottom_inset - 220, 15, Color("ffc56e"))
-		centered("TAP TO NEUTRALISE" if game.gravity_is_active() else "DRAG TO STEER", h - game.bottom_inset - 5, 10, MUTED)
+		centered("TAP TO NEUTRALISE" if game.combat.gravity_blocks_control() else "HOLD TO FIRE · DRAG TO STEER", h - game.bottom_inset - 5, 10, MUTED)
 		if game.damage_flash > 0.0:
 			draw_rect(Rect2(Vector2.ZERO, size), Color(1, 0.26, 0.22, game.damage_flash * 0.13))
 		return
@@ -193,6 +203,9 @@ func _draw() -> void:
 ## Show phase-specific instructions for shooting, dodging, or neutralising gravity.
 func draw_boss_notice() -> void:
 	var boss: Node2D = game.boss
+	if boss.holds_steering() and game.combat.shield_time > 0.0:
+		centered("SHIELD ACTIVE · MOVE AND FIRE", game.arena.y * 0.52, 17, MINT)
+		return
 	# Keep instructions clear of the white hole that now often appears above the ship.
 	var y: float = game.arena.y * 0.52
 	if boss.kind == "white":

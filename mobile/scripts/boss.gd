@@ -42,6 +42,7 @@ var lingering := false
 var well_duration := ACTIVE_SECONDS
 ## Normal force lasts four seconds; the death-created well overrides this to eight.
 var well_scale := 1.0
+var proximity_multiplier := 1.0
 
 ## Godot calls this once after the node joins the scene; initialize child nodes and cached resources here.
 func _ready() -> void:
@@ -104,6 +105,13 @@ func step(delta: float) -> void:
 		if summons_cleared:
 			return_to_firefight()
 	elif phase == "active" and kind in ["black", "white"]:
+		# Expiration must run before contact handling. A shielded core/edge
+		# contact cannot keep returning early and strand an attack forever.
+		if phase_time >= well_duration:
+			if kind == "white":
+				game.returning_to_cruise = true
+			return_to_firefight()
+			return
 		var force_blocked: bool = neutralise_time > 0.0 or game.combat.shield_time > 0.0
 		neutralise_time = maxf(0.0, neutralise_time - delta)
 		var previous_position: Vector2 = game.ship.position
@@ -112,22 +120,17 @@ func step(delta: float) -> void:
 			if kind == "white":
 				direction = -direction
 			var strength := (58.0 if kind == "black" else 88.0) + phase_time * 9.0
+			strength *= proximity_multiplier
 			game.ship.position += direction * strength * delta
-		game.ship.target_x = game.ship.position.x
+		if game.combat.shield_time <= 0.0:
+			game.ship.target_x = game.ship.position.x
 		var closest := Geometry2D.get_closest_point_to_segment(well_position, previous_position, game.ship.position)
-		if kind == "black" and closest.distance_to(well_position) < 29 * well_scale:
+		if kind == "black" and closest.distance_to(well_position) < 29 * well_scale and game.combat.shield_time <= 0.0:
 			game.lose_ship("Caught in the black hole.")
 			return
-		if kind == "white" and touches_screen_edge():
+		if kind == "white" and touches_screen_edge() and game.combat.shield_time <= 0.0:
 			game.lose_ship("The white hole pushed you into the boundary.")
 			return
-		if phase_time >= well_duration:
-			# Each survived white-hole attack earns a smooth trip back from the
-			# boundary, including attacks that end while their boss is still alive.
-			# The game waits for any overlapping gravity before moving the ship.
-			if kind == "white":
-				game.returning_to_cruise = true
-			return_to_firefight()
 	queue_redraw()
 
 ## Aim three enemy projectiles at the ship's current position; their trajectories remain dodgeable after firing.
@@ -140,6 +143,8 @@ func fire_volley() -> void:
 ## Finish a special and schedule another firefight. Detached attacks free themselves instead of restarting.
 func return_to_firefight() -> void:
 	if lingering:
+		if kind in ["asteroid", "swarm"]:
+			game.burst(body_position + Vector2(0, 42), Color("ffb86a"), 18)
 		game.lingering_wells.erase(self)
 		queue_free()
 		return
@@ -165,7 +170,6 @@ func begin_special() -> void:
 
 ## Start the force/barrage timer only after the warning or cannon landing; unsafe gravity landings are redirected.
 func activate_special() -> void:
-	game.combat.cancel()
 	game.combat.vibrate("gravity")
 	if not lingering and kind in ["black", "white"] and well_position.distance_to(game.ship.position) < minf(130.0, game.arena.x * 0.22):
 		position_gravity_hole()
@@ -180,13 +184,13 @@ func activate_special() -> void:
 	swarm_reward = {"dropped": false}
 	game.sound.play_effect("rift" if kind in ["black", "white"] else "burst")
 	if kind in ["black", "white"]:
+		if game.combat.shield_time <= 0.0:
+			game.combat.cancel()
 		game.burst(well_position, Color("b9f8ff") if kind == "white" else Color("baa3ff"), 34)
 		# Steering changes to tapping, so clear bullets that can no longer be dodged.
 		for shot in game.projectiles.duplicate():
 			if shot.hostile:
 				game.remove_projectile(shot)
-		game.pointer_id = -1
-		game.ship.target_x = game.ship.position.x
 
 ## Spawn the fast visual cannon at the boss muzzle and aim it at the chosen fixed well location.
 func launch_rift_cannon() -> void:
@@ -259,7 +263,7 @@ func neutralisation() -> float:
 ## Refresh the short neutralisation window without applying any positional impulse to the ship.
 func resist() -> void:
 	if phase == "active" and kind in ["black", "white"]:
-		neutralise_time = TAP_NEUTRALISE_SECONDS
+		neutralise_time = TAP_NEUTRALISE_SECONDS / proximity_multiplier
 		tap_flash = 0.18
 		queue_redraw()
 
@@ -282,10 +286,14 @@ func holds_steering() -> bool:
 
 ## Submit this object's visual geometry in local coordinates. Physics and collision rules are handled separately.
 func _draw() -> void:
+	if lingering and kind in ["asteroid", "swarm"]:
+		draw_tractor_remnant()
+		return
 	if kind == "swarm":
 		if not lingering:
 			draw_swarm_body()
 		return
+
 	var tint := Color("baa3ff") if kind == "black" else (Color("b9f8ff") if kind == "white" else Color("ffb86a"))
 	if not lingering:
 		draw_set_transform(body_position)
@@ -398,3 +406,17 @@ func draw_rift_cannon(tint: Color) -> void:
 	draw_polyline(trail, Color(tint, 0.55), 2.4, true)
 	draw_circle(cannon_position, 9.5, Color("f5ffff") if kind == "white" else Color("f0e5ff"))
 	draw_circle(cannon_position, 17.0, Color(tint, 0.25))
+
+## The destroyed carrier leaves a broken, still-powered tractor core. Its
+## position is the original tether origin, and its lifetime is the attack's own.
+func draw_tractor_remnant() -> void:
+	var at := body_position + Vector2(0, 42)
+	var tint := Color("79f4c4") if kind == "swarm" else Color("ffb86a")
+	draw_circle(at, 46, Color(tint, 0.06))
+	for i in range(5):
+		var angle := i * TAU / 5.0 + sin(animation_time) * 0.08
+		var offset := Vector2.from_angle(angle) * 25.0
+		draw_colored_polygon(PackedVector2Array([at + offset, at + offset * 1.5 + Vector2(9, 4), at + offset * 1.4 - Vector2(4, 8)]), tint.darkened(0.5))
+		draw_arc(at, 31, angle, angle + 0.65, 12, Color(tint, 0.7), 3, true)
+	draw_circle(at, 11 + sin(animation_time * 17) * 2, tint)
+	draw_circle(at, 5, Color.WHITE)

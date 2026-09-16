@@ -101,6 +101,7 @@ func run() -> void:
 	fresh()
 	game.weapons.level = 2
 	game.combat.equip_laser()
+	game.combat.press(0, game.ship.position)
 	game.combat.step(9.9)
 	check(game.weapons.level == 3, "laser lasts ten seconds")
 	game.combat.step(0.11)
@@ -154,7 +155,7 @@ func run() -> void:
 	var well: Node2D = game.lingering_wells[0]
 	check(well.charge == 5 and not well.holds_steering(), "charge caps at five and first launches a rocket")
 	well.step(1)
-	check(well.holds_steering() and well.remaining == 5, "lifetime starts on implosion")
+	check(well.holds_steering() and well.remaining == 7.5, "lifetime starts on implosion")
 	fresh()
 	game.spawn_enemy(Vector2(70, 250), Vector2.ZERO)
 	enemy = game.enemies[0]
@@ -164,7 +165,7 @@ func run() -> void:
 	game.combat.release(0, Vector2(270, 400))
 	well = game.lingering_wells[0]
 	well.step(1)
-	check(is_equal_approx(well.well_scale, 1.8) and well.remaining == 1, "minimum charge matches boss death-well size and lasts one second")
+	check(is_equal_approx(well.well_scale, 1.8) and well.remaining == 1.5, "minimum charge matches boss death-well size and lasts one and a half seconds")
 	well.step(0.1)
 	check(is_equal_approx(enemy.position.distance_to(original), 9.0), "pull speed is ninety pixels per second")
 	var before_large: Vector2 = enemy.position
@@ -182,7 +183,7 @@ func run() -> void:
 	game.begin_boss("asteroid")
 	game.boss.step(1.5)
 	var boss_position: Vector2 = game.boss.body_position
-	well.step(0.81)
+	well.step(1.21)
 	check(game.boss.body_position == boss_position, "boss resists player well")
 	check(game.combat.returns.has(enemy), "surviving alien schedules return")
 	game.combat.step(1)
@@ -196,7 +197,7 @@ func run() -> void:
 		var drop: Node2D = game.pickups.pop_back()
 		if drop.kind == "shield":
 			shield_drops += 1
-		else:
+		elif drop.kind == "life":
 			health_drops += 1
 		drop.free()
 	check(absf(float(shield_drops) / health_drops - 1.0 / 3.0) < 0.04, "shield drop rate is one third of hull drops")

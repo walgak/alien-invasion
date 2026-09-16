@@ -31,7 +31,7 @@ func step(delta: float) -> void:
 		cannon_position = cannon_position.move_toward(well_position, 1225.0 * delta)
 		if cannon_position.distance_to(well_position) < 1.0:
 			phase = "active"
-			remaining = charge
+			remaining = charge * 1.5
 			well_scale = 1.8 * sqrt(charge)
 			game.sound.play_effect("rift")
 			game.combat.vibrate("gravity")
@@ -43,7 +43,6 @@ func step(delta: float) -> void:
 	# game.bend_projectile, preserving their individual constant travel speeds.
 	var actors: Array = [game.ship]
 	actors.append_array(game.enemies)
-	actors.append_array(game.asteroids)
 	actors.append_array(game.pickups)
 	for actor in actors:
 		if not is_instance_valid(actor) or actor.is_queued_for_deletion():
@@ -60,15 +59,9 @@ func step(delta: float) -> void:
 		else:
 			actor.previous_position = actor.position
 		var nearest := Geometry2D.get_closest_point_to_segment(game.ship.position, before, actor.position)
-		if game.asteroids.has(actor) and nearest.distance_to(game.ship.position) <= actor.radius + game.Ship.HIT_RADIUS:
-			game.remove_asteroid(actor)
-			game.instant_loss("An asteroid struck your ship.")
-			if game.state != game.State.PLAYING:
-				return
-			continue
 		if game.enemies.has(actor) and nearest.distance_to(game.ship.position) <= game.Enemy.HIT_RADIUS + game.Ship.HIT_RADIUS:
 			game.remove_enemy(actor)
-			game.damage_ship()
+			game.damage_ship("An alien collided with your ship.")
 			if game.state != game.State.PLAYING:
 				return
 			continue
@@ -86,13 +79,17 @@ func step(delta: float) -> void:
 			return
 	remaining -= delta
 	if remaining <= 0.0:
-		for actor in origins:
-			if is_instance_valid(actor) and not actor.is_queued_for_deletion():
-				game.combat.returns[actor] = origins[actor]
-		phase = "finished"
-		game.lingering_wells.erase(self)
-		queue_free()
+		finish_well()
 	queue_redraw()
+
+## Restore living ships and collectibles only. Asteroids retain bent trajectories.
+func finish_well() -> void:
+	for actor in origins:
+		if is_instance_valid(actor) and not actor.is_queued_for_deletion() and not game.asteroids.has(actor):
+			game.combat.returns[actor] = origins[actor]
+	phase = "finished"
+	game.lingering_wells.erase(self)
+	queue_free()
 
 ## Inward-moving concentric folds accompany the shader's actual background lens.
 func _draw() -> void:

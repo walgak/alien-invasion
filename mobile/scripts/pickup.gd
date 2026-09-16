@@ -27,6 +27,8 @@ func _draw() -> void:
 		tint = Color("73d5ff")
 	elif kind == "laser":
 		tint = Color("d2a3ff")
+	elif kind == "missiles":
+		tint = Color("ff9b73")
 	var pulse := 0.5 + 0.5 * sin(age * 4.5)
 	draw_circle(Vector2.ZERO, 29.0 + pulse * 3.0, Color(tint, 0.045))
 	draw_circle(Vector2.ZERO, 23.0, Color(tint, 0.08))
@@ -38,7 +40,9 @@ func _draw() -> void:
 	draw_polyline(diamond, Color(tint, 0.9), 1.8, true)
 	draw_arc(Vector2.ZERO, 25.0, age * 1.2, age * 1.2 + 1.1, 16, Color(tint, 0.65), 1.5, true)
 	draw_arc(Vector2.ZERO, 25.0, age * 1.2 + PI, age * 1.2 + PI + 1.1, 16, Color(tint, 0.35), 1.5, true)
-	if kind == "shield":
+	if kind == "missiles":
+		draw_colored_polygon(PackedVector2Array([Vector2(0, -12), Vector2(6, 2), Vector2(6, 10), Vector2(0, 6), Vector2(-6, 10), Vector2(-6, 2)]), tint)
+	elif kind == "shield":
 		draw_arc(Vector2(0, -3), 10, 0, PI, 20, tint, 3, true)
 		draw_line(Vector2(-10, -3), Vector2(10, -3), tint, 3, true)
 	elif kind == "laser":

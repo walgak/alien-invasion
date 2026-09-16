@@ -109,7 +109,7 @@ func run_checks() -> void:
 		enemy.health = 3
 	game.fire_player_shot()
 	game.update_projectiles(0.3)
-	check(game.enemies.size() == 1 and game.enemies[0].health == 1, "rocket kills its direct target and wounds the tougher nearby alien")
+	check(game.enemies.is_empty(), "rocket blast kills its direct target and the nearby three-hit alien")
 	game.start_run("swarm")
 	game.boss.summon_alien()
 	var alien = game.enemies[0]

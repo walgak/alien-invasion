@@ -81,7 +81,7 @@ func run() -> void:
 		check(game.ship.position.distance_to(moving_from) <= 260.0 / 60.0 + 0.01, kind + ": cruise return uses bounded physical speed")
 		for i in range(120):
 			game._physics_process(1.0 / 60.0)
-		check(game.ship.position.is_equal_approx(game.cruise_position()), kind + ": smooth return reaches normal position")
+		check(is_equal_approx(game.ship.position.y, game.cruise_position().y) and is_equal_approx(game.ship.position.x, moving_from.x), kind + ": smooth return reaches normal position")
 	game.start_run("asteroid")
 	game.boss.step(1.5)
 	game.boss.begin_special()
