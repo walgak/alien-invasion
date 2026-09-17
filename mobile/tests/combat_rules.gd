@@ -167,11 +167,12 @@ func run() -> void:
 	well.step(1)
 	check(is_equal_approx(well.well_scale, 1.8) and well.remaining == 1.5, "minimum charge matches boss death-well size and lasts one and a half seconds")
 	well.step(0.1)
-	check(is_equal_approx(enemy.position.distance_to(original), 9.0), "pull speed is ninety pixels per second")
+	check(enemy.position.distance_to(original) < 9.0 and enemy.position.distance_to(original) > 7.0, "pull accelerates gently below the original ninety-pixel speed")
 	var before_large: Vector2 = enemy.position
 	well.well_scale *= 2
+	well.active_age = 0.0 # Compare equal attack ages, independently of core size.
 	well.step(0.1)
-	check(is_equal_approx(enemy.position.distance_to(before_large), 9.0), "larger gravity core does not increase pull speed")
+	check(is_equal_approx(enemy.position.distance_to(before_large), before_large.distance_to(original)), "larger gravity core does not increase pull speed")
 	well.well_scale /= 2
 	var shot = game.weapons.spawn_shot(game, Vector2(100, 500), Vector2.UP * 850)
 	game.bend_projectile(shot, 0.1)
@@ -185,7 +186,7 @@ func run() -> void:
 	var boss_position: Vector2 = game.boss.body_position
 	well.step(1.21)
 	check(game.boss.body_position == boss_position, "boss resists player well")
-	check(game.combat.returns.has(enemy), "surviving alien schedules return")
+	check(game.combat.returns.has(enemy.get_instance_id()), "surviving alien schedules return")
 	game.combat.step(1)
 	check(enemy.position.is_equal_approx(original), "survivor returns to original position")
 	fresh()

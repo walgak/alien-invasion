@@ -104,4 +104,11 @@ Shields last ten seconds and drop at one third the hull-repair rate. Asteroid im
 
 ### Latest combat behavior
 
-Targeting missiles start at 30 and missile drops add five. Laser time drains only while firing. A shield allows movement and shooting during gravity; another gravity charge remains blocked. Player holes last 1.5 times their 1–5-second charge. Black holes attract and merge, white holes repel, and opposite holes cancel into a player-safe shockwave. Asteroids keep altered trajectories; surviving ships recover with visible thrust, and player recovery changes only height. Tractor bosses leave a glowing remnant until their current barrage finishes. A death animation explains the loss before the menu appears. Lighting changes at each sector boundary.
+Targeting missiles start at 30 and missile drops add five. Laser time drains only while firing. A shield allows movement and shooting during gravity; it also allows charging a gravity counterattack. Player holes last 1.5 times their 1–5-second charge. Black holes attract and merge, white holes repel, and opposite holes cancel into a player-safe shockwave. Asteroids keep altered trajectories; surviving ships recover with visible thrust, and player recovery changes only height. Tractor bosses leave a glowing remnant until their current barrage finishes. A death animation explains the loss before the menu appears. Lighting eases between sector directions without sudden changes.
+
+
+### Gravity and visual polish
+
+Black holes swallow fragmented hull plates behind an opaque event horizon. Shot deaths explode; collision and white-edge deaths crumble first. Ships rotate their thrusters against gravity and ease upright afterwards. Shielded players can steer, shoot, and charge another black hole; a shielded escape-cannon hit produces a harmless visual shockwave.
+
+The flowing laser bends through gravity and terminates in a glow on a boss or its guard-powered shield. Rockets retain gravity curvature while homing. Every expired hole leaves a two-stage pulse, and gravity has gentle acceleration/deceleration plus continuous low vibration. Background planets vary in size, surface and rings, appear less often, and share a smoothly changing distant light source; passing foreground suns have been removed.

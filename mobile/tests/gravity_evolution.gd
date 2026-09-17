@@ -105,7 +105,7 @@ func run() -> void:
 	game.combat.press(0, Vector2(100, 400))
 	game.combat.step(2)
 	game.combat.release(0, Vector2(100, 400))
-	check(game.lingering_wells.size() == 1, "shield never permits a new gravity charge after a field is active")
+	check(game.lingering_wells.size() == 2, "shield permits a gravity counterattack while the enemy field is active")
 	game.combat.press(0, game.ship.position)
 	game.combat.shield_time = 0.01
 	game.combat.step(0.02)
@@ -155,7 +155,7 @@ func run() -> void:
 	check(velocity.x > 0 and not game.combat.controls_actor(rock), "asteroid bends through gravity while retaining inertia")
 	a.finish_well()
 	game.update_asteroids(0.2)
-	check(rock.velocity == velocity and not game.combat.returns.has(rock), "asteroid keeps new trajectory after well ends")
+	check(rock.velocity == velocity and not game.combat.returns.has(rock.get_instance_id()), "asteroid keeps new trajectory after well ends")
 	fresh()
 	game.combat.press(0, game.ship.position)
 	game.boss_timer = 0
@@ -168,13 +168,13 @@ func run() -> void:
 	check(game.combat.firing(), "tractor barrage introduction never drops the held pointer")
 	var old_light: Vector3 = game.sector_light
 	game.boss.take_hit(10000)
-	check(game.sector_light != old_light, "boss victory changes sector illumination")
+	check(game.sector_light == old_light and game.target_light != old_light, "boss victory schedules a gradual light transition without snapping")
 	check(game.lingering_wells.size() == 1 and game.lingering_wells[0].has_method("draw_tractor_remnant"), "unfinished tractor attack retains a visible power source")
 	fresh()
 	game.instant_loss("A black hole collapsed your ship.")
 	check(game.state == game.State.LOST and game.death_time > 0 and not game.interface.primary.visible, "fatal event freezes play but delays menu")
 	game._process(0.6)
-	check(game.ship.visible and game.ship.scale.x < 1, "gravity death visibly crumbles the hull")
+	check(not game.ship.visible and game.death_visual.pieces.size() > 10, "gravity death replaces the hull with crumbling plates")
 	game._process(1.3)
 	check(game.death_time == 0 and game.interface.primary.visible, "menu appears after death animation")
 	game.free()

@@ -70,8 +70,8 @@ func update_effects(game: Node2D) -> void:
 		if strands.size() < MAX_STRANDS:
 			strands.append(Vector4(enemy.fold_origin.x, enemy.fold_origin.y, enemy.position.x, enemy.position.y))
 			strand_styles.append(Vector4(20.0, enemy.fold_life / enemy.RELEASE_FADE_SECONDS, game.visual_time, -1.0))
-	lens_count = lenses.size()
-	strand_count = strands.size()
+	lens_count = mini(lenses.size(), MAX_LENSES)
+	strand_count = mini(strands.size(), MAX_STRANDS)
 	lenses.resize(MAX_LENSES)
 	styles.resize(MAX_LENSES)
 	strands.resize(MAX_STRANDS)

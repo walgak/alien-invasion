@@ -12,7 +12,9 @@ var well_scale := 1.8
 var animation_time := 0.0
 var remaining := 0.0
 var neutralise_time := 0.0
-var origins: Dictionary = {}
+var origins: Dictionary[int, Vector2] = {}
+## Stable instance IDs survive deletion; never use freed Nodes as dictionary keys.
+var active_age := 0.0
 const PULL_SPEED := 90.0
 
 ## Only the active well takes over controls; its traveling rocket does not.
@@ -34,9 +36,10 @@ func step(delta: float) -> void:
 			remaining = charge * 1.5
 			well_scale = 1.8 * sqrt(charge)
 			game.sound.play_effect("rift")
-			game.combat.vibrate("gravity")
+			game.combat.vibrate("black_spawn")
 		queue_redraw()
 		return
+	active_age += delta
 	var blocked := neutralise_time > 0.0
 	neutralise_time = maxf(0.0, neutralise_time - delta)
 	# Include new arrivals and collectibles, but never bosses. Shots are bent by
@@ -47,13 +50,14 @@ func step(delta: float) -> void:
 	for actor in actors:
 		if not is_instance_valid(actor) or actor.is_queued_for_deletion():
 			continue
-		if not origins.has(actor):
-			origins[actor] = game.combat.returns.get(actor, actor.position)
-			game.combat.returns.erase(actor)
+		var id: int = actor.get_instance_id()
+		if not origins.has(id):
+			origins[id] = game.combat.returns.get(id, actor.position)
+			game.combat.returns.erase(id)
 		if actor == game.ship and (blocked or game.combat.shield_time > 0.0):
 			continue
 		var before: Vector2 = actor.position
-		actor.position = actor.position.move_toward(well_position, PULL_SPEED * minf(delta, remaining))
+		actor.position = actor.position.move_toward(well_position, PULL_SPEED * (0.86 + 0.14 * clampf(active_age / 2.0, 0.0, 1.0)) * minf(delta, remaining))
 		if actor == game.ship:
 			actor.target_x = actor.position.x
 		else:
@@ -84,9 +88,13 @@ func step(delta: float) -> void:
 
 ## Restore living ships and collectibles only. Asteroids retain bent trajectories.
 func finish_well() -> void:
-	for actor in origins:
+	if phase == "finished":
+		return
+	game.gravity_fields.add_exit(well_position, kind, well_scale)
+	for id in origins.keys():
+		var actor = instance_from_id(id)
 		if is_instance_valid(actor) and not actor.is_queued_for_deletion() and not game.asteroids.has(actor):
-			game.combat.returns[actor] = origins[actor]
+			game.combat.returns[id] = origins[id]
 	phase = "finished"
 	game.lingering_wells.erase(self)
 	queue_free()

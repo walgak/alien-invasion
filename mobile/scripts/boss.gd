@@ -43,6 +43,7 @@ var well_duration := ACTIVE_SECONDS
 ## Normal force lasts four seconds; the death-created well overrides this to eight.
 var well_scale := 1.0
 var proximity_multiplier := 1.0
+var guard_total := 0
 
 ## Godot calls this once after the node joins the scene; initialize child nodes and cached resources here.
 func _ready() -> void:
@@ -119,7 +120,9 @@ func step(delta: float) -> void:
 			var direction: Vector2 = (well_position - previous_position).normalized()
 			if kind == "white":
 				direction = -direction
-			var strength := (58.0 if kind == "black" else 88.0) + phase_time * 9.0
+			var fraction := clampf(phase_time / well_duration, 0.0, 1.0)
+			# Same average travel budget, with gentle acceleration/deceleration.
+			var strength := lerpf(66.0, 86.0, fraction) if kind == "black" else lerpf(118.0, 94.0, fraction)
 			strength *= proximity_multiplier
 			game.ship.position += direction * strength * delta
 		if game.combat.shield_time <= 0.0:
@@ -142,6 +145,8 @@ func fire_volley() -> void:
 
 ## Finish a special and schedule another firefight. Detached attacks free themselves instead of restarting.
 func return_to_firefight() -> void:
+	if phase == "active" and kind in ["black", "white"]:
+		game.gravity_fields.add_exit(well_position, kind, well_scale)
 	if lingering:
 		if kind in ["asteroid", "swarm"]:
 			game.burst(body_position + Vector2(0, 42), Color("ffb86a"), 18)
@@ -170,7 +175,7 @@ func begin_special() -> void:
 
 ## Start the force/barrage timer only after the warning or cannon landing; unsafe gravity landings are redirected.
 func activate_special() -> void:
-	game.combat.vibrate("gravity")
+	game.combat.vibrate(kind + "_spawn" if kind in ["black", "white"] else "enemy")
 	if not lingering and kind in ["black", "white"] and well_position.distance_to(game.ship.position) < minf(130.0, game.arena.x * 0.22):
 		position_gravity_hole()
 		aim_cannon_at_hole()

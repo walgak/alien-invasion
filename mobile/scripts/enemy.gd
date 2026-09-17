@@ -86,3 +86,9 @@ func _draw() -> void:
 	draw_line(Vector2(-9,-3),Vector2(-3,1),tint,3,true)
 	draw_line(Vector2(9,-3),Vector2(3,1),tint,3,true)
 	draw_circle(Vector2(0,11),2,Color("fff3d7"))
+
+	# Rear-facing gravity cannon: the ship flies down, leaving this violet barrel
+	# aimed back toward the player once it has crossed the bottom boundary.
+	draw_rect(Rect2(-5,-31,10,17), Color("646079"))
+	draw_line(Vector2(0,-31),Vector2(0,-17),Color("b894ff"),3,true)
+	draw_arc(Vector2(0,-31),6,PI,TAU,16,Color("d5bbff"),2,true)

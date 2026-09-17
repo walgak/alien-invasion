@@ -13,11 +13,31 @@ var impact_voice := AudioStreamPlayer.new()
 var hit_voice := AudioStreamPlayer.new()
 var laser_voice := AudioStreamPlayer.new()
 var laser_active := false
+var gravity_filter := AudioEffectLowPassFilter.new()
+var gravity_pan := AudioEffectPanner.new()
+var gravity_mix := 0.0
+var gravity_pitch := 1.0
+var effects_bus := -1
 static var music_stream: AudioStreamWAV
 static var flight_stream: AudioStreamWAV
 
 ## Godot calls this once after the node joins the scene; initialize child nodes and cached resources here.
 func _ready() -> void:
+	# Music stays stable; only in-world weapon/impact sound is lensed.
+	effects_bus = AudioServer.get_bus_index("GravityEffects")
+	if effects_bus < 0:
+		AudioServer.add_bus()
+		effects_bus = AudioServer.bus_count-1
+		AudioServer.set_bus_name(effects_bus, "GravityEffects")
+	else:
+		while AudioServer.get_bus_effect_count(effects_bus) > 0:
+			AudioServer.remove_bus_effect(effects_bus, 0)
+	gravity_filter.cutoff_hz = 16000.0
+	AudioServer.add_bus_effect(effects_bus, gravity_filter)
+	AudioServer.add_bus_effect(effects_bus, gravity_pan)
+	impact_voice.bus = "GravityEffects"
+	hit_voice.bus = "GravityEffects"
+	laser_voice.bus = "GravityEffects"
 	streams["shot"] = tone(180, 85, 0.10, 0.0)
 	streams["burst"] = tone(110, 42, 0.28, 0.12)
 	streams["hit"] = tone(90, 38, 0.35, 0.12)
@@ -39,6 +59,7 @@ func _ready() -> void:
 	add_child(music)
 	for i in range(8):
 		var voice := AudioStreamPlayer.new()
+		voice.bus = "GravityEffects"
 		voice.volume_db = -20.0
 		add_child(voice)
 		voices.append(voice)
@@ -242,3 +263,24 @@ func rift_boom(duration: float = 0.88) -> AudioStreamWAV:
 	stream.mix_rate = sample_rate
 	stream.data = bytes
 	return stream
+
+## An artistic audio counterpart to lensing: black fields draw effects down in
+## pitch and toward their center; white fields open the filter and deflect the
+## stereo image away. Smooth interpolation avoids clicks or sudden level changes.
+func update_gravity(wells: Array, listener: Vector2, delta: float) -> void:
+	var strength := 0.0
+	var pan := 0.0
+	var white := false
+	for well in wells:
+		var amount := clampf(1.0-listener.distance_to(well.well_position)/650.0,0,1)
+		if amount > strength:
+			strength = amount
+			white = well.kind == "white"
+			pan = clampf((well.well_position.x-listener.x)/300.0,-0.65,0.65)*(-1 if white else 1)
+	var blend := 1.0-exp(-delta*3.0)
+	gravity_mix = lerpf(gravity_mix,strength,blend)
+	gravity_pitch = lerpf(gravity_pitch,lerpf(1.0,1.07 if white else 0.82,strength),blend)
+	gravity_filter.cutoff_hz = lerpf(gravity_filter.cutoff_hz,lerpf(16000.0,12500.0 if white else 2400.0,strength),blend)
+	gravity_pan.pan = lerpf(gravity_pan.pan,pan,blend)
+	for voice in voices + [impact_voice,hit_voice,laser_voice]:
+		voice.pitch_scale = gravity_pitch

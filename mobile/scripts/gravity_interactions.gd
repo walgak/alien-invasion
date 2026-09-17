@@ -4,6 +4,11 @@ extends Node2D
 const PlayerWell = preload("res://scripts/player_well.gd")
 var game: Node2D
 var shockwaves: Array[Dictionary] = []
+var exits: Array[Dictionary] = []
+
+## This layer occludes every actor inside an event horizon, but stays below HUD.
+func _init() -> void:
+	z_index = 32
 
 ## Collect every live field once, including the still-living boss's current field.
 func active_wells() -> Array[Node2D]:
@@ -71,7 +76,7 @@ func step(delta: float) -> void:
 			break # Recollect identities next frame, avoiding stale merged entries.
 	for wave in shockwaves.duplicate():
 		wave.age += delta
-		if wave.age >= 0.35 and not wave.fired:
+		if wave.age >= 0.35 and not wave.fired and not wave.get("visual_only", false):
 			wave.fired = true
 			for enemy in game.enemies.duplicate():
 				if enemy.position.distance_to(wave.at) <= wave.radius:
@@ -101,9 +106,9 @@ func merge(first: Node2D, second: Node2D) -> void:
 	if a is PlayerWell:
 		a.remaining = duration
 		if b is PlayerWell:
-			for actor in b.origins:
-				if not a.origins.has(actor):
-					a.origins[actor] = b.origins[actor]
+			for id in b.origins.keys():
+				if not a.origins.has(id):
+					a.origins[id] = b.origins[id]
 			b.origins.clear()
 	else:
 		a.well_duration = a.phase_time + duration
@@ -113,9 +118,82 @@ func merge(first: Node2D, second: Node2D) -> void:
 
 ## A compact warning flash expands into a readable, player-safe shock ring.
 func _draw() -> void:
+	draw_guard_shield()
+	draw_exits()
 	for wave in shockwaves:
 		if wave.age < 0.35:
 			draw_circle(wave.at, 15 + wave.age * 90, Color(0.8, 0.9, 1, 0.7))
 		else:
 			var progress: float = clampf((wave.age - 0.35) / 0.75, 0.0, 1.0)
 			draw_arc(wave.at, maxf(1.0, wave.radius * progress), 0, TAU, 96, Color(0.7, 0.95, 1, 1 - progress), 6, true)
+
+	# Always composite opaque cores last. Ships, beam filaments and hull shards
+	# must never show through the event horizon regardless of scene insertion order.
+	for well in active_wells():
+		if well.kind == "black":
+			draw_horizon(well.well_position, 31.0 * well.well_scale)
+	if game.death_time > 0.0 and game.death_is_gravity:
+		draw_horizon(game.death_target, game.death_radius)
+
+## A shield absorbs the escape cannon as light only: no damage or force callback.
+func visual_shockwave(at: Vector2) -> void:
+	shockwaves.append({"at": at, "age": 0.35, "radius": 190.0, "fired": true, "visual_only": true})
+
+## Expiring fields leave two folds and an energy release, independent of physics.
+func add_exit(at: Vector2, kind: String, size: float) -> void:
+	if exits.size() >= 12:
+		exits.pop_front()
+	exits.append({"at": at, "kind": kind, "radius": 31.0 * size, "age": 0.0})
+
+## The visual clock keeps exit effects finite without keeping a gravity force alive.
+func visual_step(delta: float) -> void:
+	for effect in exits.duplicate():
+		effect.age += delta
+		if effect.age >= 1.2:
+			exits.erase(effect)
+	queue_redraw()
+
+## Black cores remain fully opaque; a narrow rim defines the capture boundary.
+func draw_horizon(at: Vector2, radius: float) -> void:
+	draw_circle(at, radius, Color("01030a"))
+	draw_arc(at, radius + 1.0, 0, TAU, 80, Color("ab8ae8"), 1.5, true)
+
+## Hull shield strength is tied to living guards, not boss health. Individual
+## strands make the connection to each guard obvious, and fade as guards die.
+func draw_guard_shield() -> void:
+	if not is_instance_valid(game.boss) or game.boss.phase == "arrival":
+		return
+	var guards: Array = game.enemies.filter(func(e: Node2D) -> bool: return e.shield_guard)
+	if guards.is_empty():
+		return
+	var strength := float(guards.size()) / maxf(1.0, game.boss.guard_total)
+	var center: Vector2 = game.boss.body_position
+	draw_circle(center, 76, Color(0.2, 0.75, 1, 0.025 + strength * 0.075))
+	for i in range(12):
+		var angle: float = float(i) * TAU / 12.0 + game.visual_time * 0.06
+		draw_arc(center, 76, angle, angle + TAU / 12.0 * (0.3 + 0.65 * strength), 8, Color(0.35, 0.86, 1, 0.18 + 0.55 * strength), 1.0 + strength * 2.0, true)
+	for guard in guards:
+		var direction: Vector2 = (guard.position - center).normalized()
+		draw_line(center + direction * 76, guard.position, Color(0.3, 0.8, 1, 0.15 + strength * 0.2), 1.5, true)
+
+## Black: contract first, then release. White: immediate outward energy and two
+## expanding folds. All counts are fixed so larger charges cost no extra geometry.
+func draw_exits() -> void:
+	for effect in exits:
+		var age: float = effect.age
+		var black: bool = effect.kind == "black"
+		var tint := Color("b894ff") if black else Color("b9f8ff")
+		var outward_age: float = age - (0.55 if black else 0.0)
+		for ring in range(2):
+			var t := clampf((age - float(ring) * 0.09) / (0.55 if black else 0.95), 0.0, 1.0)
+			var radius: float = (effect.radius + 95.0) * (1.0 - t) if black else effect.radius + t * 180.0
+			if t < 1.0:
+				draw_arc(effect.at, maxf(1.0, radius), 0, TAU, 80, Color(tint, (1.0 - t) * 0.65), 2.5, true)
+		if black and age < 0.55:
+			draw_circle(effect.at, maxf(0.1, effect.radius * (1.0 - age / 0.55)), Color("01030a"))
+		if outward_age >= 0.0:
+			var t := clampf(outward_age / 0.65, 0, 1)
+			for ray in range(20):
+				var direction := Vector2.from_angle(float(ray) * TAU / 20.0 + float(ray % 3) * 0.07)
+				var radius: float = 15 + sqrt(t) * (125 + ray % 4 * 14)
+				draw_line(effect.at + direction * radius * 0.65, effect.at + direction * radius, Color(tint, (1 - t) * 0.65), 2, true)

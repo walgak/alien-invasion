@@ -15,7 +15,6 @@ func move_ship(delta: float, direction: float, width: float) -> void:
 	var old_x := position.x
 	position.x = move_toward(position.x, target_x, SPEED * delta)
 	lean = lerpf(lean, (position.x - old_x) / maxf(delta, 0.001) / SPEED, 12.0 * delta)
-	rotation = lean * 0.12
 	invulnerable = maxf(0.0, invulnerable - delta)
 	animate(delta)
 

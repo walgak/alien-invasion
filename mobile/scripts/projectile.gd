@@ -15,6 +15,8 @@ var lifetime := 8.0
 var beam_start := Vector2.ZERO
 var homing_target: Node2D
 var beam_segments: Array[Vector2] = []
+var absorbed := false
+var contact_point := Vector2.ZERO
 
 ## Set the beam endpoints for rendering and segment collision; game.gd owns continuous exposure timing.
 func setup_laser(from: Vector2, to: Vector2) -> void:
@@ -73,23 +75,40 @@ func _draw() -> void:
 
 ## Render the beam's glow and core; continuous beams remain bright instead of fading like short pulses.
 func draw_laser() -> void:
-	if not beam_segments.is_empty():
-		for i in range(0, beam_segments.size(), 2):
-			var a := beam_segments[i] - position
-			var b := beam_segments[i + 1] - position
-			draw_line(a, b, Color(0.39, 0.74, 1.0, 0.08), 30, true)
-			draw_line(a, b, Color(0.39, 0.77, 1.0, 0.3), 14, true)
-			draw_line(a, b, Color("a9efff"), 5, true)
-			draw_line(a, b, Color.WHITE, 2, true)
-		return
-	var muzzle := beam_start - position
-	var brightness := 1.0 if continuous else clampf((lifetime - age) / 0.055, 0.0, 1.0)
-	draw_line(muzzle, Vector2.ZERO, Color(0.39, 0.74, 1.0, 0.08 * brightness), 36.0, true)
-	draw_line(muzzle, Vector2.ZERO, Color(0.39, 0.77, 1.0, 0.22 * brightness), 18.0, true)
-	draw_line(muzzle, Vector2.ZERO, Color(0.52, 0.88, 1.0, 0.85 * brightness), 7.0, true)
-	draw_line(muzzle, Vector2.ZERO, Color(0.92, 1.0, 1.0, brightness), 2.5, true)
-	draw_circle(muzzle, 13.0, Color(0.42, 0.84, 1.0, 0.18 * brightness))
-	draw_circle(muzzle, 5.0, Color(0.86, 0.99, 1.0, brightness))
+	var segments := beam_segments
+	if segments.is_empty():
+		segments = [beam_start, position]
+	# Three liquid filaments follow the same collision path. Their small visual
+	# sway never changes damage, and endpoints stay pinned to muzzle/impact.
+	for lane in range(3):
+		var points := PackedVector2Array()
+		for i in range(0, segments.size(), 2):
+			var a: Vector2 = segments[i]-position
+			var b: Vector2 = segments[i+1]-position
+			var normal := (b-a).normalized().orthogonal()
+			for j in range(5):
+				var t := float(j)/4.0
+				var along := float(i/2)*24.0+(b-a).length()*t
+				var envelope := 1.0
+				if i == 0:
+					envelope *= smoothstep(0,1,t)
+				if i == segments.size()-2:
+					envelope *= 1.0-smoothstep(0,1,t)
+				var sway := (sin(along*0.07-age*12.0+lane*2.1)*2.0 + sin(along*0.16+age*17)*0.7)*envelope
+				points.append(a.lerp(b,t)+normal*sway)
+		if lane == 0:
+			draw_polyline(points,Color(0.25,0.6,1,0.08),24,true)
+			draw_polyline(points,Color(0.3,0.75,1,0.22),10,true)
+		draw_polyline(points,Color(0.55+lane*0.18,0.85+lane*0.06,1,0.9),2.2-float(lane)*0.5,true)
+	if absorbed:
+		var at := contact_point-position
+		var pulse := 0.85+sin(age*31)*0.15
+		for layer in range(4,0,-1):
+			draw_circle(at,float(layer)*6*pulse,Color(0.35,0.8,1,0.075*float(5-layer)))
+		draw_circle(at,4.0,Color("eaffff"))
+		for spark in range(6):
+			var direction := Vector2.from_angle(float(spark)*TAU/6.0+age*2)
+			draw_line(at+direction*6,at+direction*(12+sin(age*25+spark)*4),Color(0.65,0.9,1,0.6),1.3,true)
 
 ## Draw the rocket body and animated exhaust around its current velocity direction.
 func draw_rocket() -> void:
