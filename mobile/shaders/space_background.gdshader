@@ -7,6 +7,7 @@ uniform vec2 arena_size = vec2(540.0, 960.0);
 uniform float visual_time = 0.0;
 uniform vec3 sector_light = vec3(-0.4, -0.3, 0.8);
 uniform float light_period = 0.0;
+uniform vec2 camera_jitter = vec2(0.0);
 
 varying vec2 canvas_position;
 
@@ -62,7 +63,7 @@ void vertex() {
 
 void fragment() {
 	// Composite nebula, scrolling star layers, one passing planet, then the vignette.
-	vec2 p = canvas_position;
+	vec2 p = canvas_position + camera_jitter;
 	vec2 uv = p / max(arena_size, vec2(1.0));
 	vec2 sky = (p - vec2(0.0, visual_time * 5.0)) / 410.0;
 	float broad = cloud_noise(sky * 1.3 + vec2(6.2, 3.8));

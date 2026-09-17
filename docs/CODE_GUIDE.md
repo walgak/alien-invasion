@@ -49,7 +49,9 @@ Active gravity cancels equipped fire and targeting unless a shield is active. An
 
 Asteroid contact and an escaped alien's homing doom cannon call `instant_loss()`, bypassing hull, upgrade backups and normal hit invulnerability. Asteroids exiting the screen do nothing. Direct alien contact still costs one hull. A ten-second shield blocks all damage and gravity movement; it is not consumed on contact. Support rewards first have a 25% chance to supply five targeting missiles. Remaining support rewards choose hull/shield with 75%/25% probability, keeping shields at one third of the hull rate. Each swarm and boss still guarantees a drop; laser/rocket rarity shares the sector allowance.
 
-`combat.vibrate()` uses a brief enemy-death tick, a continuous low-amplitude gravity rumble and a double hit pulse. Black-hole spawning adds a single pop; white-hole spawning schedules three irregular pops before the rumble. The queue is bounded and muted by the saved vibration preference independently of sound. iOS supplies the physical feedback through Godot's `Input.vibrate_handheld`; evaluate its feel on the device.
+`combat.vibrate()` uses a rate-limited enemy-death tick, a continuous low-amplitude gravity rumble and a double hit pulse. Black-hole spawning adds a single pop; white-hole spawning schedules three irregular pops before the rumble. Enemy feedback never clears and restarts the active gravity rumble: doing so flooded the iOS haptic engine and stalled touch delivery during dense fights. The queue is bounded and muted by the saved vibration preference independently of sound. iOS supplies the physical feedback through Godot's `Input.vibrate_handheld`; evaluate its feel on the device.
+
+The title and pause menus persist three accessibility presentation controls through `progress.gd`: screen shake on/off, reduced/full laser brightness, and reduced/full gravity distortion. `space_folds.gd` feeds shield rings, tap pulses, mixed-hole shockwaves, exit rings, boss shields, holes, and tethers into one bounded screen-reading pass. This keeps the effect visually consistent and caps the number of simultaneous lenses.
 
 ## Tuning map
 

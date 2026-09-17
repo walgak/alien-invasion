@@ -51,6 +51,10 @@ func run() -> void:
 	fresh()
 	game.combat.shield_time = 20
 	var field := well(Vector2(270,400))
+	game.combat.gravity_haptic = true
+	game.combat.haptic_cooldown = 0.0
+	game.combat.vibrate("enemy")
+	check(game.combat.gravity_haptic,"enemy feedback never restarts the continuous gravity haptic")
 	for i in range(14):
 		game.spawn_enemy(Vector2(245+i*3,400),Vector2.ZERO)
 	field.step(0.01)
@@ -63,6 +67,10 @@ func run() -> void:
 	field.finish_well()
 	check(game.combat.returns.keys().all(func(id: Variant) -> bool: return is_instance_id_valid(id)),"return queue contains only surviving identities")
 	check(game.gravity_fields.exits.size()==1,"expired player well leaves a finite exit pulse")
+	field=well(Vector2(360,500))
+	game.combat.shield_time=0
+	game.combat.press(3,Vector2(120,400))
+	check(game.combat.warp_pulses.size()==1,"gravity tap creates the same warp-ring pulse as the shield")
 	fresh()
 	game.begin_boss("white")
 	game.boss.phase="active"

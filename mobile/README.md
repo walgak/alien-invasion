@@ -20,7 +20,7 @@ Every boss fight repeats the same cycle: exchange fire and dodge the boss's aime
 
 Black-hole and white-hole attacks begin with a rift cannon fired five times faster than normal boss bullets. The cannon folds space as it travels, then explodes with an original high-to-low sci-fi blast and creates the hole. The hole stays active for four seconds of tapping. The asteroid boss warns, then pulls a finite barrage of rocks from offscreen using space-fold strands anchored to its body. Each rock pulls inward, pauses for a brief wind-up, and is slung toward the ship's position at release as its strands fade. The boss waits for the rocks to be dodged or destroyed before resuming normal shots. Damage already dealt to the boss persists between cycles.
 
-**Touch:** drag horizontally to steer and dodge normal shots. During an active hole attack, lift your finger and tap repeatedly anywhere in the playfield. Steering returns after the hole closes. Old hostile bullets clear when tapping starts so they cannot hit you while steering is unavailable. Weapons always fire automatically, including during special attacks.
+**Touch:** hold and drag in the lower flight area to steer and fire; lifting the finger leaves the ship idle. During an unshielded hole attack, lift your finger and tap repeatedly anywhere in the playfield. A shield preserves steering and firing during gravity. Old hostile bullets clear when tapping starts so they cannot hit you while steering is unavailable.
 
 Each tap fully cancels the hole's force for a brief beat. Keep tapping to hold the current position exactly. Tapping never pushes the ship away and never recovers ground lost; when the tap window expires, the pull or push resumes at full strength. The force meter shows whether neutralisation is active.
 
@@ -30,7 +30,7 @@ Both gravity holes form in the lower-middle region (28–72% screen width, 57–
 
 **Keyboard:** arrow keys or A/D to steer; press Space repeatedly to neutralise a hole. P/Esc pauses and resumes. Enter launches a flight. Holding Space does not count as repeated taps.
 
-Pause also activates when the application loses focus. The endless high score saves locally and persists between runs. Sound can be toggled on the title or pause screen. There are no accounts, advertisements, analytics, or network requests in the game.
+Pause also activates when the application loses focus. The endless high score saves locally and persists between runs. The title and pause screens have saved controls for sound, vibration, screen shake, laser brightness, and gravity distortion. There are no accounts, advertisements, analytics, or network requests in the game.
 
 ## Prototype scope
 
@@ -112,3 +112,5 @@ Targeting missiles start at 30 and missile drops add five. Laser time drains onl
 Black holes swallow fragmented hull plates behind an opaque event horizon. Shot deaths explode; collision and white-edge deaths crumble first. Ships rotate their thrusters against gravity and ease upright afterwards. Shielded players can steer, shoot, and charge another black hole; a shielded escape-cannon hit produces a harmless visual shockwave.
 
 The flowing laser bends through gravity and terminates in a glow on a boss or its guard-powered shield. Rockets retain gravity curvature while homing. Every expired hole leaves a two-stage pulse, and gravity has gentle acceleration/deceleration plus continuous low vibration. Background planets vary in size, surface and rings, appear less often, and share a smoothly changing distant light source; passing foreground suns have been removed.
+
+Shields and resistance taps now use the same segmented gravity-warp ring, with screen-space refraction applied to rings, pulses, holes, and tether effects. Black-hole cores have a rotating accretion rim around a fully opaque event horizon. The escaped-alien cannon has an offscreen warning marker, boss shields break with a brief time beat, and explosions use rock, armor, or energy debris appropriate to their source. Touch release is handled once, while enemy haptics are rate-limited without repeatedly restarting the continuous gravity rumble.

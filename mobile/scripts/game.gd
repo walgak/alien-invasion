@@ -81,6 +81,9 @@ var death_radius := 31.0
 var death_synthetic := false
 var death_visual = preload("res://scripts/death_visual.gd").new()
 var target_light := sector_light
+var guard_break_time := 0.0
+var shake_time := 0.0
+var shake_strength := 0.0
 
 ## Godot calls this once after the node joins the scene; initialize child nodes and cached resources here.
 func _ready() -> void:
@@ -193,6 +196,9 @@ func clear_actors() -> void:
 	gravity_fields.shockwaves.clear()
 	gravity_fields.exits.clear()
 	death_time = 0.0
+	guard_break_time = 0.0
+	shake_time = 0.0
+	shake_strength = 0.0
 	death_visual.pieces.clear()
 	death_visual.queue_redraw()
 	if is_instance_valid(laser):
@@ -222,6 +228,9 @@ func clear_actors() -> void:
 func _physics_process(delta: float) -> void:
 	if state != State.PLAYING:
 		return
+	if guard_break_time > 0.0:
+		guard_break_time = maxf(0.0, guard_break_time - delta)
+		delta *= 0.32
 	elapsed += delta
 	combat.step(delta)
 	gravity_fields.step(delta)
@@ -465,6 +474,7 @@ func update_laser(delta: float) -> void:
 		laser = Projectile.new()
 		laser.continuous = true
 		add_child(laser)
+	laser.visual_brightness = progress.laser_brightness
 	laser.setup_laser(ship.position + Vector2(0, -44), Vector2(ship.position.x, top_inset + 140))
 	laser.age += delta
 	laser.absorbed = false
@@ -571,6 +581,8 @@ func _process(delta: float) -> void:
 	if death_time > 0.0:
 		update_death_animation(delta)
 	if state != State.PAUSED:
+		shake_time = maxf(0.0, shake_time - delta)
+		shake_strength = move_toward(shake_strength, 0.0, delta * 24.0)
 		visual_time += delta
 		gravity_fields.visual_step(delta)
 		sector_light = sector_light.slerp(target_light, 1.0-exp(-delta*0.035)).normalized()
@@ -591,6 +603,10 @@ func refresh_space() -> void:
 	space_background.update_background(arena, visual_time)
 	space_background.sky_material.set_shader_parameter("sector_light", sector_light)
 	space_background.sky_material.set_shader_parameter("light_period", float(bosses_defeated))
+	var jitter := Vector2.ZERO
+	if progress.screen_shake_enabled and shake_time > 0.0:
+		jitter = Vector2(sin(visual_time * 91.0), cos(visual_time * 73.0)) * shake_strength
+	space_background.sky_material.set_shader_parameter("camera_jitter", jitter)
 	space_folds.update_effects(self)
 
 ## Move ordinary aliens or orbit guards, resolve swept ship contact, and fire aimed shots at per-enemy intervals.
@@ -760,7 +776,13 @@ func destroy_enemy(enemy: Node2D) -> void:
 		guaranteed_drop(enemy.position)
 	else:
 		maybe_drop_pickup(enemy.position)
+	var broke_last_guard: bool = enemy.shield_guard and enemies.filter(func(candidate: Node2D) -> bool: return candidate.shield_guard).size() == 1
 	remove_enemy(enemy)
+	if broke_last_guard and is_instance_valid(boss):
+		guard_break_time = 0.28
+		burst(boss.body_position, Color("7bdfff"), 36)
+		pickup_notice = "BOSS SHIELD BROKEN"
+		pickup_notice_time = 1.2
 	add_score(POINTS_PER_ENEMY)
 	sound.play_effect("burst")
 
@@ -1119,6 +1141,26 @@ func toggle_vibration() -> void:
 	progress.save()
 	interface.refresh()
 
+## Accessibility toggles persist independently, so reducing one intense effect
+## does not flatten every other part of the presentation.
+func toggle_screen_shake() -> void:
+	progress.screen_shake_enabled = not progress.screen_shake_enabled
+	if not progress.screen_shake_enabled:
+		shake_time = 0.0
+		shake_strength = 0.0
+	progress.save()
+	interface.refresh()
+
+func toggle_laser_brightness() -> void:
+	progress.laser_brightness = 0.45 if progress.laser_brightness > 0.7 else 1.0
+	progress.save()
+	interface.refresh()
+
+func toggle_distortion() -> void:
+	progress.distortion_strength = 0.4 if progress.distortion_strength > 0.7 else 1.0
+	progress.save()
+	interface.refresh()
+
 ## Asteroid impact and the escaped-alien cannon bypass all hull and backup lives.
 ## A live shield is the sole exception and is never consumed by a single impact.
 func instant_loss(reason: String) -> void:
@@ -1163,20 +1205,26 @@ func curved_velocity(at: Vector2, velocity: Vector2, delta: float, wells: Array)
 
 ## Append bounded short-lived particles; the cap prevents explosion-heavy weapons from growing work without limit.
 func burst(at: Vector2, tint: Color, count: int) -> void:
+	if count >= 28 and progress.screen_shake_enabled:
+		shake_time = maxf(shake_time, 0.18)
+		shake_strength = maxf(shake_strength, minf(7.0, count * 0.12))
+	var debris_kind := "rock" if tint.r > 0.65 and tint.g > 0.55 and tint.b < 0.7 else ("energy" if tint.b > tint.r * 1.15 else "armor")
 	for i in range(mini(count, maxi(0, 256 - particles.size()))):
 		var duration := rng.randf_range(0.25, 0.75)
 		particles.append({"position": at, "velocity": Vector2.from_angle(rng.randf() * TAU) * rng.randf_range(40, 220),
-			"life": duration, "duration": duration, "tint": tint, "radius": rng.randf_range(1.5, 4.0)})
+			"life": duration, "duration": duration, "tint": tint, "radius": rng.randf_range(1.5, 4.0), "kind": debris_kind, "spin": rng.randf_range(-5.0, 5.0)})
 
 ## Release is captured before GUI handling so lifting over a button cannot leave
 ## firing latched. Presses still pass through the GUI before gameplay sees them.
 func _input(event: InputEvent) -> void:
 	if state != State.PLAYING:
 		return
-	if event is InputEventScreenTouch and not event.pressed:
+	if event is InputEventScreenTouch and not event.pressed and combat.finger == event.index:
 		combat.release(event.index, event.position, event.canceled)
-	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed and event.device != InputEvent.DEVICE_ID_EMULATION:
+		get_viewport().set_input_as_handled()
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed and event.device != InputEvent.DEVICE_ID_EMULATION and combat.finger == -2:
 		combat.release(-2, event.position)
+		get_viewport().set_input_as_handled()
 
 ## Menus own their clicks; remaining input enters the exclusive gesture controller.
 func _unhandled_input(event: InputEvent) -> void:
@@ -1227,7 +1275,25 @@ func _draw() -> void:
 		draw_arc(center, 106, 0.0, TAU, 90, Color("203248"), 1, true)
 		draw_arc(center, 130, visual_time * 0.15, visual_time * 0.15 + PI * 1.15, 80, Color("284856"), 1, true)
 		draw_circle(center + Vector2.from_angle(visual_time * 0.15) * 130, 3, Color("55e8d0"))
+	# An escaped alien attacks from below. This indicator tracks its cannon until
+	# the fast projectile enters the playfield, so a sudden loss has a visible cause.
+	for shot in projectiles:
+		if shot.kind != "doom" or Rect2(Vector2.ZERO, arena).has_point(shot.position):
+			continue
+		var edge := shot.position.clamp(Vector2(28, top_inset + 170), arena - Vector2(28, 32))
+		var direction: Vector2 = (ship.position - edge).normalized()
+		var side := direction.orthogonal()
+		draw_colored_polygon(PackedVector2Array([edge + direction * 16, edge - direction * 8 + side * 8, edge - direction * 8 - side * 8]), Color("c7a0ff"))
+		draw_arc(edge, 22 + sin(visual_time * 8.0) * 3.0, 0, TAU, 28, Color(0.72, 0.45, 1.0, 0.7), 2, true)
 	for particle in particles:
 		var tint: Color = particle.tint
 		tint.a = particle.life / particle.duration
-		draw_circle(particle.position, particle.radius, tint)
+		if particle.kind == "rock":
+			draw_circle(particle.position, particle.radius, tint)
+		elif particle.kind == "armor":
+			var direction := Vector2.from_angle(particle.spin * (particle.duration - particle.life))
+			var side := direction.orthogonal()
+			draw_colored_polygon(PackedVector2Array([particle.position + direction * particle.radius * 1.8, particle.position - direction * particle.radius + side * particle.radius, particle.position - direction * particle.radius - side * particle.radius]), tint)
+		else:
+			var direction: Vector2 = particle.velocity.normalized()
+			draw_line(particle.position - direction * particle.radius * 2.0, particle.position + direction * particle.radius, tint, particle.radius, true)

@@ -17,6 +17,7 @@ var homing_target: Node2D
 var beam_segments: Array[Vector2] = []
 var absorbed := false
 var contact_point := Vector2.ZERO
+var visual_brightness := 1.0
 
 ## Set the beam endpoints for rendering and segment collision; game.gd owns continuous exposure timing.
 func setup_laser(from: Vector2, to: Vector2) -> void:
@@ -75,6 +76,7 @@ func _draw() -> void:
 
 ## Render the beam's glow and core; continuous beams remain bright instead of fading like short pulses.
 func draw_laser() -> void:
+	var brightness := visual_brightness
 	var segments := beam_segments
 	if segments.is_empty():
 		segments = [beam_start, position]
@@ -97,15 +99,15 @@ func draw_laser() -> void:
 				var sway := (sin(along*0.07-age*12.0+lane*2.1)*2.0 + sin(along*0.16+age*17)*0.7)*envelope
 				points.append(a.lerp(b,t)+normal*sway)
 		if lane == 0:
-			draw_polyline(points,Color(0.25,0.6,1,0.08),24,true)
-			draw_polyline(points,Color(0.3,0.75,1,0.22),10,true)
-		draw_polyline(points,Color(0.55+lane*0.18,0.85+lane*0.06,1,0.9),2.2-float(lane)*0.5,true)
+			draw_polyline(points,Color(0.25,0.6,1,0.08 * brightness),24,true)
+			draw_polyline(points,Color(0.3,0.75,1,0.22 * brightness),10,true)
+		draw_polyline(points,Color(0.55+lane*0.18,0.85+lane*0.06,1,0.9 * brightness),2.2-float(lane)*0.5,true)
 	if absorbed:
 		var at := contact_point-position
 		var pulse := 0.85+sin(age*31)*0.15
 		for layer in range(4,0,-1):
-			draw_circle(at,float(layer)*6*pulse,Color(0.35,0.8,1,0.075*float(5-layer)))
-		draw_circle(at,4.0,Color("eaffff"))
+			draw_circle(at,float(layer)*6*pulse,Color(0.35,0.8,1,0.075*float(5-layer) * brightness))
+		draw_circle(at,4.0,Color(0.92, 1.0, 1.0, brightness))
 		for spark in range(6):
 			var direction := Vector2.from_angle(float(spark)*TAU/6.0+age*2)
 			draw_line(at+direction*6,at+direction*(12+sin(age*25+spark)*4),Color(0.65,0.9,1,0.6),1.3,true)

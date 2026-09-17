@@ -153,10 +153,26 @@ func visual_step(delta: float) -> void:
 			exits.erase(effect)
 	queue_redraw()
 
-## Black cores remain fully opaque; a narrow rim defines the capture boundary.
+## The event horizon is opaque, while counter-rotating accretion streams stay
+## strictly outside it. Nothing swallowed can leak through the black core.
 func draw_horizon(at: Vector2, radius: float) -> void:
-	draw_circle(at, radius, Color("01030a"))
-	draw_arc(at, radius + 1.0, 0, TAU, 80, Color("ab8ae8"), 1.5, true)
+	var time: float = game.visual_time
+	for lane in range(7, 0, -1):
+		var lane_radius := radius + 2.0 + lane * 3.4
+		var direction := -1.0 if lane % 2 == 0 else 1.0
+		var alpha := 0.06 + (8.0 - lane) * 0.025
+		for segment in range(4):
+			var start := time * direction * (0.7 + lane * 0.11) + segment * TAU / 4.0 + lane * 0.31
+			var span := 0.38 + 0.20 * sin(time * 2.3 + lane + segment)
+			var tint := Color("8057cf").lerp(Color("e1c5ff"), float(7 - lane) / 7.0)
+			draw_arc(at, lane_radius, start, start + span, 12, Color(tint, alpha), 5.5 - lane * 0.38, true)
+	# Draw the absolute black disk after the accretion lanes, then add only an
+	# exterior photon rim and rotating highlights.
+	draw_circle(at, radius, Color("000006"))
+	draw_arc(at, radius + 0.8, 0, TAU, 96, Color("9b79e3"), 2.2, true)
+	for arc in range(5):
+		var start := -time * (1.2 + arc * 0.08) + arc * TAU / 5.0
+		draw_arc(at, radius + 2.5, start, start + 0.34, 10, Color(0.9, 0.78, 1.0, 0.8), 2.6, true)
 
 ## Hull shield strength is tied to living guards, not boss health. Individual
 ## strands make the connection to each guard obvious, and fade as guards die.

@@ -23,6 +23,40 @@ func update_effects(game: Node2D) -> void:
 	var strands := PackedVector4Array()
 	var strand_styles := PackedVector4Array()
 	var boss: Node2D = game.boss
+	# Reserve the first lenses for player feedback. These rings must distort the
+	# same starfield as the wells rather than looking like flat HUD circles.
+	if game.combat.shield_time > 0.0 and lenses.size() < MAX_LENSES:
+		lenses.append(Vector4(game.ship.position.x, game.ship.position.y, 116.0, 1.35))
+		styles.append(Vector4(47.0, 1.0, 2.0, game.visual_time))
+	for pulse in game.combat.warp_pulses:
+		if lenses.size() >= MAX_LENSES:
+			break
+		var progress: float = clampf(pulse.age / 0.42, 0.0, 1.0)
+		var radius: float = 42.0 + progress * 44.0
+		lenses.append(Vector4(pulse.at.x, pulse.at.y, radius + 55.0, 1.65 * (1.0 - progress)))
+		styles.append(Vector4(radius, -1.0, 2.0, game.visual_time * 1.7))
+	for wave in game.gravity_fields.shockwaves:
+		if lenses.size() >= MAX_LENSES:
+			break
+		var progress: float = clampf((wave.age - 0.35) / 0.75, 0.0, 1.0)
+		var radius: float = maxf(14.0, wave.radius * progress)
+		lenses.append(Vector4(wave.at.x, wave.at.y, radius + 70.0, 1.8 * (1.0 - progress)))
+		styles.append(Vector4(radius, 1.0, 2.0, game.visual_time))
+	for effect in game.gravity_fields.exits:
+		if lenses.size() >= MAX_LENSES:
+			break
+		var black: bool = effect.kind == "black"
+		var age: float = effect.age
+		var radius: float = effect.radius + clampf(age / 0.95, 0.0, 1.0) * 180.0
+		if black and age < 0.55:
+			radius = (effect.radius + 95.0) * (1.0 - age / 0.55)
+		lenses.append(Vector4(effect.at.x, effect.at.y, radius + 75.0, 1.5 * (1.0 - age / 1.2)))
+		styles.append(Vector4(maxf(radius, 2.0), -1.0 if black else 1.0, 2.0, game.visual_time))
+	if is_instance_valid(boss) and game.boss_is_shielded() and lenses.size() < MAX_LENSES:
+		var guards: Array = game.enemies.filter(func(enemy: Node2D) -> bool: return enemy.shield_guard)
+		var shield_strength := float(guards.size()) / maxf(1.0, boss.guard_total)
+		lenses.append(Vector4(boss.body_position.x, boss.body_position.y, 145.0, 0.75 + shield_strength * 0.65))
+		styles.append(Vector4(76.0, 1.0, 2.0, game.visual_time * 0.65))
 	for well in game.lingering_wells:
 		if well.kind in ["asteroid", "swarm"] and lenses.size() < MAX_LENSES:
 			var core: Vector2 = well.body_position + Vector2(0, 42)
@@ -83,4 +117,5 @@ func update_effects(game: Node2D) -> void:
 	material.set_shader_parameter("strand_count", strand_count)
 	material.set_shader_parameter("strands", strands)
 	material.set_shader_parameter("strand_styles", strand_styles)
+	material.set_shader_parameter("refraction_strength", game.progress.distortion_strength)
 	visible = lens_count > 0 or strand_count > 0

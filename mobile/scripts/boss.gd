@@ -269,7 +269,6 @@ func neutralisation() -> float:
 func resist() -> void:
 	if phase == "active" and kind in ["black", "white"]:
 		neutralise_time = TAP_NEUTRALISE_SECONDS / proximity_multiplier
-		tap_flash = 0.18
 		queue_redraw()
 
 ## Ignore damage while guards remain; otherwise reduce boss health and hand victory handling to game.gd.
@@ -340,8 +339,6 @@ func _draw() -> void:
 		draw_arc(well_position, radius, animation_time, animation_time + PI * 1.65, 48, tint, 2, true)
 		draw_line(well_position - Vector2(9,0), well_position + Vector2(9,0), tint, 1, true)
 		draw_line(well_position - Vector2(0,9), well_position + Vector2(0,9), tint, 1, true)
-	if tap_flash > 0:
-		draw_arc(game.ship.position, 42 + (0.18 - tap_flash) * 110, 0, TAU, 56, Color("6cf4d4"), 2, true)
 
 ## Render the carrier's distinctive body and hangars; this is cosmetic geometry, not collision geometry.
 func draw_swarm_body() -> void:

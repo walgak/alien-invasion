@@ -61,6 +61,20 @@ func run_checks() -> void:
 		Input.parse_input_event(touch)
 		await process_frame
 	check(is_equal_approx(game.boss.neutralise_time, game.boss.TAP_NEUTRALISE_SECONDS), "one routed touch opens one full neutralise window")
+	# A burst of taps must leave no captured finger behind. This guards against
+	# the intermittent dead-touch state previously caused by duplicate releases.
+	for index in range(20):
+		var press := InputEventScreenTouch.new()
+		press.index = index % 2
+		press.position = Vector2(180 + index % 3 * 40, 820)
+		press.pressed = true
+		game._unhandled_input(press)
+		var release := InputEventScreenTouch.new()
+		release.index = press.index
+		release.position = press.position
+		release.pressed = false
+		game._input(release)
+	check(game.combat.finger == -1 and game.pointer_id == -1, "rapid touch bursts always release the captured pointer")
 	game.free()
 	await process_frame
 	print("INPUT FLOW: %d failures" % failures)

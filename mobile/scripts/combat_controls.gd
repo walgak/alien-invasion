@@ -19,6 +19,7 @@ var returns: Dictionary[int, Vector2] = {}
 var gravity_haptic := false
 var gravity_haptic_delay := 0.0
 var white_pops: Array[float] = []
+var warp_pulses: Array[Dictionary] = []
 var missiles := 30
 
 ## Forget run-owned state without changing saved sound/vibration preferences.
@@ -30,6 +31,7 @@ func reset() -> void:
 	haptic_cooldown = 0.0
 	haptic_followup = 0.0
 	returns.clear()
+	warp_pulses.clear()
 	stop_haptics()
 	missiles = 30
 
@@ -59,6 +61,10 @@ func step(delta: float) -> void:
 		haptic_followup -= delta
 		if haptic_followup <= 0.0 and game.progress.vibration_enabled:
 			Input.vibrate_handheld(45, 1.0)
+	for pulse in warp_pulses.duplicate():
+		pulse.age += delta
+		if pulse.age >= 0.42:
+			warp_pulses.erase(pulse)
 	if laser_time > 0.0 and firing():
 		laser_time = maxf(0.0, laser_time - delta)
 		if laser_time == 0.0:
@@ -94,6 +100,9 @@ func press(id: int, at: Vector2) -> void:
 	if finger != -1 or at.y <= game.top_inset + 143 or not Rect2(Vector2.ZERO, game.arena).has_point(at):
 		return
 	if gravity_blocks_control():
+		warp_pulses.append({"at": game.ship.position, "age": 0.0})
+		if warp_pulses.size() > 4:
+			warp_pulses.pop_front()
 		if is_instance_valid(game.boss):
 			game.boss.resist()
 		for well in game.lingering_wells:
@@ -165,9 +174,6 @@ func equip_laser() -> void:
 func vibrate(event: String) -> void:
 	if not game.progress.vibration_enabled:
 		return
-	if gravity_haptic:
-		gravity_haptic = false
-		gravity_haptic_delay = 0.26
 	if event in ["black_spawn", "white_spawn"]:
 		Input.vibrate_handheld(65 if event == "black_spawn" else 35, 0.85)
 		gravity_haptic = false
@@ -175,11 +181,13 @@ func vibrate(event: String) -> void:
 		if event == "white_spawn":
 			white_pops.assign([0.07, 0.16])
 	elif event == "hit":
+		gravity_haptic = false
+		gravity_haptic_delay = 0.26
 		Input.vibrate_handheld(45, 1.0)
 		haptic_followup = 0.11
-	elif haptic_cooldown <= 0.0:
+	elif haptic_cooldown <= 0.0 and not gravity_haptic:
 		Input.vibrate_handheld(110 if event == "gravity" else 20, 0.65 if event == "gravity" else 0.35)
-		haptic_cooldown = 0.35 if event == "gravity" else 0.08
+		haptic_cooldown = 0.45 if event == "gravity" else 0.22
 
 ## Non-gravity actors pause their normal travel while a player well pulls them or
 ## while they return. Bosses never enter this list and remain immune to the pull.
@@ -198,8 +206,10 @@ func _draw() -> void:
 	if game.state != game.State.PLAYING:
 		return
 	if shield_time > 0.0:
-		draw_circle(game.ship.position, 43, Color(0.3, 0.8, 1.0, 0.08))
-		draw_arc(game.ship.position, 43, 0, TAU, 64, Color(0.5, 0.9, 1.0, 0.8), 2, true)
+		draw_warp_ring(game.ship.position, 47.0, game.elapsed, 0.95)
+	for pulse in warp_pulses:
+		var progress: float = clampf(pulse.age / 0.42, 0.0, 1.0)
+		draw_warp_ring(pulse.at, 42.0 + progress * 44.0, game.elapsed * 1.7, 1.0 - progress)
 	if gesture == "aim":
 		draw_arc(aim, 24 + held * 5, -PI / 2, -PI / 2 + TAU * held / 5, 64, Color("c7a0ff"), 3, true)
 	# Iterate live actor arrays, never object-key dictionaries: swallowed ships
@@ -214,6 +224,17 @@ func _draw() -> void:
 		var start: Vector2 = actor.position + exhaust * 22.0
 		draw_line(start, start + exhaust * (36 + sin(game.elapsed * 35) * 5), Color(0.3, 0.7, 1, 0.22), 12, true)
 		draw_line(start, start + exhaust * 27, Color("b8eaff"), 3, true)
+
+## Shield and gravity taps share one luminous, broken warp-ring language.
+func draw_warp_ring(at: Vector2, radius: float, phase: float, alpha: float) -> void:
+	draw_circle(at, radius + 12.0, Color(0.18, 0.72, 1.0, 0.035 * alpha))
+	for lane in range(3):
+		var lane_radius := radius + lane * 5.0 + sin(phase * (2.3 + lane * 0.4)) * 2.5
+		for segment in range(8):
+			var start := phase * (0.7 + lane * 0.16) + segment * TAU / 8.0
+			var span := 0.38 + 0.17 * sin(phase * 3.1 + segment * 1.7 + lane)
+			draw_arc(at, lane_radius, start, start + span, 10, Color(0.38 + lane * 0.12, 0.82, 1.0, alpha * (0.7 - lane * 0.14)), 5.0 - lane, true)
+		draw_arc(at, lane_radius + 1.0, 0, TAU, 64, Color(0.65, 0.94, 1.0, alpha * 0.13), 1.0, true)
 
 ## Pick the strongest nearby field that actually controls this ship.
 func gravity_for(actor: Node2D) -> Node2D:
@@ -244,8 +265,8 @@ func update_attitudes(delta: float) -> void:
 
 ## Cancel scheduled patterns on pause, death, restart, or vibration mute.
 func stop_haptics() -> void:
-	if gravity_haptic:
-		Input.vibrate_handheld(0, 0.0)
+	# iOS stops a finite event naturally. Sending a zero-duration replacement can
+	# contend with touch delivery when its haptic engine is temporarily absent.
 	gravity_haptic = false
 	gravity_haptic_delay = 0.0
 	white_pops.clear()

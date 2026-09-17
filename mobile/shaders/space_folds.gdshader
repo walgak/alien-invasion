@@ -26,29 +26,34 @@ void fragment() {
 		vec4 lens = lenses[i];
 		vec4 style = lens_styles[i];
 		vec2 delta = pixel - lens.xy;
-		// A tilted circular well reads as an elliptical surface with depth.
-		float flatten = mix(0.83, 1.0, style.z);
+		// Ring lenses are thin, exaggerated gravity creases. Object and well
+		// lenses retain their deeper throat distortion.
+		bool ring_mode = style.z > 1.5;
+		bool object_mode = style.z > 0.5 && !ring_mode;
+		float flatten = object_mode ? 1.0 : (ring_mode ? 0.94 : 0.83);
 		vec2 surface = delta / vec2(1.0, flatten);
 		float radius = length(surface);
 		if (radius >= lens.z || radius < 0.5) { continue; }
 		vec2 normal = surface / radius;
 		float shell = max(radius - style.x, 0.0);
-		float envelope = (1.0 - smoothstep(lens.z * 0.66, lens.z, radius)) * smoothstep(style.x * 0.65, style.x + 9.0, radius);
+		float ring_distance = abs(radius - style.x);
+		float ring_envelope = exp(-ring_distance * ring_distance / 155.0);
+		float envelope = ring_mode ? ring_envelope : (1.0 - smoothstep(lens.z * 0.66, lens.z, radius)) * smoothstep(style.x * 0.65, style.x + 9.0, radius);
 		float phase = shell * 0.255 - style.w * style.y * 5.5;
 		float wave = sin(phase);
 		float ripple = wave * envelope;
-		float throat = exp(-shell * shell / (style.z > 0.5 ? 620.0 : 1750.0));
-		float bend = (ripple * mix(9.0, 3.0, style.z) + throat * mix(27.0, 15.0, style.z) * -style.y) * lens.w;
+		float throat = ring_mode ? ring_envelope : exp(-shell * shell / (object_mode ? 620.0 : 1750.0));
+		float bend = ring_mode ? (ring_envelope * sin(ring_distance * 0.32 - style.w * 7.0) * 25.0 * lens.w) : (ripple * (object_mode ? 3.0 : 9.0) + throat * (object_mode ? 15.0 : 27.0) * -style.y) * lens.w;
 		vec2 tangent = vec2(-normal.y, normal.x);
-		displacement += (normal * bend + tangent * throat * (1.0 - style.z) * 6.0 * lens.w) * vec2(1.0, flatten);
+		displacement += (normal * bend + tangent * throat * (ring_mode ? 9.0 : (object_mode ? 0.0 : 6.0)) * lens.w) * vec2(1.0, flatten);
 		// Opposing light and shadow on each fold give its refracted ridge thickness.
 		float crest = pow(max(0.0, cos(phase)), 12.0) * envelope;
 		float trough = pow(max(0.0, -cos(phase + 0.55)), 6.0) * envelope;
 		float rim_distance = (radius - style.x - 6.0) / 5.0;
 		float rim = exp(-rim_distance * rim_distance);
 		float lighting = 0.4 + 0.6 * max(dot(normal, normalize(vec2(-0.5, -0.8))), 0.0);
-		vec3 tint = style.y < 0.0 && style.z < 0.5 ? vec3(0.52, 0.40, 1.0) : vec3(0.40, 0.84, 1.0);
-		gleam += tint * (crest * 0.105 * lighting + rim * 0.2) * lens.w;
+		vec3 tint = style.y < 0.0 && !object_mode ? vec3(0.52, 0.40, 1.0) : vec3(0.40, 0.84, 1.0);
+		gleam += tint * (crest * 0.105 * lighting + rim * (ring_mode ? 0.55 : 0.2)) * lens.w;
 		shade += (trough * 0.2 + throat * 0.15) * lens.w;
 		dispersion += (crest + rim) * 0.65 * lens.w;
 	}

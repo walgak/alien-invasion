@@ -11,6 +11,9 @@ var secondary: Button
 var pause_button: Button
 var sound_button: Button
 var vibration_button: Button
+var shake_button: Button
+var laser_button: Button
+var distortion_button: Button
 var font: Font
 
 ## Godot calls this once after the node joins the scene; initialize child nodes and cached resources here.
@@ -37,6 +40,15 @@ func _ready() -> void:
 	vibration_button = make_button(false)
 	vibration_button.add_theme_font_size_override("font_size", 13)
 	vibration_button.pressed.connect(game.toggle_vibration)
+	shake_button = make_button(false)
+	shake_button.add_theme_font_size_override("font_size", 11)
+	shake_button.pressed.connect(game.toggle_screen_shake)
+	laser_button = make_button(false)
+	laser_button.add_theme_font_size_override("font_size", 11)
+	laser_button.pressed.connect(game.toggle_laser_brightness)
+	distortion_button = make_button(false)
+	distortion_button.add_theme_font_size_override("font_size", 11)
+	distortion_button.pressed.connect(game.toggle_distortion)
 
 ## Create a real GUI button with shared colors and focus styling so touch and keyboard navigation work.
 func make_button(accent: bool) -> Button:
@@ -73,7 +85,7 @@ func refresh() -> void:
 	var menu: bool = game.state == game.State.MENU
 	var playing: bool = game.state == game.State.PLAYING
 	if game.death_time > 0.0:
-		for button in [primary, secondary, pause_button, sound_button, vibration_button]:
+		for button in [primary, secondary, pause_button, sound_button, vibration_button, shake_button, laser_button, distortion_button]:
 			button.visible = false
 		queue_redraw()
 		return
@@ -82,9 +94,12 @@ func refresh() -> void:
 	pause_button.visible = playing
 	sound_button.visible = not playing
 	vibration_button.visible = not playing
+	shake_button.visible = not playing
+	laser_button.visible = not playing
+	distortion_button.visible = not playing
 	primary.text = "Launch endless flight  →" if menu else ("Resume flight  →" if game.state == game.State.PAUSED else "Fly again  →")
 	secondary.text = "Return to title"
-	primary.position = Vector2(40, h - game.bottom_inset - 170) if menu else Vector2(64, h * 0.36 + 215)
+	primary.position = Vector2(40, h - game.bottom_inset - 224) if menu else Vector2(64, h * 0.36 + 215)
 	primary.size = Vector2(w - (80 if menu else 128), 62)
 	secondary.position = primary.position + Vector2(0, 76)
 	secondary.size = primary.size
@@ -96,6 +111,16 @@ func refresh() -> void:
 	vibration_button.size = sound_button.size
 	vibration_button.text = "VIBRATION  " + ("ON" if game.progress.vibration_enabled else "OFF")
 	sound_button.text = "SOUND  " + ("ON" if game.progress.sound_enabled else "OFF")
+	var third := (w - 80.0) / 3.0
+	shake_button.position = Vector2(32, h - game.bottom_inset - 128)
+	shake_button.size = Vector2(third, 42)
+	laser_button.position = Vector2(40 + third, h - game.bottom_inset - 128)
+	laser_button.size = Vector2(third, 42)
+	distortion_button.position = Vector2(48 + third * 2.0, h - game.bottom_inset - 128)
+	distortion_button.size = Vector2(third, 42)
+	shake_button.text = "SHAKE  " + ("ON" if game.progress.screen_shake_enabled else "OFF")
+	laser_button.text = "LASER  " + ("FULL" if game.progress.laser_brightness > 0.7 else "SOFT")
+	distortion_button.text = "WARP  " + ("FULL" if game.progress.distortion_strength > 0.7 else "SOFT")
 	# Clear focus after a click; keyboard users can still Tab through visible buttons.
 	var focused := get_viewport().gui_get_focus_owner()
 	if focused:
