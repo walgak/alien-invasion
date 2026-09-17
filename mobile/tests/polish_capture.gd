@@ -80,6 +80,15 @@ func run() -> void:
 	game.gravity_fields.add_exit(Vector2(370,600),"white",1.8)
 	game.gravity_fields.visual_step(0.25)
 	await shot("exit-pulses")
+	game.start_run()
+	for enemy in game.enemies.duplicate():
+		game.remove_enemy(enemy)
+	for rock in game.asteroids.duplicate():
+		game.remove_asteroid(rock)
+	game.spawn_asteroid(Vector2(125,430),Vector2.ZERO,20)
+	game.spawn_asteroid(Vector2(270,430),Vector2.ZERO,31)
+	game.spawn_asteroid(Vector2(420,430),Vector2.ZERO,43)
+	await shot("asteroid-materials")
 	game.free()
 	await process_frame
 	quit()

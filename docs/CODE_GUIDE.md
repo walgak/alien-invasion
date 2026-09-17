@@ -55,6 +55,8 @@ The title and pause menus persist three accessibility presentation controls thro
 
 Characters and combat effects remain code-drawn 2D artwork in their actor `_draw()` functions. The player shield has no solid shell; a low-opacity cyan halo makes the boundary readable over dark space while its shader supplies the 10× background displacement. `deflect_shield_projectile()` curves hostile fire tangentially without changing speed or deleting it, and rocks receive the same treatment. Resistance taps use a separate short-lived ring. Event horizons composite last as opaque black disks surrounded by layered spiral ribbons. Player wells use blue-cyan energy; each boss selects one alien colour for its hole and any lingering/death copy preserves it. Live bosses inspect incoming `PlayerWell` destinations and move their hit position sideways/upward, so their hull visibly burns clear rather than appearing behind an event horizon.
 
+`asteroid.gd` derives a stable visual material from the existing radius class. Ash, magma and ice variants share the same circular physics radius but use separate facet palettes, seams and crater treatments. Their damage overlays remain health-ratio driven, so the richer base art does not alter combat state.
+
 ## Tuning map
 
 | Change | Location |

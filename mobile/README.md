@@ -113,6 +113,8 @@ Black holes swallow fragmented hull plates behind an opaque event horizon. Shot 
 
 The flowing laser bends through gravity and terminates in a glow on a boss or its guard-powered shield. Rockets retain gravity curvature while homing. Every expired hole leaves a two-stage pulse, and gravity has gentle acceleration/deceleration plus continuous low vibration. Background planets vary in size, surface and rings, appear less often, and share a smoothly changing distant light source; passing foreground suns have been removed.
 
+Asteroid scale also controls material language: small rocks resemble sharp fractured ash ore, medium rocks use dark magma plates with permanent orange fissures, and large rocks use cold cyan mineral facets and layered craters. Damage makes the existing seams flare more brightly without changing collision size or health rules.
+
 The player shield remains a gravity lens, with a faint cyan halo added only for visibility: it strongly distorts the sky and redirects incoming bullets and rocks along curved paths. Resistance taps keep a separate segmented gravity-warp pulse. Black-hole cores have luminous spiral accretion ribbons around a fully opaque event horizon. Player-created holes are blue-cyan; alien hole colour is randomly selected and remains stable for the encounter. The escaped-alien cannon has an offscreen warning marker, boss shields break with a brief time beat, and explosions use rock, armor, or energy debris appropriate to their source. Touch release is handled once, while enemy haptics are rate-limited without repeatedly restarting the continuous gravity rumble.
 
 Ships, bosses, asteroids, weapons, and explosions retain the crisp code-drawn 2D style. Boss hit positions evade player-created wells before they open.
