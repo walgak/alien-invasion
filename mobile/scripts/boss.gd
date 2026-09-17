@@ -301,23 +301,9 @@ func _draw() -> void:
 	var tint := Color("baa3ff") if kind == "black" else (Color("b9f8ff") if kind == "white" else Color("ffb86a"))
 	if not lingering:
 		draw_set_transform(body_position)
-		draw_circle(Vector2.ZERO, 74, Color(tint, 0.035))
-		draw_arc(Vector2.ZERO, 64, animation_time * 0.3, animation_time * 0.3 + TAU * 0.85, 60, Color(tint, 0.35), 2, true)
-		for i in range(6):
-			var angle := i * TAU / 6 + animation_time * 0.12
-			var outer := Vector2.from_angle(angle) * 55
-			var wing := PackedVector2Array([outer + Vector2.from_angle(angle) * 10, Vector2.from_angle(angle - 0.3) * 33, Vector2.from_angle(angle + 0.3) * 33])
-			draw_colored_polygon(wing, tint.darkened(0.3))
-		draw_circle(Vector2.ZERO, 36, Color("202d43"))
-		draw_arc(Vector2.ZERO, 36, 0, TAU, 60, tint, 2, true)
-		draw_circle(Vector2.ZERO, 23, Color("f0fcff") if kind == "white" else Color("050714"))
-		if kind == "black":
-			draw_arc(Vector2.ZERO, 26, 0, TAU, 48, Color("c0a4ff"), 3, true)
-		elif kind == "asteroid":
-			draw_colored_polygon(PackedVector2Array([Vector2(0,-18), Vector2(20,10),Vector2(-20,10)]), tint)
-			draw_circle(Vector2(0, 3), 5, Color("33283c"))
+		draw_armored_body(tint)
 		if hit_flash > 0:
-			draw_circle(Vector2.ZERO, 38, Color(1, 1, 1, 0.55))
+			draw_circle(Vector2.ZERO, 52, Color(1, 1, 1, 0.42))
 		draw_set_transform(Vector2.ZERO)
 	if phase not in ["warning", "active"] or kind not in ["black", "white"]:
 		return
@@ -340,36 +326,77 @@ func _draw() -> void:
 		draw_line(well_position - Vector2(9,0), well_position + Vector2(9,0), tint, 1, true)
 		draw_line(well_position - Vector2(0,9), well_position + Vector2(0,9), tint, 1, true)
 
+## Draw the three non-carrier bosses as related warships with different tools:
+## gravity bosses use enclosing scythes; the forge uses armored crusher arms.
+func draw_armored_body(tint: Color) -> void:
+	var pulse := 0.75 + sin(animation_time * 5.0) * 0.25
+	draw_circle(Vector2.ZERO,82.0,Color(tint,0.045))
+	for side in [-1.0,1.0]:
+		var outer: PackedVector2Array
+		if kind == "asteroid":
+			outer = PackedVector2Array([Vector2(side*15,-30),Vector2(side*63,-48),Vector2(side*81,-24),Vector2(side*76,26),Vector2(side*51,50),Vector2(side*47,12),Vector2(side*20,21)])
+		else:
+			outer = PackedVector2Array([Vector2(side*13,-28),Vector2(side*49,-54),Vector2(side*74,-62),Vector2(side*61,-28),Vector2(side*76,13),Vector2(side*60,54),Vector2(side*43,18),Vector2(side*19,25)])
+		draw_colored_polygon(outer,Color("11131c"))
+		var inset := PackedVector2Array([Vector2(side*20,-23),Vector2(side*50,-43),Vector2(side*62,-45),Vector2(side*50,-19),Vector2(side*61,15),Vector2(side*50,34),Vector2(side*39,8),Vector2(side*22,14)])
+		draw_colored_polygon(inset,Color("373441") if kind != "asteroid" else Color("42352d"))
+		draw_polyline(PackedVector2Array([Vector2(side*21,-19),Vector2(side*48,-35),Vector2(side*45,-12),Vector2(side*55,18),Vector2(side*43,25)]),Color(tint,0.85),3.2,true)
+		# Twin recessed weapon/tractor ports.
+		var port := Vector2(side*30,11)
+		draw_circle(port,10,Color("08080d"))
+		draw_arc(port,10,0,TAU,24,Color(tint,0.75),2,true)
+		draw_circle(port,4.5,Color(tint,pulse))
+	var hull := PackedVector2Array([Vector2(0,-61),Vector2(22,-27),Vector2(24,20),Vector2(10,49),Vector2(0,59),Vector2(-10,49),Vector2(-24,20),Vector2(-22,-27)])
+	draw_colored_polygon(hull,Color("1b1d27"))
+	draw_colored_polygon(PackedVector2Array([Vector2(0,-56),Vector2(0,47),Vector2(-9,39),Vector2(-17,14),Vector2(-16,-21)]),Color("4d4855"))
+	var core_tint := Color("ffffff") if kind == "white" else tint
+	draw_colored_polygon(PackedVector2Array([Vector2(0,-31),Vector2(8,-7),Vector2(7,23),Vector2(0,42),Vector2(-7,23),Vector2(-8,-7)]),Color("09080f"))
+	draw_line(Vector2(0,-26),Vector2(0,34),core_tint,5.0,true)
+	for y in [-17.0,-5.0,7.0,19.0]:
+		draw_circle(Vector2(0,y),2.6,Color(core_tint,pulse))
+	if kind == "black":
+		draw_arc(Vector2(0,35),13,0,TAU,32,Color("c47cff"),3,true)
+	elif kind == "white":
+		draw_circle(Vector2(0,35),10,Color("ecffff"))
+		draw_circle(Vector2(0,35),18,Color(tint,0.16))
+	else:
+		draw_colored_polygon(PackedVector2Array([Vector2(-17,35),Vector2(0,55),Vector2(17,35),Vector2(0,24)]),Color("6b4430"))
+		draw_line(Vector2(-10,36),Vector2(0,48),Color("ffb86a"),3,true)
+		draw_line(Vector2(10,36),Vector2(0,48),Color("ffb86a"),3,true)
+
 ## Render the carrier's distinctive body and hangars; this is cosmetic geometry, not collision geometry.
 func draw_swarm_body() -> void:
-	var tint := Color("79f4c4")
+	var tint := Color("c26bff")
 	var pulse := 0.5 + sin(animation_time * 4.0) * 0.5
 	draw_set_transform(body_position)
-	draw_circle(Vector2.ZERO, 87.0, Color(tint, 0.045))
-	# Swept hangars and paired eyes make the carrier read as an alien mother ship.
+	draw_circle(Vector2.ZERO, 94.0, Color(tint, 0.05))
+	# Four hooked hangar blades echo the small alien while making the carrier's
+	# wider, predatory silhouette instantly distinct from the gravity bosses.
 	for side in [-1.0, 1.0]:
 		var wing := PackedVector2Array([
-			Vector2(side * 20.0, -34.0), Vector2(side * 64.0, -51.0),
-			Vector2(side * 79.0, -18.0), Vector2(side * 67.0, 41.0),
-			Vector2(side * 48.0, 62.0), Vector2(side * 47.0, 9.0),
-			Vector2(side * 25.0, 22.0)
+			Vector2(side * 18.0, -37.0), Vector2(side * 63.0, -62.0),
+			Vector2(side * 88.0, -47.0), Vector2(side * 68.0, -13.0),
+			Vector2(side * 86.0, 29.0), Vector2(side * 62.0, 66.0),
+			Vector2(side * 45.0, 18.0), Vector2(side * 23.0, 27.0)
 		])
-		draw_colored_polygon(wing, Color("203f4a"))
+		draw_colored_polygon(wing, Color("11131c"))
 		wing.append(wing[0])
-		draw_polyline(wing, Color(tint, 0.8), 2.0, true)
-		draw_line(Vector2(side * 57.0, -27.0), Vector2(side * 62.0, 11.0), Color("3f897d"), 5.0, true)
+		draw_polyline(wing, Color("51495a"), 2.0, true)
+		draw_line(Vector2(side * 52.0, -39.0), Vector2(side * 63.0, 29.0), Color(tint,0.85), 4.0, true)
 		for i in range(3):
-			var dock := Vector2(side * (40.0 + float(i) * 8.0), -23.0 + float(i) * 20.0)
+			var dock := Vector2(side * (43.0 + float(i) * 9.0), -25.0 + float(i) * 22.0)
+			draw_circle(dock,7.0,Color("08080d"))
 			draw_circle(dock, 3.0, Color(tint, 0.45 + pulse * 0.4))
-	var hull := PackedVector2Array([Vector2(0, -51), Vector2(33, -28), Vector2(28, 23), Vector2(0, 46), Vector2(-28, 23), Vector2(-33, -28)])
-	draw_colored_polygon(hull, Color("142a36"))
+	var hull := PackedVector2Array([Vector2(0,-64),Vector2(29,-31),Vector2(30,27),Vector2(0,58),Vector2(-30,27),Vector2(-29,-31)])
+	draw_colored_polygon(hull, Color("1b1c27"))
 	hull.append(hull[0])
-	draw_polyline(hull, tint.darkened(0.3), 2.0, true)
+	draw_polyline(hull, Color("62596a"), 2.0, true)
+	draw_colored_polygon(PackedVector2Array([Vector2(0,-58),Vector2(0,48),Vector2(-13,32),Vector2(-18,-23)]),Color("4a4654"))
 	for side in [-1.0, 1.0]:
-		var eye := PackedVector2Array([Vector2(side * 6.0, -6.0), Vector2(side * 24.0, -21.0), Vector2(side * 20.0, -1.0), Vector2(side * 7.0, 5.0)])
+		var eye := PackedVector2Array([Vector2(side*5,-13),Vector2(side*23,-27),Vector2(side*19,-3),Vector2(side*6,5)])
 		draw_colored_polygon(eye, tint)
-	draw_circle(Vector2(0, 22), 9.0 + pulse, Color("79f4c4", 0.17))
-	draw_circle(Vector2(0, 22), 5.0, Color("d5fff0"))
+	draw_circle(Vector2(0, 29), 13.0 + pulse, Color(tint, 0.17))
+	draw_circle(Vector2(0, 29), 6.0, Color("f1dcff"))
 	if phase in ["warning", "active", "clearing"]:
 		draw_arc(Vector2(0, 42), 16.0 + pulse * 3.0, animation_time * 2.0, animation_time * 2.0 + TAU * 0.8, 32, Color(tint, 0.6), 2.0, true)
 	if hit_flash > 0.0:

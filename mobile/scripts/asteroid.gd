@@ -72,25 +72,34 @@ func advance(delta: float, target: Vector2 = Vector2.ZERO) -> void:
 ## Submit this object's visual geometry in local coordinates. Physics and collision rules are handled separately.
 func _draw() -> void:
 	draw_fold_lines()
-	draw_colored_polygon(outline, Color("fff0d5") if flash > 0 else Color("495065"))
+	draw_circle(Vector2.ZERO, radius * 1.12, Color(0.35, 0.24, 0.16, 0.06))
+	draw_colored_polygon(outline, Color("fff0d5") if flash > 0 else Color("3d3738"))
 	if flash <= 0:
-		var light := Vector2(-0.6, -0.8).rotated(-rotation)
+		var light := Vector2(-0.72, -0.68).rotated(-rotation)
 		for i in range(outline.size()):
 			var next := (i + 1) % outline.size()
 			var facing := (outline[i] + outline[next]).normalized().dot(light)
-			var face := PackedVector2Array([Vector2(-radius * 0.12, -radius * 0.08), outline[i], outline[next]])
-			draw_colored_polygon(face, Color("303747").lerp(Color("8795aa"), (facing + 1.0) * 0.5))
+			var center := Vector2(-radius * 0.08, -radius * 0.04)
+			var face := PackedVector2Array([center, outline[i], outline[next]])
+			draw_colored_polygon(face, Color("211f24").lerp(Color("81756c"), (facing + 1.0) * 0.5))
+			if i % 2 == 0:
+				draw_line(center.lerp(outline[i],0.3),outline[i],Color(0.75,0.65,0.55,0.24),1.0,true)
 	var closed := outline.duplicate()
 	closed.append(outline[0])
-	draw_polyline(closed, Color("caa48c"), 1.5, true)
-	draw_circle(Vector2(-radius * 0.3, -radius * 0.25), radius * 0.25, Color("2d3449"))
-	draw_circle(Vector2(radius * 0.28, radius * 0.1), radius * 0.16, Color("333c50"))
-	draw_arc(Vector2(-radius * 0.3, -radius * 0.25), radius * 0.25, 0.2 - rotation, 2.3 - rotation, 20, Color("a4abc2", 0.45), 1.0, true)
+	draw_polyline(closed, Color("a98e78"), 1.5, true)
+	# Craters have a dark floor, a lit near rim, and fractured radial edges.
+	for crater in [Vector3(-0.31,-0.27,0.24),Vector3(0.30,0.12,0.16),Vector3(0.08,-0.46,0.11)]:
+		var at: Vector2 = Vector2(float(crater.x),float(crater.y))*radius
+		var crater_radius: float = float(crater.z)*radius
+		draw_circle(at,crater_radius,Color("17171c"))
+		draw_arc(at,crater_radius,0.15-rotation,2.5-rotation,20,Color(0.82,0.73,0.63,0.55),1.4,true)
+		draw_arc(at,crater_radius*0.72,PI-rotation,TAU-rotation,16,Color(0.05,0.04,0.06,0.7),1.2,true)
 	var damage_ratio := 1.0 - float(health) / float(max_health)
 	if damage_ratio > 0.28:
-		draw_polyline(PackedVector2Array([Vector2(-radius, 0), Vector2(0, -5), Vector2(5, 9), Vector2(radius, radius * 0.4)]), Color("ffb86a"), 2, true)
+		draw_polyline(PackedVector2Array([Vector2(-radius, 0), Vector2(0, -5), Vector2(5, 9), Vector2(radius, radius * 0.4)]), Color("ff7e4d"), 4.5, true)
+		draw_polyline(PackedVector2Array([Vector2(-radius, 0), Vector2(0, -5), Vector2(5, 9), Vector2(radius, radius * 0.4)]), Color("ffd09a"), 1.3, true)
 	if damage_ratio > 0.62:
-		draw_polyline(PackedVector2Array([Vector2(-radius * 0.25, -radius), Vector2(-radius * 0.05, -radius * 0.2), Vector2(radius * 0.32, radius * 0.1)]), Color("ffd19d"), 1.6, true)
+		draw_polyline(PackedVector2Array([Vector2(-radius * 0.25, -radius), Vector2(-radius * 0.05, -radius * 0.2), Vector2(radius * 0.32, radius * 0.1)]), Color("fff0cc"), 2.0, true)
 
 ## Draw boss-to-rock tethers in the rock's rotated local space; fade them after release.
 func draw_fold_lines() -> void:

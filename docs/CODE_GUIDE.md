@@ -53,6 +53,8 @@ Asteroid contact and an escaped alien's homing doom cannon call `instant_loss()`
 
 The title and pause menus persist three accessibility presentation controls through `progress.gd`: screen shake on/off, reduced/full laser brightness, and reduced/full gravity distortion. `space_folds.gd` feeds shield rings, tap pulses, mixed-hole shockwaves, exit rings, boss shields, holes, and tethers into one bounded screen-reading pass. This keeps the effect visually consistent and caps the number of simultaneous lenses.
 
+Character artwork remains code-native in each actor's `_draw()` function. Ships share dark faceted armor and narrow luminous conduits, with cyan reserved for the player and violet for aliens. Boss helpers scale that grammar into distinct silhouettes without changing collision radii. Asteroid facets are lit in local rotated space, so their apparent highlight remains spatially consistent while they spin. The shield lens uses 10× its former displacement and a wider sampling envelope; the saved reduced-warp option scales that result globally.
+
 ## Tuning map
 
 | Change | Location |

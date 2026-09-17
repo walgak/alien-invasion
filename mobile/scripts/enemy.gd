@@ -78,17 +78,25 @@ func _draw() -> void:
 				var t := float(i) / 24.0
 				points.append(anchor.lerp(Vector2((lane - 2) * 6, 0), t) + side * sin(t * TAU * 2 + age * 5 + lane) * 3.0 * sin(t * PI))
 			draw_polyline(points, Color("91f5da", fold_life / RELEASE_FADE_SECONDS * 0.32), 1.2, true)
-	draw_circle(Vector2.ZERO, 29, Color(tint, 0.045))
-	draw_colored_polygon(PackedVector2Array([Vector2(-27,-9),Vector2(-14,-3),Vector2(-8,12),Vector2(-22,19),Vector2(-19,4),Vector2(-29,2)]), tint.darkened(0.2))
-	draw_colored_polygon(PackedVector2Array([Vector2(27,-9),Vector2(14,-3),Vector2(8,12),Vector2(22,19),Vector2(19,4),Vector2(29,2)]), tint.darkened(0.2))
-	draw_colored_polygon(PackedVector2Array([Vector2(0,-19),Vector2(17,-9),Vector2(13,9),Vector2(0,18),Vector2(-13,9),Vector2(-17,-9)]), Color("303247"))
-	draw_polyline(PackedVector2Array([Vector2(-13,9),Vector2(-17,-9),Vector2(0,-19),Vector2(17,-9),Vector2(13,9)]), tint, 2, true)
-	draw_line(Vector2(-9,-3),Vector2(-3,1),tint,3,true)
-	draw_line(Vector2(9,-3),Vector2(3,1),tint,3,true)
-	draw_circle(Vector2(0,11),2,Color("fff3d7"))
+	var energy := Color("b45cff")
+	draw_circle(Vector2.ZERO, 32, Color(energy, 0.055))
+	# Scythe wings frame a narrow spear hull, matching the supplied concept at
+	# gameplay scale without depending on a texture asset.
+	for side in [-1.0, 1.0]:
+		var blade := PackedVector2Array([Vector2(side*8,-12),Vector2(side*22,-19),Vector2(side*31,-25),Vector2(side*24,-7),Vector2(side*29,11),Vector2(side*20,19),Vector2(side*15,5),Vector2(side*7,8)])
+		draw_colored_polygon(blade,Color("11131c"))
+		draw_colored_polygon(PackedVector2Array([Vector2(side*12,-9),Vector2(side*23,-17),Vector2(side*19,-4),Vector2(side*23,10),Vector2(side*17,13),Vector2(side*12,1)]),Color("34313f"))
+		draw_line(Vector2(side*14,-8),Vector2(side*21,10),energy,2.0,true)
+	var hull := PackedVector2Array([Vector2(0,-24),Vector2(11,-8),Vector2(10,10),Vector2(0,23),Vector2(-10,10),Vector2(-11,-8)])
+	draw_colored_polygon(hull,Color("1d1e29"))
+	draw_colored_polygon(PackedVector2Array([Vector2(0,-22),Vector2(0,18),Vector2(-6,9),Vector2(-7,-6)]),Color("4a4655"))
+	draw_colored_polygon(PackedVector2Array([Vector2(0,-15),Vector2(5,-3),Vector2(3,10),Vector2(0,16),Vector2(-3,10),Vector2(-5,-3)]),Color("120c1d"))
+	draw_line(Vector2(0,-13),Vector2(0,12),Color("d692ff"),3.0,true)
+	draw_circle(Vector2(0,15),3,Color("f1d8ff"))
 
 	# Rear-facing gravity cannon: the ship flies down, leaving this violet barrel
 	# aimed back toward the player once it has crossed the bottom boundary.
-	draw_rect(Rect2(-5,-31,10,17), Color("646079"))
-	draw_line(Vector2(0,-31),Vector2(0,-17),Color("b894ff"),3,true)
-	draw_arc(Vector2(0,-31),6,PI,TAU,16,Color("d5bbff"),2,true)
+	draw_colored_polygon(PackedVector2Array([Vector2(-6,-34),Vector2(6,-34),Vector2(5,-18),Vector2(-5,-18)]),Color("15131d"))
+	draw_circle(Vector2(0,-32),5,Color("08070c"))
+	draw_arc(Vector2(0,-32),6,0,TAU,18,Color("c875ff"),2,true)
+	draw_line(Vector2(0,-30),Vector2(0,-19),Color("e0a7ff"),2.5,true)

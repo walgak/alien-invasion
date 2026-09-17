@@ -26,7 +26,9 @@ func update_effects(game: Node2D) -> void:
 	# Reserve the first lenses for player feedback. These rings must distort the
 	# same starfield as the wells rather than looking like flat HUD circles.
 	if game.combat.shield_time > 0.0 and lenses.size() < MAX_LENSES:
-		lenses.append(Vector4(game.ship.position.x, game.ship.position.y, 116.0, 1.35))
+		# The shield is intentionally extreme: it should visibly drag stars and
+		# nebulae around the hull even on a small, bright phone display.
+		lenses.append(Vector4(game.ship.position.x, game.ship.position.y, 152.0, 13.5))
 		styles.append(Vector4(47.0, 1.0, 2.0, game.visual_time))
 	for pulse in game.combat.warp_pulses:
 		if lenses.size() >= MAX_LENSES:

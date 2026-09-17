@@ -35,24 +35,34 @@ func reset_ship(at: Vector2) -> void:
 
 ## Submit this object's visual geometry in local coordinates. Physics and collision rules are handled separately.
 func _draw() -> void:
-	# Add wider equipment without changing the small, predictable collision hull.
+	# Layered graphite armor and inset cyan conduits share the alien fleet's sharp
+	# design language, while cyan keeps the player readable against violet enemies.
 	var width: float = [1.0, 1.13, 1.28, 1.45, 1.38][clampi(weapon_level, 0, 4)]
 	draw_set_transform(Vector2.ZERO, 0, Vector2(width, 1.0))
 	if invulnerable > 0.0:
-		draw_arc(Vector2.ZERO, 41.0, 0.0, TAU, 48, Color(0.35, 0.91, 0.82, 0.35), 1.5, true)
+		draw_arc(Vector2.ZERO, 44.0, 0.0, TAU, 64, Color(0.35, 0.91, 0.95, 0.45), 2.0, true)
 		# Keep the full hull visible during recovery; a refreshed immunity timer
 		# must never pin the ship inside the invisible portion of a blink cycle.
 	var flame := 33.0 + sin(animation_time * 32.0) * 6.0
-	draw_colored_polygon(PackedVector2Array([Vector2(-7, 22), Vector2(0, flame + 15), Vector2(7, 22)]), Color("ff9a62"))
-	draw_colored_polygon(PackedVector2Array([Vector2(-3, 23), Vector2(0, flame), Vector2(3, 23)]), Color("fff3c0"))
-	draw_circle(Vector2(0, 5), 37, Color(0.22, 0.75, 0.75, 0.04))
-	draw_colored_polygon(PackedVector2Array([Vector2(0,-35),Vector2(16,-2),Vector2(33,23),Vector2(13,18),Vector2(0,27),Vector2(-13,18),Vector2(-33,23),Vector2(-16,-2)]), Color("d8e9f0"))
-	draw_colored_polygon(PackedVector2Array([Vector2(0,-35),Vector2(0,27),Vector2(-13,18),Vector2(-33,23),Vector2(-16,-2)]), Color("8ca8bc"))
-	draw_colored_polygon(PackedVector2Array([Vector2(0,-24),Vector2(7,1),Vector2(0,13),Vector2(-7,1)]), Color("55e8d0"))
-	draw_line(Vector2(-22,15),Vector2(-13,7),Color("31516b"),2,true)
-	draw_line(Vector2(22,15),Vector2(13,7),Color("31516b"),2,true)
-	draw_line(Vector2(-14,18),Vector2(-7,21),Color("55e8d0"),2,true)
-	draw_line(Vector2(14,18),Vector2(7,21),Color("55e8d0"),2,true)
+	for side in [-1.0, 1.0]:
+		draw_colored_polygon(PackedVector2Array([Vector2(side*5,20),Vector2(side*2,flame+15),Vector2(side*9,23)]),Color(0.15,0.85,1.0,0.22))
+		draw_colored_polygon(PackedVector2Array([Vector2(side*5,21),Vector2(side*4,flame),Vector2(side*8,22)]),Color("8ff7ff"))
+	draw_circle(Vector2.ZERO, 40, Color(0.12, 0.8, 1.0, 0.055))
+	# Swept outer blades.
+	for side in [-1.0, 1.0]:
+		var wing := PackedVector2Array([Vector2(side*7,-17),Vector2(side*22,-7),Vector2(side*37,21),Vector2(side*29,17),Vector2(side*17,4),Vector2(side*13,24),Vector2(side*4,18)])
+		draw_colored_polygon(wing, Color("171d2b"))
+		var plate := PackedVector2Array([Vector2(side*14,-8),Vector2(side*23,-1),Vector2(side*31,15),Vector2(side*22,10),Vector2(side*15,2)])
+		draw_colored_polygon(plate, Color("35465a"))
+		draw_line(Vector2(side*14,-6),Vector2(side*27,14),Color("54e9ee"),2.2,true)
+	# Spear-shaped central hull and raised armor facets.
+	var hull := PackedVector2Array([Vector2(0,-39),Vector2(13,-13),Vector2(14,10),Vector2(7,27),Vector2(0,32),Vector2(-7,27),Vector2(-14,10),Vector2(-13,-13)])
+	draw_colored_polygon(hull,Color("202938"))
+	draw_colored_polygon(PackedVector2Array([Vector2(0,-37),Vector2(0,25),Vector2(-7,20),Vector2(-11,-10)]),Color("4d6074"))
+	draw_colored_polygon(PackedVector2Array([Vector2(0,-29),Vector2(7,-9),Vector2(4,13),Vector2(0,22),Vector2(-4,13),Vector2(-7,-9)]),Color("0a1522"))
+	draw_polyline(PackedVector2Array([Vector2(0,-27),Vector2(4,-8),Vector2(0,16),Vector2(-4,-8),Vector2(0,-27)]),Color("6ff8ef"),2.0,true)
+	draw_line(Vector2(-10,10),Vector2(0,27),Color("71879a"),1.2,true)
+	draw_line(Vector2(10,10),Vector2(0,27),Color("24394c"),1.2,true)
 	draw_set_transform(Vector2.ZERO)
 	var barrels := [0.0]
 	if weapon_level == 1:
@@ -62,8 +72,8 @@ func _draw() -> void:
 	elif weapon_level == 4:
 		barrels = [-13.0, 13.0]
 	for x in barrels:
-		draw_rect(Rect2(x - 3.0, -37.0, 6.0, 23.0), Color("607d94"))
-		draw_line(Vector2(x, -37), Vector2(x, -21), Color("7ff8e4"), 2.0)
+		draw_colored_polygon(PackedVector2Array([Vector2(x-4,-39),Vector2(x+4,-39),Vector2(x+3,-16),Vector2(x-3,-16)]),Color("151b27"))
+		draw_line(Vector2(x, -38), Vector2(x, -19), Color("7ff8f4"), 2.2)
 	if weapon_level == 3:
 		for y in [-31.0, -23.0, -15.0]:
 			draw_arc(Vector2(0, y), 10, PI, TAU, 16, Color("9fdcff"), 3.0)
