@@ -14,7 +14,6 @@ const SpaceFolds = preload("res://scripts/space_folds.gd")
 const WeaponSystem = preload("res://scripts/weapon_system.gd")
 const Pickup = preload("res://scripts/pickup.gd")
 const PlayerWell = preload("res://scripts/player_well.gd")
-const World3DRenderer = preload("res://scripts/world_3d_renderer.gd")
 const POINTS_PER_ENEMY := 100
 const MAX_LIVES := 3
 const MAX_ENEMIES := 14
@@ -85,8 +84,6 @@ var target_light := sector_light
 var guard_break_time := 0.0
 var shake_time := 0.0
 var shake_strength := 0.0
-var render_3d_enabled := true
-var renderer_3d = World3DRenderer.new()
 
 ## Godot calls this once after the node joins the scene; initialize child nodes and cached resources here.
 func _ready() -> void:
@@ -94,8 +91,6 @@ func _ready() -> void:
 	space_background.z_index = -30
 	add_child(space_background)
 	add_child(space_folds)
-	renderer_3d.setup(self)
-	add_child(renderer_3d)
 	add_child(ship)
 	combat.game = self
 	add_child(combat)
@@ -133,7 +128,6 @@ func update_layout() -> void:
 		if is_instance_valid(boss):
 			boss.well_position *= resize_scale
 	interface.size = arena
-	renderer_3d.resize(arena)
 	interface.refresh()
 	refresh_space()
 	queue_redraw()
@@ -614,8 +608,6 @@ func refresh_space() -> void:
 		jitter = Vector2(sin(visual_time * 91.0), cos(visual_time * 73.0)) * shake_strength
 	space_background.sky_material.set_shader_parameter("camera_jitter", jitter)
 	space_folds.update_effects(self)
-	if render_3d_enabled:
-		renderer_3d.sync()
 
 ## Move ordinary aliens or orbit guards, resolve swept ship contact, and fire aimed shots at per-enemy intervals.
 func update_enemies(delta: float) -> void:
@@ -1343,16 +1335,15 @@ func _draw() -> void:
 		var side := direction.orthogonal()
 		draw_colored_polygon(PackedVector2Array([edge + direction * 16, edge - direction * 8 + side * 8, edge - direction * 8 - side * 8]), Color("c7a0ff"))
 		draw_arc(edge, 22 + sin(visual_time * 8.0) * 3.0, 0, TAU, 28, Color(0.72, 0.45, 1.0, 0.7), 2, true)
-	if not render_3d_enabled:
-		for particle in particles:
-			var tint: Color = particle.tint
-			tint.a = particle.life / particle.duration
-			if particle.kind == "rock":
-				draw_circle(particle.position, particle.radius, tint)
-			elif particle.kind == "armor":
-				var direction := Vector2.from_angle(particle.spin * (particle.duration - particle.life))
-				var side := direction.orthogonal()
-				draw_colored_polygon(PackedVector2Array([particle.position + direction * particle.radius * 1.8, particle.position - direction * particle.radius + side * particle.radius, particle.position - direction * particle.radius - side * particle.radius]), tint)
-			else:
-				var direction: Vector2 = particle.velocity.normalized()
-				draw_line(particle.position - direction * particle.radius * 2.0, particle.position + direction * particle.radius, tint, particle.radius, true)
+	for particle in particles:
+		var tint: Color = particle.tint
+		tint.a = particle.life / particle.duration
+		if particle.kind == "rock":
+			draw_circle(particle.position, particle.radius, tint)
+		elif particle.kind == "armor":
+			var direction := Vector2.from_angle(particle.spin * (particle.duration - particle.life))
+			var side := direction.orthogonal()
+			draw_colored_polygon(PackedVector2Array([particle.position + direction * particle.radius * 1.8, particle.position - direction * particle.radius + side * particle.radius, particle.position - direction * particle.radius - side * particle.radius]), tint)
+		else:
+			var direction: Vector2 = particle.velocity.normalized()
+			draw_line(particle.position - direction * particle.radius * 2.0, particle.position + direction * particle.radius, tint, particle.radius, true)

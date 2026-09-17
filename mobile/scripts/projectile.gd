@@ -57,8 +57,6 @@ func intersects(center: Vector2, radius: float) -> bool:
 
 ## Submit this object's visual geometry in local coordinates. Physics and collision rules are handled separately.
 func _draw() -> void:
-	if get_parent()!=null and get_parent().render_3d_enabled:
-		return
 	if kind == "doom":
 		draw_circle(Vector2.ZERO, 12, Color("03020c"))
 		draw_arc(Vector2.ZERO, 16, 0, TAU, 32, Color("b894ff"), 4, true)

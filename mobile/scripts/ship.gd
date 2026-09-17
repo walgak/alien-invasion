@@ -35,8 +35,6 @@ func reset_ship(at: Vector2) -> void:
 
 ## Submit this object's visual geometry in local coordinates. Physics and collision rules are handled separately.
 func _draw() -> void:
-	if get_parent()!=null and get_parent().render_3d_enabled:
-		return
 	# Layered graphite armor and inset cyan conduits share the alien fleet's sharp
 	# design language, while cyan keeps the player readable against violet enemies.
 	var width: float = [1.0, 1.13, 1.28, 1.45, 1.38][clampi(weapon_level, 0, 4)]

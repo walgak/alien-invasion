@@ -320,12 +320,12 @@ func _draw() -> void:
 		draw_tractor_remnant()
 		return
 	if kind == "swarm":
-		if not lingering and not game.render_3d_enabled:
+		if not lingering:
 			draw_swarm_body()
 		return
 
 	var tint := Color("baa3ff") if kind == "black" else (Color("b9f8ff") if kind == "white" else Color("ffb86a"))
-	if not lingering and not game.render_3d_enabled:
+	if not lingering:
 		draw_set_transform(body_position)
 		draw_armored_body(tint)
 		if hit_flash > 0:

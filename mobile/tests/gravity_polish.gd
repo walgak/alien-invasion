@@ -121,13 +121,6 @@ func run() -> void:
 	field=well(Vector2(270,310))
 	game.boss.step(0.5)
 	check(game.boss.dodge_offset.length()>40.0 and game.boss.body_position.distance_to(field.well_position)>80.0,"boss burns clear of a player black hole")
-	game.renderer_3d.sync()
-	var ship_model:Node3D=game.renderer_3d.models[game.ship.get_instance_id()]
-	var has_depth:=false
-	for part in ship_model.get_children():
-		if part is MeshInstance3D and part.get_aabb().size.z>1.0:
-			has_depth=true
-	check(has_depth,"player presentation uses extruded 3D meshes with physical depth")
 	for cause in ["Enemy fire destroyed your ship.","An alien collided with your ship.","The white hole pushed you into the boundary.","A black hole collapsed your ship."]:
 		fresh()
 		game.instant_loss(cause)

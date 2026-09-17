@@ -69,8 +69,6 @@ func advance(delta: float, target: Vector2 = Vector2.ZERO) -> void:
 
 ## Submit this object's visual geometry in local coordinates. Physics and collision rules are handled separately.
 func _draw() -> void:
-	if get_parent()!=null and get_parent().render_3d_enabled:
-		return
 	if fold_life > 0.0:
 		var anchor := to_local(fold_origin)
 		var side := anchor.orthogonal().normalized()

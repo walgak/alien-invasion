@@ -71,8 +71,6 @@ func advance(delta: float, target: Vector2 = Vector2.ZERO) -> void:
 
 ## Submit this object's visual geometry in local coordinates. Physics and collision rules are handled separately.
 func _draw() -> void:
-	if get_parent()!=null and get_parent().render_3d_enabled:
-		return
 	draw_fold_lines()
 	draw_circle(Vector2.ZERO, radius * 1.12, Color(0.35, 0.24, 0.16, 0.06))
 	draw_colored_polygon(outline, Color("fff0d5") if flash > 0 else Color("3d3738"))
