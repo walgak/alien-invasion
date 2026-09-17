@@ -15,6 +15,7 @@ var neutralise_time := 0.0
 var origins: Dictionary[int, Vector2] = {}
 ## Stable instance IDs survive deletion; never use freed Nodes as dictionary keys.
 var active_age := 0.0
+var hole_color := Color("358cff")
 const PULL_SPEED := 90.0
 
 ## Only the active well takes over controls; its traveling rocket does not.
@@ -102,11 +103,11 @@ func finish_well() -> void:
 ## Inward-moving concentric folds accompany the shader's actual background lens.
 func _draw() -> void:
 	if phase == "warning":
-		draw_circle(cannon_position, 10, Color("c7a0ff"))
-		draw_arc(cannon_position, 20, 0, TAU, 32, Color("806ad9"), 3, true)
+		draw_circle(cannon_position, 10, Color("d6f7ff"))
+		draw_arc(cannon_position, 20, 0, TAU, 32, Color("4ea5ff"), 3, true)
 		return
 	for i in range(5):
 		var progress := fposmod(float(i) / 5.0 - animation_time * 0.45, 1.0)
-		draw_arc(well_position, (32 + 85 * progress) * well_scale, 0, TAU, 80, Color(0.55, 0.4, 1.0, (1 - progress) * 0.45), 2, true)
+		draw_arc(well_position, (32 + 85 * progress) * well_scale, 0, TAU, 80, Color(0.22, 0.62, 1.0, (1 - progress) * 0.45), 2, true)
 	draw_circle(well_position, 31 * well_scale, Color("03020c"))
-	draw_arc(well_position, 32 * well_scale, 0, TAU, 80, Color("b894ff"), 3, true)
+	draw_arc(well_position, 32 * well_scale, 0, TAU, 80, Color("9cecff"), 3, true)

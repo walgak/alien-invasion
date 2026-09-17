@@ -131,11 +131,11 @@ func _draw() -> void:
 	# must never show through the event horizon regardless of scene insertion order.
 	for well in active_wells():
 		if well.kind == "black":
-			draw_horizon(well.well_position, 31.0 * well.well_scale)
+			draw_horizon(well.well_position, 31.0 * well.well_scale, well.hole_color)
 	if game.death_time > 0.0 and game.death_is_gravity:
-		draw_horizon(game.death_target, game.death_radius)
+		draw_horizon(game.death_target, game.death_radius, game.death_hole_color)
 
-## A shield absorbs the escape cannon as light only: no damage or force callback.
+## Visual-only fallback for a shielded escape-cannon impact: no damage or force.
 func visual_shockwave(at: Vector2) -> void:
 	shockwaves.append({"at": at, "age": 0.35, "radius": 190.0, "fired": true, "visual_only": true})
 
@@ -155,24 +155,44 @@ func visual_step(delta: float) -> void:
 
 ## The event horizon is opaque, while counter-rotating accretion streams stay
 ## strictly outside it. Nothing swallowed can leak through the black core.
-func draw_horizon(at: Vector2, radius: float) -> void:
+func draw_horizon(at: Vector2, radius: float, color: Color) -> void:
 	var time: float = game.visual_time
-	for lane in range(7, 0, -1):
-		var lane_radius := radius + 2.0 + lane * 3.4
-		var direction := -1.0 if lane % 2 == 0 else 1.0
-		var alpha := 0.06 + (8.0 - lane) * 0.025
-		for segment in range(4):
-			var start := time * direction * (0.7 + lane * 0.11) + segment * TAU / 4.0 + lane * 0.31
-			var span := 0.38 + 0.20 * sin(time * 2.3 + lane + segment)
-			var tint := Color("8057cf").lerp(Color("e1c5ff"), float(7 - lane) / 7.0)
-			draw_arc(at, lane_radius, start, start + span, 12, Color(tint, alpha), 5.5 - lane * 0.38, true)
+	var scale_factor := sqrt(maxf(radius/31.0,0.3))
+	var outer_reach := 92.0*scale_factor
+	var deep := color.darkened(0.5)
+	var bright := color.lightened(0.62)
+	# Long tapered logarithmic streams produce the turbulent, asymmetrical
+	# accretion spiral from the references without covering the gameplay field.
+	for lane in range(9):
+		var points := PackedVector2Array()
+		var phase := float(lane)*TAU/9.0-time*(0.42+float(lane%3)*0.07)
+		for step in range(34):
+			var t := float(step)/33.0
+			var spiral_radius := radius+3.0+outer_reach*pow(t,1.16)
+			var angle := phase+t*(2.0+0.34*sin(float(lane)*1.7))+sin(t*9.0+time*2.2+lane)*0.055
+			var flatten := 0.88+0.07*sin(float(lane)*2.1)
+			points.append(at+Vector2(cos(angle),sin(angle)*flatten)*spiral_radius)
+		var lane_mix := float(lane%4)/3.0
+		var tint := deep.lerp(color,lane_mix)
+		var alpha := 0.14+0.07*float(lane%3)
+		# Three widths turn each path into a soft gaseous ribbon: a faint outer
+		# bloom, a colored body, and an irregular hot vein at its centre.
+		draw_polyline(points,Color(tint,0.035),18.0-float(lane%3)*2.0,true)
+		draw_polyline(points,Color(tint,alpha),11.0-float(lane%3)*1.5,true)
+		if lane%2==0:
+			draw_polyline(points,Color(bright,0.32),1.7,true)
+	# Broken hot filaments hug the photon ring and rotate faster than the broad flow.
+	for filament in range(9):
+		var start := -time*(1.05+filament*0.025)+filament*TAU/9.0
+		var span := 0.24+0.22*sin(time*1.7+filament*2.0)
+		draw_arc(at,radius+5.0+float(filament%3)*3.0,start,start+span,14,Color(bright,0.62),3.8-float(filament%3)*0.7,true)
 	# Draw the absolute black disk after the accretion lanes, then add only an
 	# exterior photon rim and rotating highlights.
 	draw_circle(at, radius, Color("000006"))
-	draw_arc(at, radius + 0.8, 0, TAU, 96, Color("9b79e3"), 2.2, true)
+	draw_arc(at, radius + 0.8, 0, TAU, 96, Color(bright,0.92), 2.2, true)
 	for arc in range(5):
 		var start := -time * (1.2 + arc * 0.08) + arc * TAU / 5.0
-		draw_arc(at, radius + 2.5, start, start + 0.34, 10, Color(0.9, 0.78, 1.0, 0.8), 2.6, true)
+		draw_arc(at, radius + 2.5, start, start + 0.34, 10, Color(bright,0.88), 2.6, true)
 
 ## Hull shield strength is tied to living guards, not boss health. Individual
 ## strands make the connection to each guard obvious, and fade as guards die.

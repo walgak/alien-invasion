@@ -206,7 +206,12 @@ func _draw() -> void:
 	if game.state != game.State.PLAYING:
 		return
 	# The shield has no painted shell. Its protection is visible only through the
-	# background lens and the curved paths of incoming threats.
+	# background lens and the curved paths of incoming threats. A very faint halo
+	# keeps its boundary readable against an empty patch of black sky.
+	if shield_time > 0.0:
+		var pulse := 0.75+sin(game.elapsed*3.2)*0.25
+		draw_circle(game.ship.position,60.0,Color(0.28,0.86,1.0,0.018+0.012*pulse))
+		draw_arc(game.ship.position,50.0+2.0*pulse,0,TAU,72,Color(0.48,0.92,1.0,0.09+0.035*pulse),1.4,true)
 	for pulse in warp_pulses:
 		var progress: float = clampf(pulse.age / 0.42, 0.0, 1.0)
 		draw_warp_ring(pulse.at, 42.0 + progress * 44.0, game.elapsed * 1.7, 1.0 - progress)

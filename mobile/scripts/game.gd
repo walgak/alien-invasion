@@ -18,6 +18,7 @@ const POINTS_PER_ENEMY := 100
 const MAX_LIVES := 3
 const MAX_ENEMIES := 14
 const BOSS_KINDS := ["black", "white", "asteroid", "swarm"]
+const ALIEN_HOLE_COLORS := [Color("a45cff"),Color("ff3f9a"),Color("ff4d35"),Color("ff9b32"),Color("50d895")]
 enum State { MENU, PLAYING, PAUSED, WON, LOST }
 
 var state := State.MENU
@@ -79,6 +80,7 @@ var death_target := Vector2.ZERO
 var death_is_gravity := false
 var death_radius := 31.0
 var death_synthetic := false
+var death_hole_color := Color("a45cff")
 var death_visual = preload("res://scripts/death_visual.gd").new()
 var target_light := sector_light
 var guard_break_time := 0.0
@@ -378,6 +380,7 @@ func begin_boss(kind: String) -> void:
 	boss = Boss.new()
 	boss.game = self
 	boss.kind = kind if kind in BOSS_KINDS else "black"
+	boss.hole_color = ALIEN_HOLE_COLORS[rng.randi_range(0,ALIEN_HOLE_COLORS.size()-1)]
 	# 35, 40, 44...: shrinking gains, asymptote at 100.
 	boss.max_health = minf(99.0, floorf(100.0 - 780.0 / (12.0 + bosses_defeated)))
 	boss.health = boss.max_health
@@ -441,6 +444,7 @@ func create_lingering_well(source: Node2D, death_well: bool) -> void:
 	var well = Boss.new()
 	well.game = self
 	well.kind = source.kind
+	well.hole_color = source.hole_color
 	well.body_position = source.body_position
 	well.lingering = true
 	well.health = 1.0
@@ -1118,6 +1122,7 @@ func start_death_animation() -> void:
 	death_target = ship.position
 	death_radius = 31.0
 	death_synthetic = false
+	death_hole_color = Color("a45cff")
 	var reason := loss_reason.to_lower()
 	death_is_gravity = "black" in reason or "collapsed" in reason
 	var cause := "black" if death_is_gravity else ("white" if "white" in reason else ("impact" if "collided" in reason or "asteroid" in reason or "ram" in reason else "shot"))
@@ -1129,6 +1134,7 @@ func start_death_animation() -> void:
 				nearest = distance
 				death_target = well.well_position
 				death_radius = 31.0*well.well_scale
+				death_hole_color = well.hole_color
 		# The escape cannon collapses around the ship rather than hiding it whole
 		# on the first frame. Its small horizon grows only after plates crumble.
 		if nearest == INF:

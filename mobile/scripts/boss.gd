@@ -45,6 +45,7 @@ var well_scale := 1.0
 var proximity_multiplier := 1.0
 var guard_total := 0
 var dodge_offset := Vector2.ZERO
+var hole_color := Color("a45cff")
 
 ## Godot calls this once after the node joins the scene; initialize child nodes and cached resources here.
 func _ready() -> void:
@@ -324,7 +325,7 @@ func _draw() -> void:
 			draw_swarm_body()
 		return
 
-	var tint := Color("baa3ff") if kind == "black" else (Color("b9f8ff") if kind == "white" else Color("ffb86a"))
+	var tint := hole_color if kind == "black" else (Color("b9f8ff") if kind == "white" else Color("ffb86a"))
 	if not lingering:
 		draw_set_transform(body_position)
 		draw_armored_body(tint)
