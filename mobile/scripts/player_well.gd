@@ -76,7 +76,7 @@ func step(delta: float) -> void:
 			elif game.enemies.has(actor):
 				game.destroy_enemy(actor)
 			elif game.asteroids.has(actor):
-				game.hit_asteroid(actor, actor.health)
+				game.hit_asteroid(actor, actor.health, false)
 			elif game.pickups.has(actor):
 				game.pickups.erase(actor)
 				actor.queue_free()

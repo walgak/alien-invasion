@@ -2,6 +2,7 @@ extends Node2D
 ## A repeating firefight, random special attack, and return to the firefight.
 
 const HIT_RADIUS := 54.0
+const HullFinish = preload("res://scripts/hull_finish.gd")
 const WARNING_SECONDS := 1.25
 const ACTIVE_SECONDS := 4.0
 const FIREFIGHT_MIN_SECONDS := 5.0
@@ -364,9 +365,9 @@ func draw_armored_body(tint: Color) -> void:
 			outer = PackedVector2Array([Vector2(side*15,-30),Vector2(side*63,-48),Vector2(side*81,-24),Vector2(side*76,26),Vector2(side*51,50),Vector2(side*47,12),Vector2(side*20,21)])
 		else:
 			outer = PackedVector2Array([Vector2(side*13,-28),Vector2(side*49,-54),Vector2(side*74,-62),Vector2(side*61,-28),Vector2(side*76,13),Vector2(side*60,54),Vector2(side*43,18),Vector2(side*19,25)])
-		draw_colored_polygon(outer,Color("11131c"))
+		HullFinish.plate(self, outer, Color("716b7d") if kind != "asteroid" else Color("80715f"), tint, animation_time)
 		var inset := PackedVector2Array([Vector2(side*20,-23),Vector2(side*50,-43),Vector2(side*62,-45),Vector2(side*50,-19),Vector2(side*61,15),Vector2(side*50,34),Vector2(side*39,8),Vector2(side*22,14)])
-		draw_colored_polygon(inset,Color("373441") if kind != "asteroid" else Color("42352d"))
+		HullFinish.plate(self, inset, Color("a5a4b9") if kind != "asteroid" else Color("b89770"), tint, animation_time + side * 0.3)
 		draw_polyline(PackedVector2Array([Vector2(side*21,-19),Vector2(side*48,-35),Vector2(side*45,-12),Vector2(side*55,18),Vector2(side*43,25)]),Color(tint,0.85),3.2,true)
 		# Twin recessed weapon/tractor ports.
 		var port := Vector2(side*30,11)
@@ -374,8 +375,8 @@ func draw_armored_body(tint: Color) -> void:
 		draw_arc(port,10,0,TAU,24,Color(tint,0.75),2,true)
 		draw_circle(port,4.5,Color(tint,pulse))
 	var hull := PackedVector2Array([Vector2(0,-61),Vector2(22,-27),Vector2(24,20),Vector2(10,49),Vector2(0,59),Vector2(-10,49),Vector2(-24,20),Vector2(-22,-27)])
-	draw_colored_polygon(hull,Color("1b1d27"))
-	draw_colored_polygon(PackedVector2Array([Vector2(0,-56),Vector2(0,47),Vector2(-9,39),Vector2(-17,14),Vector2(-16,-21)]),Color("4d4855"))
+	HullFinish.plate(self, hull, Color("777e94"), tint, animation_time)
+	HullFinish.plate(self, PackedVector2Array([Vector2(0,-56),Vector2(0,47),Vector2(-9,39),Vector2(-17,14),Vector2(-16,-21)]), Color("b3b7c9"), tint, animation_time)
 	var core_tint := Color("ffffff") if kind == "white" else tint
 	draw_colored_polygon(PackedVector2Array([Vector2(0,-31),Vector2(8,-7),Vector2(7,23),Vector2(0,42),Vector2(-7,23),Vector2(-8,-7)]),Color("09080f"))
 	draw_line(Vector2(0,-26),Vector2(0,34),core_tint,5.0,true)
@@ -387,7 +388,7 @@ func draw_armored_body(tint: Color) -> void:
 		draw_circle(Vector2(0,35),10,Color("ecffff"))
 		draw_circle(Vector2(0,35),18,Color(tint,0.16))
 	else:
-		draw_colored_polygon(PackedVector2Array([Vector2(-17,35),Vector2(0,55),Vector2(17,35),Vector2(0,24)]),Color("6b4430"))
+		HullFinish.plate(self, PackedVector2Array([Vector2(-17,35),Vector2(0,55),Vector2(17,35),Vector2(0,24)]), Color("b38660"), tint, animation_time)
 		draw_line(Vector2(-10,36),Vector2(0,48),Color("ffb86a"),3,true)
 		draw_line(Vector2(10,36),Vector2(0,48),Color("ffb86a"),3,true)
 
@@ -406,19 +407,17 @@ func draw_swarm_body() -> void:
 			Vector2(side * 86.0, 29.0), Vector2(side * 62.0, 66.0),
 			Vector2(side * 45.0, 18.0), Vector2(side * 23.0, 27.0)
 		])
-		draw_colored_polygon(wing, Color("11131c"))
-		wing.append(wing[0])
-		draw_polyline(wing, Color("51495a"), 2.0, true)
+		HullFinish.plate(self, wing, Color("807589"), tint, animation_time)
+		var raised := PackedVector2Array([Vector2(side*30,-31),Vector2(side*61,-49),Vector2(side*73,-45),Vector2(side*58,-13),Vector2(side*72,30),Vector2(side*60,44),Vector2(side*48,10)])
+		HullFinish.plate(self, raised, Color("b599c3"), tint, animation_time + side * 0.3)
 		draw_line(Vector2(side * 52.0, -39.0), Vector2(side * 63.0, 29.0), Color(tint,0.85), 4.0, true)
 		for i in range(3):
 			var dock := Vector2(side * (43.0 + float(i) * 9.0), -25.0 + float(i) * 22.0)
 			draw_circle(dock,7.0,Color("08080d"))
 			draw_circle(dock, 3.0, Color(tint, 0.45 + pulse * 0.4))
 	var hull := PackedVector2Array([Vector2(0,-64),Vector2(29,-31),Vector2(30,27),Vector2(0,58),Vector2(-30,27),Vector2(-29,-31)])
-	draw_colored_polygon(hull, Color("1b1c27"))
-	hull.append(hull[0])
-	draw_polyline(hull, Color("62596a"), 2.0, true)
-	draw_colored_polygon(PackedVector2Array([Vector2(0,-58),Vector2(0,48),Vector2(-13,32),Vector2(-18,-23)]),Color("4a4654"))
+	HullFinish.plate(self, hull, Color("8a809c"), tint, animation_time)
+	HullFinish.plate(self, PackedVector2Array([Vector2(0,-58),Vector2(0,48),Vector2(-13,32),Vector2(-18,-23)]), Color("c1aacd"), tint, animation_time)
 	for side in [-1.0, 1.0]:
 		var eye := PackedVector2Array([Vector2(side*5,-13),Vector2(side*23,-27),Vector2(side*19,-3),Vector2(side*6,5)])
 		draw_colored_polygon(eye, tint)

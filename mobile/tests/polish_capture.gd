@@ -89,6 +89,26 @@ func run() -> void:
 	game.spawn_asteroid(Vector2(270,430),Vector2.ZERO,31)
 	game.spawn_asteroid(Vector2(420,430),Vector2.ZERO,43)
 	await shot("asteroid-materials")
+	# Compare every boss and brighter hulls against the same planet/background.
+	for kind in ["black", "white", "asteroid", "swarm"]:
+		game.start_run(kind)
+		game.visual_time = 0.0
+		game.boss.step(1.5)
+		game.ship.weapon_level = 2
+		game.ship.queue_redraw()
+		for at in [Vector2(105,420), Vector2(300,460), Vector2(435,365)]:
+			game.spawn_enemy(at, Vector2.ZERO)
+		game.spawn_asteroid(Vector2(135,585), Vector2.ZERO, 31)
+		game.spawn_asteroid(Vector2(360,590), Vector2.ZERO, 43)
+		game.spawn_pickup(Vector2(265,670), "shield")
+		await shot("depth-" + kind)
+	# A rendered breakup check also exercises per-fragment cached plate geometry.
+	game.start_run()
+	var parent = game.spawn_asteroid(Vector2(270,430),Vector2.DOWN*70,43)
+	game.hit_asteroid(parent,parent.health)
+	for fragment in game.asteroids:
+		fragment.advance(0.45)
+	await shot("asteroid-fragments")
 	game.free()
 	await process_frame
 	quit()

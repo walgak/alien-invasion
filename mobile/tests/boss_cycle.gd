@@ -74,6 +74,14 @@ func run_checks() -> void:
 			for rock in game.asteroids.duplicate():
 				while game.asteroids.has(rock):
 					game.hit_asteroid(rock)
+			if not game.asteroids.is_empty():
+				game.boss.step(1.0 / 60.0)
+				check(game.boss.phase == "clearing", mode + ": surviving fragments keep the barrage active")
+			# Two further generations clear the new medium/small fragments. Keep a
+			# hard bound so a recursive-splitting regression fails rather than hangs.
+			for generation in range(2):
+				for rock in game.asteroids.duplicate():
+					game.hit_asteroid(rock, rock.health)
 			game.boss.step(1.0 / 60.0)
 		check(game.state == game.State.PLAYING and game.boss.phase == "firefight", mode + ": surviving the special returns to the firefight")
 		check(game.boss.health == remaining_health, mode + ": survival preserves boss damage without adding damage")

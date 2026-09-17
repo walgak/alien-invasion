@@ -21,11 +21,15 @@ var pull_offset := Vector2.ZERO
 var aim_offset := Vector2.ZERO
 var launch_speed := 260.0
 var swing_direction := 1.0
-var visual_kind := "magma"
+## Fragments inherit this material; empty means choose the initial size's ore.
+var visual_kind := ""
+var visual_seed := 1
+var plates: Array[PackedVector2Array] = []
 
 ## Godot calls this once after the node joins the scene; initialize child nodes and cached resources here.
 func _ready() -> void:
-	visual_kind = "ash" if radius < 26.0 else ("magma" if radius < 37.0 else "ice")
+	if visual_kind.is_empty():
+		visual_kind = "ash" if radius < 26.0 else ("magma" if radius < 37.0 else "ice")
 	var point_count := 11 if visual_kind == "ash" else 13
 	for i in range(point_count):
 		var angle := i * TAU / float(point_count)
@@ -36,6 +40,70 @@ func _ready() -> void:
 			variation = 1.0
 		outline.append(Vector2.from_angle(angle) * radius * variation)
 	max_health = max(health, 1)
+	build_plates()
+
+## Cache irregular stone plates once, using clipped Voronoi cells. Unlike a fan
+## of triangles, these interlocking surfaces read as a broken rounded shell.
+func build_plates() -> void:
+	var random := RandomNumberGenerator.new()
+	random.seed = visual_seed
+	var sites: Array[Vector2] = [Vector2(-0.08, 0.06) * radius]
+	for ring in [0, 1]:
+		var count := 5 if ring == 0 else 9
+		for i in range(count):
+			var angle: float = TAU * float(i) / count + ring * 0.31 + random.randf_range(-0.12, 0.12)
+			sites.append(Vector2.from_angle(angle) * radius * (0.37 if ring == 0 else 0.77) * random.randf_range(0.88, 1.1))
+	for site in sites:
+		var cell := outline.duplicate()
+		for other in sites:
+			if site == other:
+				continue
+			var normal := other - site
+			var limit := (other.length_squared() - site.length_squared()) * 0.5
+			cell = clip_plate(cell, normal, limit)
+			if cell.size() < 3:
+				break
+		if cell.size() < 3:
+			continue
+		var center := Vector2.ZERO
+		for vertex in cell:
+			center += vertex
+		center /= float(cell.size())
+		for i in range(cell.size()):
+			cell[i] = center.lerp(cell[i], 0.94)
+		plates.append(cell)
+
+## Clip a cell to the side nearest its seed; geometry never changes during play.
+func clip_plate(points: PackedVector2Array, normal: Vector2, limit: float) -> PackedVector2Array:
+	var result := PackedVector2Array()
+	if points.is_empty():
+		return result
+	var previous := points[points.size() - 1]
+	var previous_distance := previous.dot(normal) - limit
+	for current in points:
+		var distance := current.dot(normal) - limit
+		if (distance <= 0.0) != (previous_distance <= 0.0):
+			result.append(previous.lerp(current, previous_distance / (previous_distance - distance)))
+		if distance <= 0.0:
+			result.append(current)
+		previous = current
+		previous_distance = distance
+	return result
+
+## Sphere-like normals simulate rounded lighting and mineral reflections entirely
+## in the 2D canvas. World-space light stays fixed while the stone tumbles.
+func surface_color(point: Vector2, variation: float) -> Color:
+	var xy := point / radius * 0.94
+	var normal := Vector3(xy.x, xy.y, sqrt(maxf(0.04, 1.0 - xy.length_squared()))).normalized()
+	var light_xy := Vector2(-0.45, -0.58).rotated(-rotation)
+	var light := Vector3(light_xy.x, light_xy.y, 0.72).normalized()
+	var diffuse := maxf(0.0, normal.dot(light))
+	var half_light := (light + Vector3.FORWARD * -1.0).normalized()
+	var specular := pow(maxf(0.0, normal.dot(half_light)), 22.0) * (0.72 if visual_kind == "ice" else 0.30)
+	var base := Color("2785b0") if visual_kind == "ice" else Color("626779")
+	var brightness := 0.24 + diffuse * 0.90 + variation
+	return Color(minf(1.0, base.r * brightness + specular * 0.80),
+		minf(1.0, base.g * brightness + specular * 0.92), minf(1.0, base.b * brightness + specular), 1.0)
 
 ## Capture the offscreen starting point and boss anchor, then enter the pull/windup/throw state machine.
 func begin_pull(origin: Vector2, target_offset: Vector2) -> void:
@@ -83,22 +151,26 @@ func _draw() -> void:
 	draw_fold_lines()
 	var glow := Color("ff641f") if visual_kind != "ice" else Color("38dfff")
 	draw_circle(Vector2.ZERO, radius * 1.13, Color(glow,0.07))
-	draw_colored_polygon(outline, Color("fff0d5") if flash > 0 else (Color("162947") if visual_kind == "ice" else Color("211d25")))
+	draw_colored_polygon(outline, Color("fff0d5") if flash > 0 else (Color("0d1a35") if visual_kind == "ice" else Color("6c2b17")))
 	if flash <= 0:
 		var light := Vector2(-0.72, -0.68).rotated(-rotation)
-		for i in range(outline.size()):
-			var next := (i + 1) % outline.size()
-			var facing := (outline[i] + outline[next]).normalized().dot(light)
-			var center := Vector2(sin(float(i)*2.3),cos(float(i)*1.7))*radius*0.10
-			var face := PackedVector2Array([center, outline[i], outline[next]])
-			var shadow := Color("111a31") if visual_kind == "ice" else Color("17151c")
-			var lit := Color("35cbe5") if visual_kind == "ice" else Color("65545a")
-			draw_colored_polygon(face, shadow.lerp(lit, clampf((facing + 1.0) * 0.42,0.0,1.0)))
-			if i % 2 == 0:
-				draw_line(center.lerp(outline[i],0.3),outline[i],Color(glow,0.22),1.0,true)
+		for i in range(plates.size()):
+			var plate := plates[i]
+			var colors := PackedColorArray()
+			for vertex in plate:
+				colors.append(surface_color(vertex, sin(float(i) * 3.4) * 0.09))
+			draw_polygon(plate, colors)
+			# Lit bevels and dark opposing edges give every plate visible thickness.
+			for edge in range(plate.size()):
+				var a := plate[edge]
+				var b := plate[(edge + 1) % plate.size()]
+				var outward := Vector2((b-a).y, -(b-a).x).normalized()
+				var facing := outward.dot(light)
+				var tint := Color(0.76,0.93,1.0,0.18 + maxf(0.0,facing)*0.48) if facing > 0.0 else Color(0.02,0.02,0.06,0.62)
+				draw_line(a,b,tint,0.8,true)
 	var closed := outline.duplicate()
 	closed.append(outline[0])
-	draw_polyline(closed, Color("63e9ff") if visual_kind == "ice" else Color("8b716a"), 1.5, true)
+	draw_polyline(closed, Color("65c5dc") if visual_kind == "ice" else Color("8c8991"), 1.0, true)
 	if visual_kind == "ice":
 		draw_ice_craters()
 	else:

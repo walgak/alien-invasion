@@ -3,6 +3,7 @@ extends Node2D
 
 const SPEED := 640.0
 const HIT_RADIUS := 15.0
+const HullFinish = preload("res://scripts/hull_finish.gd")
 var target_x := 270.0
 var invulnerable := 0.0
 var animation_time := 0.0
@@ -35,7 +36,7 @@ func reset_ship(at: Vector2) -> void:
 
 ## Submit this object's visual geometry in local coordinates. Physics and collision rules are handled separately.
 func _draw() -> void:
-	# Layered graphite armor and inset cyan conduits share the alien fleet's sharp
+	# Layered bright alloy armor and inset cyan conduits share the alien fleet's sharp
 	# design language, while cyan keeps the player readable against violet enemies.
 	var width: float = [1.0, 1.13, 1.28, 1.45, 1.38][clampi(weapon_level, 0, 4)]
 	draw_set_transform(Vector2.ZERO, 0, Vector2(width, 1.0))
@@ -51,16 +52,18 @@ func _draw() -> void:
 	# Swept outer blades.
 	for side in [-1.0, 1.0]:
 		var wing := PackedVector2Array([Vector2(side*7,-17),Vector2(side*22,-7),Vector2(side*37,21),Vector2(side*29,17),Vector2(side*17,4),Vector2(side*13,24),Vector2(side*4,18)])
-		draw_colored_polygon(wing, Color("171d2b"))
+		HullFinish.plate(self, wing, Color("425c73"), Color("75eeff"), animation_time)
 		var plate := PackedVector2Array([Vector2(side*14,-8),Vector2(side*23,-1),Vector2(side*31,15),Vector2(side*22,10),Vector2(side*15,2)])
-		draw_colored_polygon(plate, Color("35465a"))
+		HullFinish.plate(self, plate, Color("7199ae"), Color("75eeff"), animation_time + side * 0.3)
 		draw_line(Vector2(side*14,-6),Vector2(side*27,14),Color("54e9ee"),2.2,true)
 	# Spear-shaped central hull and raised armor facets.
 	var hull := PackedVector2Array([Vector2(0,-39),Vector2(13,-13),Vector2(14,10),Vector2(7,27),Vector2(0,32),Vector2(-7,27),Vector2(-14,10),Vector2(-13,-13)])
-	draw_colored_polygon(hull,Color("202938"))
-	draw_colored_polygon(PackedVector2Array([Vector2(0,-37),Vector2(0,25),Vector2(-7,20),Vector2(-11,-10)]),Color("4d6074"))
+	HullFinish.plate(self, hull, Color("587991"), Color("75eeff"), animation_time)
+	HullFinish.plate(self, PackedVector2Array([Vector2(0,-37),Vector2(0,25),Vector2(-7,20),Vector2(-11,-10)]), Color("9dbbcd"), Color("75eeff"), animation_time)
 	draw_colored_polygon(PackedVector2Array([Vector2(0,-29),Vector2(7,-9),Vector2(4,13),Vector2(0,22),Vector2(-4,13),Vector2(-7,-9)]),Color("0a1522"))
 	draw_polyline(PackedVector2Array([Vector2(0,-27),Vector2(4,-8),Vector2(0,16),Vector2(-4,-8),Vector2(0,-27)]),Color("6ff8ef"),2.0,true)
+	# A narrow glass reflection sits inside the dark cockpit's cyan frame.
+	draw_line(Vector2(-2,-18), Vector2(-1,-5), Color("d5fbff"), 1.1, true)
 	draw_line(Vector2(-10,10),Vector2(0,27),Color("71879a"),1.2,true)
 	draw_line(Vector2(10,10),Vector2(0,27),Color("24394c"),1.2,true)
 	draw_set_transform(Vector2.ZERO)
@@ -72,7 +75,7 @@ func _draw() -> void:
 	elif weapon_level == 4:
 		barrels = [-13.0, 13.0]
 	for x in barrels:
-		draw_colored_polygon(PackedVector2Array([Vector2(x-4,-39),Vector2(x+4,-39),Vector2(x+3,-16),Vector2(x-3,-16)]),Color("151b27"))
+		HullFinish.plate(self, PackedVector2Array([Vector2(x-4,-39),Vector2(x+4,-39),Vector2(x+3,-16),Vector2(x-3,-16)]), Color("61768c"), Color("75eeff"), animation_time)
 		draw_line(Vector2(x, -38), Vector2(x, -19), Color("7ff8f4"), 2.2)
 	if weapon_level == 3:
 		for y in [-31.0, -23.0, -15.0]:

@@ -954,12 +954,14 @@ func select_mode(mode: String) -> void:
 	interface.refresh()
 
 ## Create a rock with size-based durability plus progression, optionally starting an offscreen tethered pull.
-func spawn_asteroid(at: Vector2, velocity: Vector2, radius: float, health: int = 0, fold_origin: Vector2 = Vector2.INF, aim_offset: Vector2 = Vector2.ZERO) -> void:
+func spawn_asteroid(at: Vector2, velocity: Vector2, radius: float, health: int = 0, fold_origin: Vector2 = Vector2.INF, aim_offset: Vector2 = Vector2.ZERO, material_kind: String = "") -> Node2D:
 	var rock = Asteroid.new()
 	rock.position = at
 	rock.previous_position = at
 	rock.velocity = velocity
 	rock.radius = radius
+	rock.visual_kind = material_kind
+	rock.visual_seed = rng.randi()
 	if health <= 0:
 		health = (5 if radius < 26.0 else (8 if radius < 37.0 else 12)) + floori(bosses_defeated / 2.0)
 	rock.health = health
@@ -968,6 +970,7 @@ func spawn_asteroid(at: Vector2, velocity: Vector2, radius: float, health: int =
 		rock.begin_pull(fold_origin, aim_offset)
 	add_child(rock)
 	asteroids.append(rock)
+	return rock
 
 ## Advance rocks, keep live-boss anchors aligned, and resolve swept ship contact or offscreen removal.
 func update_asteroids(delta: float) -> void:
@@ -996,7 +999,7 @@ func update_asteroids(delta: float) -> void:
 		var swallowed := false
 		for well in lingering_wells:
 			if well is PlayerWell and well.holds_steering() and rock.position.distance_to(well.well_position) < 29.0 * well.well_scale:
-				hit_asteroid(rock, rock.health)
+				hit_asteroid(rock, rock.health, false)
 				swallowed = true
 				break
 		if swallowed:
@@ -1017,16 +1020,35 @@ func update_asteroids(delta: float) -> void:
 		elif rock.motion_phase == "flight" and (rock.position.y > arena.y + 80 or rock.position.y < -140 or rock.position.x < -140 or rock.position.x > arena.x + 140):
 			remove_asteroid(rock)
 
-## Subtract durability, flash the rock, and award points only once when it breaks.
-func hit_asteroid(rock: Node2D, amount: int = 1) -> void:
+## Only weapon/shockwave destruction fractures ore. Absorbed rocks vanish whole.
+## Removing the parent first prevents same-frame hits from duplicating its reward.
+func hit_asteroid(rock: Node2D, amount: int = 1, allow_split: bool = true) -> void:
+	if not is_instance_valid(rock) or not asteroids.has(rock):
+		return
 	rock.health -= amount
 	rock.flash = 0.08
 	if rock.health <= 0:
 		combat.vibrate("enemy")
-		burst(rock.position, Color("d6b899"), 15)
+		burst(rock.position, Color("76dfff") if rock.visual_kind == "ice" else Color("ffb16b"), 15)
 		remove_asteroid(rock)
+		if allow_split and rock.radius >= 26.0:
+			fracture_asteroid(rock)
 		add_score(25)
 		sound.play_effect("burst")
+
+## A two-generation breakup stays finite: large -> two medium -> four small.
+## Opposite lateral impulses preserve average momentum. New pieces begin inside
+## the old footprint and fly freely, even when their parent was held by a boss.
+func fracture_asteroid(rock: Node2D) -> void:
+	var child_radius := 31.0 if rock.radius >= 37.0 else 20.0
+	var travel: Vector2 = rock.velocity
+	var side := travel.normalized().orthogonal() if travel.length_squared() > 1.0 else Vector2.RIGHT
+	var offset: float = maxf(0.0, rock.radius - child_radius) * 0.65
+	for direction in [-1.0, 1.0]:
+		var child := spawn_asteroid(rock.position + side * offset * direction,
+			travel + side * 62.0 * direction, child_radius, 0, Vector2.INF, Vector2.ZERO, rock.visual_kind)
+		child.rotation = rock.rotation + direction * 0.3
+		child.spin = rock.spin + direction * 0.65
 
 ## Remove a rock from the update list before scheduling its node for deletion.
 func remove_asteroid(rock: Node2D) -> void:

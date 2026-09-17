@@ -72,7 +72,10 @@ func _draw() -> void:
 	draw_line(-tail * 0.3, tail, Color(tint, 0.09), 12, true)
 	draw_line(-tail * 0.3, tail, Color(tint, 0.3), 5, true)
 	draw_line(Vector2.ZERO, tail * 0.7, tint, 2.5, true)
-	draw_circle(Vector2.ZERO, 2.5, Color("e8fff6"))
+	# A shaded plasma bead keeps tiny shots round and readable over bright scenery.
+	draw_circle(Vector2.ZERO, 3.1, tint.darkened(0.32))
+	draw_circle(Vector2(-0.35, -0.35), 2.45, tint)
+	draw_circle(Vector2(-0.8, -0.8), 1.3, Color("f1fff9"))
 
 ## Render the beam's glow and core; continuous beams remain bright instead of fading like short pulses.
 func draw_laser() -> void:
@@ -120,9 +123,25 @@ func draw_rocket() -> void:
 	draw_line(-forward * 7.0, -forward * flame_length, Color(1.0, 0.37, 0.1, 0.15), 18.0, true)
 	draw_line(-forward * 7.0, -forward * flame_length, Color("ffb067"), 5.0, true)
 	draw_line(-forward * 7.0, -forward * (flame_length - 4.0), Color("fff3cc"), 2.0, true)
+	# Painted metal facets suggest a cylinder without adding 3D meshes or lights.
+	# Keep the reflection on the screen's upper-left side even as a rocket turns.
+	var lit_side := side if side.dot(Vector2(-0.6, -0.8)) >= 0.0 else -side
+	for wing in [-1.0, 1.0]:
+		var fin := PackedVector2Array([
+			side * wing * 3.0 + forward * 1.0,
+			side * wing * 8.0 - forward * 9.0,
+			side * wing * 2.0 - forward * 6.0
+		])
+		draw_colored_polygon(fin, Color("718cad") if side.dot(lit_side) * wing > 0.0 else Color("354966"))
+		draw_line(fin[0], fin[1], Color("c0d9ed"), 0.9, true)
+	var nose := forward * 13.0
+	var base := -forward * 6.0
 	draw_colored_polygon(PackedVector2Array([
-		forward * 13.0, side * 5.0 + forward * 3.0,
-		side * 8.0 - forward * 9.0, -forward * 6.0,
-		-side * 8.0 - forward * 9.0, -side * 5.0 + forward * 3.0
-	]), Color("dbe8f0"))
-	draw_line(forward * 8.0, -forward * 4.0, Color("ff9c73"), 3.0, true)
+		nose, lit_side * 4.5 + forward * 3.0, base + lit_side * 3.0, base
+	]), Color("c8e0ef"))
+	draw_colored_polygon(PackedVector2Array([
+		nose, -lit_side * 4.5 + forward * 3.0, base - lit_side * 3.0, base
+	]), Color("5b7696"))
+	draw_line(nose - forward * 3.0, base + lit_side * 0.7, Color("f0faff"), 1.3, true)
+	draw_line(forward * 3.0 + lit_side * 2.0, -forward * 3.5 + lit_side * 1.8, Color("ffac73"), 1.7, true)
+	draw_line(base - lit_side * 3.0, base + lit_side * 3.0, Color("263447"), 1.5, true)

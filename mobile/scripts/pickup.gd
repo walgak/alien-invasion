@@ -36,8 +36,20 @@ func _draw() -> void:
 		Vector2(0.0, -20.0), Vector2(20.0, 0.0),
 		Vector2(0.0, 20.0), Vector2(-20.0, 0.0), Vector2(0.0, -20.0)
 	])
-	draw_colored_polygon(diamond, Color("102338"))
-	draw_polyline(diamond, Color(tint, 0.9), 1.8, true)
+	# Four beveled edges frame a glass face. The soft upper-left reflection stays
+	# outside the icon so a small pickup still reads clearly on the phone.
+	var inset := diamond.duplicate()
+	for i in range(inset.size()):
+		inset[i] *= 0.81
+	for edge in range(4):
+		var rim := PackedVector2Array([diamond[edge], diamond[edge + 1], inset[edge + 1], inset[edge]])
+		var lit_edge := edge == 0 or edge == 3
+		draw_colored_polygon(rim, tint.lerp(Color.WHITE, 0.35) if lit_edge else tint.darkened(0.52))
+	draw_polygon(PackedVector2Array([inset[0], inset[1], inset[2], inset[3]]), PackedColorArray([
+		Color("344e67"), Color("13283b"), Color("091322"), Color("243e55")
+	]))
+	draw_polyline(diamond, Color(tint, 0.95), 1.1, true)
+	draw_line(Vector2(-14.5, -2.0), Vector2(-2.0, -14.5), Color(0.88, 0.97, 1.0, 0.58), 1.2, true)
 	draw_arc(Vector2.ZERO, 25.0, age * 1.2, age * 1.2 + 1.1, 16, Color(tint, 0.65), 1.5, true)
 	draw_arc(Vector2.ZERO, 25.0, age * 1.2 + PI, age * 1.2 + PI + 1.1, 16, Color(tint, 0.35), 1.5, true)
 	if kind == "missiles":
