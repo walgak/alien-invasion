@@ -107,6 +107,27 @@ func run() -> void:
 	game.gravity_fields.visual_shockwave(before)
 	game.gravity_fields.step(0.4)
 	check(game.enemies.size()==1 and game.enemies[0].position==before and game.lives==3,"shield shockwave causes no damage or displacement")
+	fresh()
+	game.combat.shield_time=10
+	game.spawn_hostile_shot(game.ship.position-Vector2(0,120),Vector2.DOWN*300)
+	var incoming:Node2D=game.projectiles[0]
+	var incoming_speed:float=incoming.velocity.length()
+	game.update_projectiles(0.12)
+	check(game.projectiles.has(incoming) and incoming.velocity.x!=0.0 and is_equal_approx(incoming.velocity.length(),incoming_speed),"shield gravitationally bends a hostile shot without absorbing it")
+	fresh()
+	game.begin_boss("black")
+	game.boss.phase="firefight"
+	game.boss.body_position=Vector2(270,300)
+	field=well(Vector2(270,310))
+	game.boss.step(0.5)
+	check(game.boss.dodge_offset.length()>40.0 and game.boss.body_position.distance_to(field.well_position)>80.0,"boss burns clear of a player black hole")
+	game.renderer_3d.sync()
+	var ship_model:Node3D=game.renderer_3d.models[game.ship.get_instance_id()]
+	var has_depth:=false
+	for part in ship_model.get_children():
+		if part is MeshInstance3D and part.get_aabb().size.z>1.0:
+			has_depth=true
+	check(has_depth,"player presentation uses extruded 3D meshes with physical depth")
 	for cause in ["Enemy fire destroyed your ship.","An alien collided with your ship.","The white hole pushed you into the boundary.","A black hole collapsed your ship."]:
 		fresh()
 		game.instant_loss(cause)

@@ -42,7 +42,6 @@ func run() -> void:
 	game.update_laser(0.01)
 	await shot("guard-shield-laser")
 	game.combat.shield_time=10
-	game.combat.warp_pulses.append({"at":game.ship.position,"age":0.12})
 	await shot("shield-warp-ring")
 	game.start_run("white")
 	game.boss.phase="active"

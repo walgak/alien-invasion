@@ -29,7 +29,7 @@ func update_effects(game: Node2D) -> void:
 		# The shield is intentionally extreme: it should visibly drag stars and
 		# nebulae around the hull even on a small, bright phone display.
 		lenses.append(Vector4(game.ship.position.x, game.ship.position.y, 152.0, 13.5))
-		styles.append(Vector4(47.0, 1.0, 2.0, game.visual_time))
+		styles.append(Vector4(47.0, 1.0, 3.0, game.visual_time))
 	for pulse in game.combat.warp_pulses:
 		if lenses.size() >= MAX_LENSES:
 			break

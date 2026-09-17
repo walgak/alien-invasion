@@ -205,8 +205,8 @@ func controls_actor(actor: Node2D) -> bool:
 func _draw() -> void:
 	if game.state != game.State.PLAYING:
 		return
-	if shield_time > 0.0:
-		draw_warp_ring(game.ship.position, 47.0, game.elapsed, 0.95)
+	# The shield has no painted shell. Its protection is visible only through the
+	# background lens and the curved paths of incoming threats.
 	for pulse in warp_pulses:
 		var progress: float = clampf(pulse.age / 0.42, 0.0, 1.0)
 		draw_warp_ring(pulse.at, 42.0 + progress * 44.0, game.elapsed * 1.7, 1.0 - progress)

@@ -29,6 +29,7 @@ void fragment() {
 		// Ring lenses are thin, exaggerated gravity creases. Object and well
 		// lenses retain their deeper throat distortion.
 		bool ring_mode = style.z > 1.5;
+		bool shield_mode = style.z > 2.5;
 		bool object_mode = style.z > 0.5 && !ring_mode;
 		float flatten = object_mode ? 1.0 : (ring_mode ? 0.94 : 0.83);
 		vec2 surface = delta / vec2(1.0, flatten);
@@ -53,9 +54,9 @@ void fragment() {
 		float rim = exp(-rim_distance * rim_distance);
 		float lighting = 0.4 + 0.6 * max(dot(normal, normalize(vec2(-0.5, -0.8))), 0.0);
 		vec3 tint = style.y < 0.0 && !object_mode ? vec3(0.52, 0.40, 1.0) : vec3(0.40, 0.84, 1.0);
-		gleam += tint * (crest * 0.105 * lighting + rim * (ring_mode ? 0.55 : 0.2)) * lens.w;
-		shade += (trough * 0.2 + throat * 0.15) * lens.w;
-		dispersion += (crest + rim) * 0.65 * lens.w;
+		gleam += shield_mode ? vec3(0.0) : tint * (crest * 0.105 * lighting + rim * (ring_mode ? 0.55 : 0.2)) * lens.w;
+		shade += (trough * (shield_mode ? 0.006 : 0.2) + throat * (shield_mode ? 0.004 : 0.15)) * lens.w;
+		dispersion += (crest + rim) * (shield_mode ? 0.0 : 0.65) * lens.w;
 	}
 	for (int i = 0; i < 6; i++) {
 		if (i >= strand_count) { break; }

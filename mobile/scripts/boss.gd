@@ -44,6 +44,7 @@ var well_duration := ACTIVE_SECONDS
 var well_scale := 1.0
 var proximity_multiplier := 1.0
 var guard_total := 0
+var dodge_offset := Vector2.ZERO
 
 ## Godot calls this once after the node joins the scene; initialize child nodes and cached resources here.
 func _ready() -> void:
@@ -61,9 +62,11 @@ func step(delta: float) -> void:
 	tap_flash = maxf(0.0, tap_flash - delta)
 	hit_flash = maxf(0.0, hit_flash - delta)
 	if not lingering:
-		body_position = Vector2(game.arena.x * 0.5 + sin(animation_time * 0.63) * 80, game.top_inset + 250)
+		var patrol := Vector2(game.arena.x * 0.5 + sin(animation_time * 0.63) * 80, game.top_inset + 250)
+		update_player_well_dodge(delta,patrol)
+		body_position = patrol+dodge_offset
 	if phase == "arrival":
-		body_position.y = lerpf(-100.0, game.top_inset + 250.0, smoothstep(0.0, 1.5, phase_time))
+		body_position.y = lerpf(-100.0, game.top_inset + 250.0+dodge_offset.y, smoothstep(0.0, 1.5, phase_time))
 		if phase_time >= 1.5:
 			return_to_firefight()
 	elif phase == "firefight":
@@ -135,6 +138,29 @@ func step(delta: float) -> void:
 			game.lose_ship("The white hole pushed you into the boundary.")
 			return
 	queue_redraw()
+
+## Boss hulls are immune to player gravity, but no longer sit visually behind a
+## well. They read its destination and burn sideways before the core opens.
+func update_player_well_dodge(delta: float, patrol: Vector2) -> void:
+	var threat: Node2D
+	var nearest := INF
+	for well in game.lingering_wells:
+		if well.get_script()!=game.PlayerWell or well.phase == "finished":
+			continue
+		var distance: float = patrol.distance_squared_to(well.well_position)
+		if distance < nearest:
+			nearest = distance
+			threat = well
+	var desired := Vector2.ZERO
+	if threat != null and nearest < 430.0*430.0:
+		var side := 1.0 if threat.well_position.x < patrol.x else -1.0
+		var target_x := clampf(patrol.x+side*190.0,84.0,game.arena.x-84.0)
+		desired.x = target_x-patrol.x
+		# A well placed above the boss also forces a shallow dive; otherwise the
+		# boss climbs, keeping its silhouette outside the event horizon.
+		desired.y = 62.0 if threat.well_position.y < patrol.y else -58.0
+	var speed := 420.0 if desired != Vector2.ZERO else 190.0
+	dodge_offset = dodge_offset.move_toward(desired,speed*delta)
 
 ## Aim three enemy projectiles at the ship's current position; their trajectories remain dodgeable after firing.
 func fire_volley() -> void:
@@ -294,12 +320,12 @@ func _draw() -> void:
 		draw_tractor_remnant()
 		return
 	if kind == "swarm":
-		if not lingering:
+		if not lingering and not game.render_3d_enabled:
 			draw_swarm_body()
 		return
 
 	var tint := Color("baa3ff") if kind == "black" else (Color("b9f8ff") if kind == "white" else Color("ffb86a"))
-	if not lingering:
+	if not lingering and not game.render_3d_enabled:
 		draw_set_transform(body_position)
 		draw_armored_body(tint)
 		if hit_flash > 0:

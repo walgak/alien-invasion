@@ -14,6 +14,7 @@ const SpaceFolds = preload("res://scripts/space_folds.gd")
 const WeaponSystem = preload("res://scripts/weapon_system.gd")
 const Pickup = preload("res://scripts/pickup.gd")
 const PlayerWell = preload("res://scripts/player_well.gd")
+const World3DRenderer = preload("res://scripts/world_3d_renderer.gd")
 const POINTS_PER_ENEMY := 100
 const MAX_LIVES := 3
 const MAX_ENEMIES := 14
@@ -84,6 +85,8 @@ var target_light := sector_light
 var guard_break_time := 0.0
 var shake_time := 0.0
 var shake_strength := 0.0
+var render_3d_enabled := true
+var renderer_3d = World3DRenderer.new()
 
 ## Godot calls this once after the node joins the scene; initialize child nodes and cached resources here.
 func _ready() -> void:
@@ -91,6 +94,8 @@ func _ready() -> void:
 	space_background.z_index = -30
 	add_child(space_background)
 	add_child(space_folds)
+	renderer_3d.setup(self)
+	add_child(renderer_3d)
 	add_child(ship)
 	combat.game = self
 	add_child(combat)
@@ -128,6 +133,7 @@ func update_layout() -> void:
 		if is_instance_valid(boss):
 			boss.well_position *= resize_scale
 	interface.size = arena
+	renderer_3d.resize(arena)
 	interface.refresh()
 	refresh_space()
 	queue_redraw()
@@ -608,6 +614,8 @@ func refresh_space() -> void:
 		jitter = Vector2(sin(visual_time * 91.0), cos(visual_time * 73.0)) * shake_strength
 	space_background.sky_material.set_shader_parameter("camera_jitter", jitter)
 	space_folds.update_effects(self)
+	if render_3d_enabled:
+		renderer_3d.sync()
 
 ## Move ordinary aliens or orbit guards, resolve swept ship contact, and fire aimed shots at per-enemy intervals.
 func update_enemies(delta: float) -> void:
@@ -679,9 +687,24 @@ func update_projectiles(delta: float) -> void:
 			var speed := 1225.0 if shot.kind == "doom" else 660.0
 			shot.velocity = shot.velocity.normalized().lerp((aim-shot.position).normalized(), 1.0-exp(-delta*4.0)).normalized()*speed
 		bend_projectile(shot, delta)
+		if shot.hostile and combat.shield_time > 0.0:
+			deflect_shield_projectile(shot, delta)
 		shot.advance(delta)
 		if shot.hostile:
 			if shot.intersects(ship.position, Ship.HIT_RADIUS + 3.0):
+				if combat.shield_time > 0.0:
+					# Reposition at the lens boundary rather than deleting the shot. The
+					# curved escape path proves that the shield redirected its momentum.
+					var radial: Vector2 = (shot.position-ship.position).normalized()
+					if radial == Vector2.ZERO:
+						radial = Vector2.RIGHT
+					var side := 1.0 if shot.velocity.cross(radial) >= 0.0 else -1.0
+					shot.position = ship.position+radial*58.0
+					shot.previous_position = shot.position
+					shot.velocity = (radial+radial.orthogonal()*side*1.4).normalized()*shot.velocity.length()
+					shot.homing_target = null
+					shot.queue_redraw()
+					continue
 				remove_projectile(shot)
 				if shot.kind == "doom":
 					burst(ship.position, Color("b894ff"), 42)
@@ -724,6 +747,26 @@ func update_projectiles(delta: float) -> void:
 			return
 		if projectiles.has(shot) and (shot.expired or shot.position.y < -50 or (shot.position.y > arena.y + 100 and shot.kind != "doom") or shot.position.x < -80 or shot.position.x > arena.x + 80):
 			remove_projectile(shot)
+
+## A shield is a gravity lens, not a wall. It steers hostile projectiles onto a
+## tangent while preserving speed; doom cannons lose their homing lock once bent.
+func deflect_shield_projectile(shot: Node2D, delta: float) -> void:
+	var offset: Vector2 = shot.position-ship.position
+	var distance := maxf(offset.length(),1.0)
+	if distance > 180.0:
+		return
+	var radial := offset/distance
+	var approach := maxf(0.0,-shot.velocity.normalized().dot(radial))
+	if approach <= 0.0:
+		return
+	var side := 1.0 if shot.velocity.cross(radial) >= 0.0 else -1.0
+	var tangent := radial.orthogonal()*side
+	var desired: Vector2 = (radial*0.72+tangent*1.25).normalized()*shot.velocity.length()
+	var strength := approach*pow(1.0-clampf(distance/180.0,0.0,1.0),1.35)
+	shot.velocity = shot.velocity.lerp(desired,clampf((1.0-exp(-delta*26.0))*strength*3.2,0.0,0.92)).normalized()*shot.velocity.length()
+	if shot.kind == "doom" and distance < 120.0:
+		shot.homing_target = null
+	shot.queue_redraw()
 
 ## Reject targets outside the playable area or still in boss arrival, including hits from lasers and splash.
 func target_is_exposed(actor: Node2D, kind: String) -> bool:
@@ -946,6 +989,14 @@ func update_asteroids(delta: float) -> void:
 		if is_instance_valid(boss) and boss.kind == "asteroid":
 			rock.fold_origin = boss.body_position + Vector2(0, 42)
 		rock.advance(delta, ship.position)
+		if combat.shield_time > 0.0:
+			var shield_offset: Vector2 = rock.position-ship.position
+			var shield_distance := maxf(shield_offset.length(),1.0)
+			if shield_distance < 155.0 and rock.velocity.dot(shield_offset) < 0.0:
+				var radial := shield_offset/shield_distance
+				var side := 1.0 if rock.velocity.cross(radial)>=0.0 else -1.0
+				var redirected: Vector2 = (radial*0.85+radial.orthogonal()*side).normalized()*rock.velocity.length()
+				rock.velocity=rock.velocity.lerp(redirected,clampf((1.0-shield_distance/155.0)*delta*8.0,0.0,0.82)).normalized()*rock.velocity.length()
 		var swallowed := false
 		for well in lingering_wells:
 			if well is PlayerWell and well.holds_steering() and rock.position.distance_to(well.well_position) < 29.0 * well.well_scale:
@@ -956,6 +1007,13 @@ func update_asteroids(delta: float) -> void:
 			continue
 		var closest := Geometry2D.get_closest_point_to_segment(ship.position, rock.previous_position, rock.position)
 		if closest.distance_to(ship.position) <= rock.radius + Ship.HIT_RADIUS:
+			if combat.shield_time > 0.0:
+				var radial:Vector2=(rock.position-ship.position).normalized()
+				if radial==Vector2.ZERO: radial=Vector2.RIGHT
+				rock.position=ship.position+radial*(rock.radius+Ship.HIT_RADIUS+8.0)
+				rock.previous_position=rock.position
+				rock.velocity=(radial+radial.orthogonal()).normalized()*maxf(rock.velocity.length(),120.0)
+				continue
 			remove_asteroid(rock)
 			instant_loss("An asteroid struck your ship.")
 			if state != State.PLAYING:
@@ -1285,15 +1343,16 @@ func _draw() -> void:
 		var side := direction.orthogonal()
 		draw_colored_polygon(PackedVector2Array([edge + direction * 16, edge - direction * 8 + side * 8, edge - direction * 8 - side * 8]), Color("c7a0ff"))
 		draw_arc(edge, 22 + sin(visual_time * 8.0) * 3.0, 0, TAU, 28, Color(0.72, 0.45, 1.0, 0.7), 2, true)
-	for particle in particles:
-		var tint: Color = particle.tint
-		tint.a = particle.life / particle.duration
-		if particle.kind == "rock":
-			draw_circle(particle.position, particle.radius, tint)
-		elif particle.kind == "armor":
-			var direction := Vector2.from_angle(particle.spin * (particle.duration - particle.life))
-			var side := direction.orthogonal()
-			draw_colored_polygon(PackedVector2Array([particle.position + direction * particle.radius * 1.8, particle.position - direction * particle.radius + side * particle.radius, particle.position - direction * particle.radius - side * particle.radius]), tint)
-		else:
-			var direction: Vector2 = particle.velocity.normalized()
-			draw_line(particle.position - direction * particle.radius * 2.0, particle.position + direction * particle.radius, tint, particle.radius, true)
+	if not render_3d_enabled:
+		for particle in particles:
+			var tint: Color = particle.tint
+			tint.a = particle.life / particle.duration
+			if particle.kind == "rock":
+				draw_circle(particle.position, particle.radius, tint)
+			elif particle.kind == "armor":
+				var direction := Vector2.from_angle(particle.spin * (particle.duration - particle.life))
+				var side := direction.orthogonal()
+				draw_colored_polygon(PackedVector2Array([particle.position + direction * particle.radius * 1.8, particle.position - direction * particle.radius + side * particle.radius, particle.position - direction * particle.radius - side * particle.radius]), tint)
+			else:
+				var direction: Vector2 = particle.velocity.normalized()
+				draw_line(particle.position - direction * particle.radius * 2.0, particle.position + direction * particle.radius, tint, particle.radius, true)
