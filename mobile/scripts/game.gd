@@ -643,14 +643,14 @@ func update_enemies(delta: float) -> void:
 				return
 			continue
 		if enemy.position.y > arena.y + Enemy.HIT_RADIUS:
-			spawn_escape_cannon(enemy.position)
+			spawn_escape_cannon(enemy.rear_muzzle_position())
 			remove_enemy(enemy)
 			continue
 		if not gravity_is_active() and enemy.motion_phase == "flight" and enemy.position.y > top_inset + 110.0 and enemy.position.y < ship.position.y - 90.0:
 			enemy.shot_timer -= delta
 			if enemy.shot_timer <= 0.0:
 				var aim: Vector2 = (ship.position - enemy.position).normalized()
-				spawn_hostile_shot(enemy.position + Vector2(0, 24), aim * (215.0 if enemy.summoned else 180.0))
+				spawn_hostile_shot(enemy.muzzle_position(), aim * (215.0 if enemy.summoned else 180.0))
 				enemy.shot_timer = rng.randf_range(1.05, 1.9) / difficulty_scale()
 
 ## Delegate the current weapon pattern and return its cooldown to the held-control fire timer.
@@ -663,7 +663,7 @@ func fire_player_shot() -> float:
 func fire_enemy_shot() -> void:
 	var shooter = enemies[rng.randi_range(0, enemies.size() - 1)]
 	# Modest horizontal aim: the player can read and dodge the trajectory.
-	spawn_hostile_shot(shooter.position + Vector2(0, 23), Vector2(clampf((ship.position.x - shooter.position.x) * 0.24, -72, 72), 245))
+	spawn_hostile_shot(shooter.muzzle_position(), Vector2(clampf((ship.position.x - shooter.position.x) * 0.24, -72, 72), 245))
 
 ## Register a fixed-speed hostile projectile; difficulty changes firing intervals rather than bullet speed.
 func spawn_hostile_shot(at: Vector2, velocity: Vector2) -> void:

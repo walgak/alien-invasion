@@ -1,0 +1,8 @@
+Use case: background-extraction
+Asset type: detailed transparent 2D enemy game sprite.
+Input image: exact alien spacecraft design reference and extraction target. Use only the large TOP VIEW on the LEFT.
+Primary request: extract and recreate that same alien fighter as one isolated, fully orthographic top-down game sprite, nose pointing straight DOWN as in the reference. Match its distinctive long spear nose, black graphite metallic exoskeleton, broad swept scythe wings with slender curved pointed tips, layered curved armor, inset violet light channels, dark raised central cockpit, and twin underslung gun barrels. Preserve the reference shape and fine material detail rather than simplifying into polygons or a different ship.
+Rear engines: at the top/rear left and right of the central spine show small violet engine mouths, consistent with the rear-view reference. The narrow upper central spine retains a small rear-facing violet gravity-cannon muzzle. No exhaust plume (the game animates that separately).
+Lighting and materials: sculpted near-black graphite armor with bright silver-gray bevel reflections readable against a dark space game background, rich violet fittings and bright lavender emission. Keep the armor visibly detailed, not a black silhouette. Baked 3D-looking metallic reflections in a 2D sprite.
+Composition: exactly one ship centered in a square image; entire nose, curved wing tips, and rear fin visible. Symmetrical silhouette. Transparent empty margin on all sides. No cropping.
+Background: genuinely transparent alpha, including spaces between wings and central hull. No solid background, no checkerboard, no stars, no sheet borders, no other views, no diagrams, labels, text or watermark. No external fog or large glow blob.

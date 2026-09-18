@@ -78,6 +78,33 @@ func run() -> void:
 	game.combat.release(2, aim)
 	check(game.lingering_wells.size() == 1 and game.lingering_wells[0].cannon_position.is_equal_approx(game.ship.muzzle_position(4, 0, true)), "charged gravity cannon leaves the special hardpoint")
 	check(game.lingering_wells.size() == 1 and game.lingering_wells[0].well_position == aim and game.lingering_wells[0].charge == 2.0, "moving the launch point preserves gravity targeting and charge")
+	# Alien artwork has two barrels, but alternating their ports must not double
+	# the established one-projectile volley or change either enemy speed tier.
+	for summoned in [false, true]:
+		fresh(0)
+		enemy = game.spawn_enemy(Vector2(210, 400), Vector2.ZERO, summoned)
+		enemy.rotation = 0.31
+		var first_port: Vector2 = enemy.muzzle_position()
+		var second_port: Vector2 = enemy.muzzle_position()
+		check(not first_port.is_equal_approx(second_port), "alien wing cannons expose distinct firing ports")
+		for port in [first_port, second_port]:
+			var count_before: int = game.projectiles.size()
+			enemy.shot_timer = 0.0
+			game.update_enemies(0.0)
+			var shot: Node2D = game.projectiles.back()
+			check(game.projectiles.size() == count_before + 1 and shot.position.is_equal_approx(port) and shot.previous_position.is_equal_approx(port), "alien volley leaves one rotated barrel without an extra shot or collision sweep")
+			check(is_equal_approx(shot.velocity.length(), 215.0 if summoned else 180.0) and enemy.shot_timer > 0.0, "alien volley preserves its speed and resets its firing timer")
+	fresh(0)
+	enemy = game.spawn_enemy(Vector2(210, 400), Vector2.ZERO)
+	var legacy_port: Vector2 = enemy.muzzle_position()
+	enemy.muzzle_position() # Restore the next port before the legacy volley.
+	game.fire_enemy_shot()
+	check(game.projectiles.size() == 1 and game.projectiles[0].position.is_equal_approx(legacy_port), "legacy alien volley uses the same visible gun hardpoint")
+	fresh(0)
+	enemy = game.spawn_enemy(Vector2(210, game.arena.y + game.Enemy.HIT_RADIUS + 1.0), Vector2.ZERO)
+	var rear_port: Vector2 = enemy.rear_muzzle_position()
+	game.update_enemies(0.0)
+	check(game.enemies.is_empty() and game.projectiles.size() == 1 and game.projectiles[0].kind == "doom" and game.projectiles[0].position.is_equal_approx(rear_port) and game.projectiles[0].previous_position.is_equal_approx(rear_port), "escaped alien fires its doom cannon from the rear port at the existing escape boundary")
 	# Engine intensity must express the requested distance relationship without
 	# changing the physical pull. Alien and player art have opposite nose axes.
 	fresh(0)
