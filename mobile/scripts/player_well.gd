@@ -100,14 +100,10 @@ func finish_well() -> void:
 	game.lingering_wells.erase(self)
 	queue_free()
 
-## Inward-moving concentric folds accompany the shader's actual background lens.
+## The traveling cannon stays here; gravity_fields owns the textured active disk
+## and its opaque horizon so the exact same artwork survives merging and death.
 func _draw() -> void:
 	if phase == "warning":
 		draw_circle(cannon_position, 10, Color("d6f7ff"))
 		draw_arc(cannon_position, 20, 0, TAU, 32, Color("4ea5ff"), 3, true)
 		return
-	for i in range(5):
-		var progress := fposmod(float(i) / 5.0 - animation_time * 0.45, 1.0)
-		draw_arc(well_position, (32 + 85 * progress) * well_scale, 0, TAU, 80, Color(0.22, 0.62, 1.0, (1 - progress) * 0.45), 2, true)
-	draw_circle(well_position, 31 * well_scale, Color("03020c"))
-	draw_arc(well_position, 32 * well_scale, 0, TAU, 80, Color("9cecff"), 3, true)

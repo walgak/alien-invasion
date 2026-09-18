@@ -51,6 +51,8 @@ Upgrades collectively provide one emergency life: losing the last hull life cons
 
 Space folds refract a textured starfield, nebula, and shaded planet. Black-hole ripples travel inward and white-hole ripples outward; their lit ridges bend the background into an elliptical well. The rift cannon, asteroid tethers, and folded rocks also distort the sky behind them. Ships, bullets, and controls remain sharp above the effect.
 
+The holes now use a detailed accretion texture with animated plasma filaments and bright, irregular inner rims. Player fields are blue; alien fields keep their encounter colour. White holes reverse the flow around a luminous icy core. Hole-specific background displacement is 40% stronger, and active holes retain priority during rapid tap feedback. Rich cyan, violet and magenta nebulae make the background more vibrant while retaining dark space around combat. See the [texture and generation prompt](mobile/assets/effects/README.md).
+
 ![A boss exchanging fire with the player](docs/screenshots/firefight.png)
 ![Black-hole space folds collapsing inward](docs/screenshots/black.png)
 ![White-hole space folds expanding outward](docs/screenshots/white.png)

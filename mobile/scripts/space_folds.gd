@@ -20,16 +20,33 @@ func update_effects(game: Node2D) -> void:
 	size = game.arena
 	var lenses := PackedVector4Array()
 	var styles := PackedVector4Array()
+	# An alpha of zero uses the usual cool fold tint; active wells supply their
+	# own palette so the refracted sky agrees with the visible accretion flow.
+	var lens_colors := PackedVector4Array()
+	lens_colors.resize(MAX_LENSES)
 	var strands := PackedVector4Array()
 	var strand_styles := PackedVector4Array()
 	var boss: Node2D = game.boss
-	# Reserve the first lenses for player feedback. These rings must distort the
-	# same starfield as the wells rather than looking like flat HUD circles.
+	# Reserve one slot for the shield, then pack active wells before short tap
+	# pulses and exit waves. Rapid tapping must never evict an active gravity lens.
 	if game.combat.shield_time > 0.0 and lenses.size() < MAX_LENSES:
 		# The shield is intentionally extreme: it should visibly drag stars and
 		# nebulae around the hull even on a small, bright phone display.
 		lenses.append(Vector4(game.ship.position.x, game.ship.position.y, 152.0, 13.5))
 		styles.append(Vector4(47.0, 1.0, 3.0, game.visual_time))
+	# The escaped-alien cannon creates a synthetic horizon during the death
+	# animation. Give that visible hole the same live lens as ordinary fields.
+	if game.death_time > 0.0 and game.death_is_gravity and game.death_synthetic:
+		var radius: float = game.death_radius
+		lenses.append(Vector4(game.death_target.x, game.death_target.y, radius + 125.0, 1.4))
+		styles.append(Vector4(radius, -1.0, 0.0, game.visual_time))
+		var tint: Color = game.death_hole_color
+		lens_colors[lenses.size()-1] = Vector4(tint.r, tint.g, tint.b, 1.0)
+	if is_instance_valid(boss) and boss.visible and boss.holds_steering():
+		append_active_well(boss, lenses, styles, lens_colors)
+	for well in game.lingering_wells:
+		if well.kind in ["black", "white"] and well.holds_steering():
+			append_active_well(well, lenses, styles, lens_colors)
 	for pulse in game.combat.warp_pulses:
 		if lenses.size() >= MAX_LENSES:
 			break
@@ -72,20 +89,21 @@ func update_effects(game: Node2D) -> void:
 			lenses.append(Vector4(well.cannon_position.x, well.cannon_position.y, 57.0, 0.85))
 			styles.append(Vector4(10.0, -1.0, 1.0, well.animation_time))
 			continue
-		lenses.append(Vector4(well.well_position.x, well.well_position.y, 164.0 * well.well_scale, 1.0))
-		styles.append(Vector4(31.0 * well.well_scale, 1.0 if well.kind == "white" else -1.0, 0.0, well.animation_time))
+		# Active wells were already packed ahead of cosmetic pulses above.
 	if is_instance_valid(boss) and boss.visible:
 		if boss.kind in ["black", "white"] and boss.phase in ["warning", "active"]:
-			var active: bool = boss.phase == "active"
-			lenses.append(Vector4(boss.well_position.x, boss.well_position.y, 164.0 * boss.well_scale if active else 112.0, 1.0 if active else 0.3))
-			styles.append(Vector4(31.0 * boss.well_scale if active else 25.0, 1.0 if boss.kind == "white" else -1.0, 0.0, boss.animation_time))
+			if boss.phase == "warning" and lenses.size() < MAX_LENSES:
+				lenses.append(Vector4(boss.well_position.x, boss.well_position.y, 112.0, 0.3))
+				styles.append(Vector4(25.0, 1.0 if boss.kind == "white" else -1.0, 0.0, boss.animation_time))
+				set_well_color(boss, lenses.size() - 1, lens_colors)
 			if boss.cannon_active:
-				lenses.append(Vector4(boss.cannon_position.x, boss.cannon_position.y, 57.0, 0.85))
-				styles.append(Vector4(10.0, 1.0, 1.0, boss.animation_time))
+				if lenses.size() < MAX_LENSES:
+					lenses.append(Vector4(boss.cannon_position.x, boss.cannon_position.y, 57.0, 0.85))
+					styles.append(Vector4(10.0, 1.0, 1.0, boss.animation_time))
 				var tail: Vector2 = boss.cannon_position - boss.cannon_velocity.normalized() * 112.0
 				strands.append(Vector4(tail.x, tail.y, boss.cannon_position.x, boss.cannon_position.y))
 				strand_styles.append(Vector4(20.0, 0.75, boss.animation_time, 1.0))
-		elif boss.kind in ["asteroid", "swarm"] and boss.phase in ["active", "clearing"]:
+		elif boss.kind in ["asteroid", "swarm"] and boss.phase in ["active", "clearing"] and lenses.size() < MAX_LENSES:
 			lenses.append(Vector4(boss.body_position.x, boss.body_position.y, 87.0, 0.28))
 			styles.append(Vector4(36.0, -1.0, 1.0, boss.animation_time))
 	for rock in game.asteroids:
@@ -116,8 +134,24 @@ func update_effects(game: Node2D) -> void:
 	material.set_shader_parameter("lens_count", lens_count)
 	material.set_shader_parameter("lenses", lenses)
 	material.set_shader_parameter("lens_styles", styles)
+	material.set_shader_parameter("lens_colors", lens_colors)
 	material.set_shader_parameter("strand_count", strand_count)
 	material.set_shader_parameter("strands", strands)
 	material.set_shader_parameter("strand_styles", strand_styles)
 	material.set_shader_parameter("refraction_strength", game.progress.distortion_strength)
 	visible = lens_count > 0 or strand_count > 0
+
+## Amplify only active gravity throats; all shield, pulse and tether values stay
+## independent. The shared eight-lens budget bounds fragment work on the phone.
+func append_active_well(well: Node2D, lenses: PackedVector4Array, styles: PackedVector4Array, colors: PackedVector4Array) -> void:
+	if lenses.size() >= MAX_LENSES:
+		return
+	lenses.append(Vector4(well.well_position.x, well.well_position.y, 164.0 * well.well_scale, 1.4))
+	styles.append(Vector4(31.0 * well.well_scale, 1.0 if well.kind == "white" else -1.0, 0.0, well.animation_time))
+	set_well_color(well, lenses.size() - 1, colors)
+
+## White holes keep an icy fold tint while black holes inherit their owner's
+## stable color, including the player's blue wells and merged/lingering fields.
+func set_well_color(well: Node2D, index: int, colors: PackedVector4Array) -> void:
+	var tint: Color = Color("b9f8ff") if well.kind == "white" else well.hole_color
+	colors[index] = Vector4(tint.r, tint.g, tint.b, 1.0)

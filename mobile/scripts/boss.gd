@@ -340,16 +340,8 @@ func _draw() -> void:
 	if cannon_active:
 		draw_rift_cannon(tint)
 	draw_space_folds(well_position, radius, tint, active)
-	if active:
-		if kind == "white":
-			for layer in range(8, 0, -1):
-				var fraction := float(layer) / 8.0
-				draw_circle(well_position, radius * fraction, Color("a5d9ef").lerp(Color("ffffff"), 1.0 - fraction))
-		else:
-			draw_circle(well_position, radius, Color("01030a"))
-		draw_arc(well_position, radius, 0, TAU, 56, Color(tint, 0.6), 2, true)
-		draw_arc(well_position + Vector2(-1, -1), radius + 1.5, -2.8, -0.3, 40, Color("e6ecff"), 1.4, true)
-	else:
+	# Active disks and their core masks are shared with player/lingering wells.
+	if not active:
 		draw_arc(well_position, radius, animation_time, animation_time + PI * 1.65, 48, tint, 2, true)
 		draw_line(well_position - Vector2(9,0), well_position + Vector2(9,0), tint, 1, true)
 		draw_line(well_position - Vector2(0,9), well_position + Vector2(0,9), tint, 1, true)

@@ -117,6 +117,8 @@ Fresh asteroid scale selects its initial material: ash, magma, or cyan ore. Inte
 
 Ships and bosses use brighter raised armor, shaded recesses, beveled rims and simulated reflection highlights. Rockets and pickups share the same 2D shading approach; no 3D models or rendering viewport are used.
 
+Black and white holes share a detailed animated accretion texture: inward blue or alien-coloured plasma surrounds an opaque black horizon; outward icy plasma surrounds a luminous white core. The hole distortion is 40% stronger, with active fields prioritized over cosmetic tap rings. The background has richer cyan, violet and magenta nebulae without brightening the entire void.
+
 The player shield remains a gravity lens, with a faint cyan halo added only for visibility: it strongly distorts the sky and redirects incoming bullets and rocks along curved paths. Resistance taps keep a separate segmented gravity-warp pulse. Black-hole cores have luminous spiral accretion ribbons around a fully opaque event horizon. Player-created holes are blue-cyan; alien hole colour is randomly selected and remains stable for the encounter. The escaped-alien cannon has an offscreen warning marker, boss shields break with a brief time beat, and explosions use rock, armor, or energy debris appropriate to their source. Touch release is handled once, while enemy haptics are rate-limited without repeatedly restarting the continuous gravity rumble.
 
 Ships, bosses, asteroids, weapons, and explosions retain the crisp code-drawn 2D style. Boss hit positions evade player-created wells before they open.

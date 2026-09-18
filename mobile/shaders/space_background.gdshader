@@ -70,11 +70,19 @@ void fragment() {
 	float cloud = cloud_noise(sky * 4.2 + vec2(broad * 2.5, broad * -1.8));
 	float band_distance = (uv.x - 0.73 + 0.40 * sin(uv.y * 4.0 + 0.5)) * 1.75;
 	float band = exp(-band_distance * band_distance);
-	float filaments = smoothstep(0.34, 0.83, cloud) * band;
-	vec3 color = mix(vec3(0.007, 0.013, 0.032), vec3(0.013, 0.027, 0.061), broad);
-	vec3 nebula_tint = mix(vec3(0.19, 0.035, 0.20), vec3(0.02, 0.18, 0.19), 0.5 + 0.5 * sin(sky.y * 0.7 + broad * 4.0));
-	color += nebula_tint * filaments * 1.05;
-	color += vec3(0.030, 0.026, 0.061) * pow(cloud, 4.0) * band;
+	// Keep the void dark while making dense clouds richly coloured. These masks
+	// reuse the existing two noise fields, so colour depth adds no noise octaves.
+	float filaments = smoothstep(0.32, 0.79, cloud) * band;
+	float cloud_edges = smoothstep(0.43, 0.72, cloud) * band;
+	vec3 color = mix(vec3(0.006, 0.011, 0.029), vec3(0.012, 0.025, 0.057), broad);
+	float colour_region = smoothstep(0.16, 0.84, 0.5 + 0.5 * sin(sky.y * 0.78 + sky.x * 0.50 + broad * 4.0));
+	vec3 cool_cloud = mix(vec3(0.12, 0.075, 0.56), vec3(0.025, 0.43, 0.55), colour_region);
+	float magenta_region = smoothstep(0.32, 0.91, 0.5 + 0.5 * sin(sky.x * 1.20 - sky.y * 0.52 + broad * 5.4));
+	vec3 nebula_tint = mix(cool_cloud, vec3(0.58, 0.045, 0.36), magenta_region * 0.86);
+	color += nebula_tint * filaments * 1.24;
+	// Narrow luminous wisps suggest lit gas, without whitening the entire sky.
+	vec3 wisp_tint = mix(vec3(0.10, 0.30, 0.55), vec3(0.38, 0.10, 0.42), magenta_region);
+	color += wisp_tint * cloud_edges * pow(cloud, 3.0) * 0.80;
 	color += star_layer(p - vec2(0.0, visual_time * 20.0), 62.0, 11.7) * 0.72;
 	color += star_layer(p - vec2(19.0, visual_time * 42.0), 141.0, 82.1) * 0.87;
 
@@ -94,7 +102,7 @@ void fragment() {
 	float ring_r = length(ring * vec2(1.0, 3.1));
 	float annulus = smoothstep(1.18,1.25,ring_r)*(1.0-smoothstep(1.8,1.88,ring_r));
 	float ring_alpha = annulus * (0.38+0.15*sin(ring_r*180.0)) * step(0.68,variation);
-	vec3 ring_color = mix(vec3(0.22,0.19,0.15),vec3(0.16,0.28,0.33),variation);
+	vec3 ring_color = mix(vec3(0.28,0.20,0.10),vec3(0.12,0.32,0.39),variation);
 	if (ring.y < 0.0) { color = mix(color,ring_color,ring_alpha); }
 	float atmosphere = exp(-abs(radius-1.01)*43.0);
 	vec3 light_direction = normalize(sector_light);
@@ -102,7 +110,7 @@ void fragment() {
 	vec3 normal = vec3(planet, sqrt(max(0.0, 1.0 - dot(planet, planet))));
 	float sunlight = max(0.0, dot(normal, light_direction));
 	float hemisphere_light = 0.19 + 0.81 * max(0.0, dot(normalize(vec3(planet, 0.17)), light_direction));
-	color += vec3(0.075, 0.25, 0.35) * atmosphere * hemisphere_light * 0.70;
+	color += vec3(0.055, 0.31, 0.46) * atmosphere * hemisphere_light * 0.74;
 	if (radius < 1.0) {
 		vec2 surface = vec2(atan(normal.x, max(normal.z, 0.001)), asin(clamp(normal.y, -1.0, 1.0)));
 		float land = cloud_noise(surface * 5.2 + vec2(11.3 + planet_id * 7.0, 21.8));
@@ -111,19 +119,19 @@ void fragment() {
 		vec3 planet_color;
 		if (type < 1.0) {
 			// Ocean world, continents and cloud streaks.
-			planet_color = mix(vec3(0.018,0.07,0.13),vec3(0.075,0.16,0.105),smoothstep(0.43,0.60,land));
-			planet_color += vec3(0.13,0.15,0.17)*smoothstep(0.54,0.75,wisps)*0.5;
+			planet_color = mix(vec3(0.015,0.105,0.22),vec3(0.055,0.23,0.15),smoothstep(0.43,0.60,land));
+			planet_color += vec3(0.12,0.16,0.20)*smoothstep(0.54,0.75,wisps)*0.5;
 		} else if (type < 2.0) {
 			// Warm gas giant with rolling latitude bands.
 			float bands = 0.5+0.5*sin(surface.y*35.0+land*8.0);
-			planet_color = mix(vec3(0.13,0.065,0.035),vec3(0.30,0.22,0.13),bands);
+			planet_color = mix(vec3(0.18,0.060,0.020),vec3(0.34,0.23,0.095),bands);
 		} else if (type < 3.0) {
 			// Glacial world: cyan ice shelves and pale cracks.
-			planet_color = mix(vec3(0.065,0.13,0.19),vec3(0.27,0.34,0.38),smoothstep(0.35,0.65,land));
+			planet_color = mix(vec3(0.035,0.18,0.28),vec3(0.20,0.35,0.41),smoothstep(0.35,0.65,land));
 			planet_color *= 0.75+wisps*0.25;
 		} else {
 			// Dry, rocky world with dark mineral patches and impact texture.
-			planet_color = mix(vec3(0.075,0.045,0.055),vec3(0.26,0.13,0.085),land);
+			planet_color = mix(vec3(0.11,0.030,0.070),vec3(0.33,0.14,0.060),land);
 			planet_color *= 0.6+noise(surface*38.0+planet_id)*0.4;
 		}
 		planet_color *= 0.14 + sunlight * 2.8;

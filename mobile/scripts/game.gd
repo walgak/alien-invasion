@@ -612,6 +612,7 @@ func refresh_space() -> void:
 		jitter = Vector2(sin(visual_time * 91.0), cos(visual_time * 73.0)) * shake_strength
 	space_background.sky_material.set_shader_parameter("camera_jitter", jitter)
 	space_folds.update_effects(self)
+	gravity_fields.update_visuals()
 
 ## Move ordinary aliens or orbit guards, resolve swept ship contact, and fire aimed shots at per-enemy intervals.
 func update_enemies(delta: float) -> void:

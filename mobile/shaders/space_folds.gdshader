@@ -8,6 +8,7 @@ uniform vec2 arena_size = vec2(540.0, 960.0);
 uniform int lens_count = 0;
 uniform vec4 lenses[8]; // center, influence radius, strength
 uniform vec4 lens_styles[8]; // core radius, direction, object flag, simulation time
+uniform vec4 lens_colors[8]; // active well tint; zero alpha keeps the default fold palette
 uniform int strand_count = 0;
 uniform vec4 strands[6]; // boss/tail endpoint, rock/cannon endpoint
 uniform vec4 strand_styles[6]; // width, strength, simulation time, travel direction
@@ -46,7 +47,14 @@ void fragment() {
 		float throat = ring_mode ? ring_envelope : exp(-shell * shell / (object_mode ? 620.0 : 1750.0));
 		float bend = ring_mode ? (ring_envelope * sin(ring_distance * 0.32 - style.w * 7.0) * 25.0 * lens.w) : (ripple * (object_mode ? 3.0 : 9.0) + throat * (object_mode ? 15.0 : 27.0) * -style.y) * lens.w;
 		vec2 tangent = vec2(-normal.y, normal.x);
-		displacement += (normal * bend + tangent * throat * (ring_mode ? 9.0 : (object_mode ? 0.0 : 6.0)) * lens.w) * vec2(1.0, flatten);
+		// A smooth spiral throat carries the sky around the event horizon as well
+		// as into/out of it. Integer angular harmonics keep the atan seam invisible.
+		float swirl = 1.0;
+		if (!ring_mode && !object_mode) {
+			float angle = atan(surface.y, surface.x);
+			swirl = -style.y * (1.0 + 0.16 * sin(angle * 2.0 + shell * 0.06 - style.w * 0.7));
+		}
+		displacement += (normal * bend + tangent * throat * (ring_mode ? 9.0 : (object_mode ? 0.0 : 6.0)) * swirl * lens.w) * vec2(1.0, flatten);
 		// Opposing light and shadow on each fold give its refracted ridge thickness.
 		float crest = pow(max(0.0, cos(phase)), 12.0) * envelope;
 		float trough = pow(max(0.0, -cos(phase + 0.55)), 6.0) * envelope;
@@ -54,6 +62,7 @@ void fragment() {
 		float rim = exp(-rim_distance * rim_distance);
 		float lighting = 0.4 + 0.6 * max(dot(normal, normalize(vec2(-0.5, -0.8))), 0.0);
 		vec3 tint = style.y < 0.0 && !object_mode ? vec3(0.52, 0.40, 1.0) : vec3(0.40, 0.84, 1.0);
+		tint = mix(tint, lens_colors[i].rgb, lens_colors[i].a);
 		gleam += shield_mode ? vec3(0.0) : tint * (crest * 0.105 * lighting + rim * (ring_mode ? 0.55 : 0.2)) * lens.w;
 		shade += (trough * (shield_mode ? 0.006 : 0.2) + throat * (shield_mode ? 0.004 : 0.15)) * lens.w;
 		dispersion += (crest + rim) * (shield_mode ? 0.0 : 0.65) * lens.w;

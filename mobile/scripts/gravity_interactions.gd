@@ -2,9 +2,37 @@ extends Node2D
 ## Pairwise gravity rules. Operate on active wells only; traveling cannons do not
 ## collide. Merges conserve area and remaining lifetime, never restart a timer.
 const PlayerWell = preload("res://scripts/player_well.gd")
+const AccretionVisual = preload("res://scripts/accretion_visual.gd")
+const MAX_ACCRETION_VISUALS := 12
 var game: Node2D
 var shockwaves: Array[Dictionary] = []
 var exits: Array[Dictionary] = []
+var accretion_pool: Array[Node2D] = []
+
+## Reuse the same small visual pool across launches, merges and deaths. Large
+## charged fields change uniforms and quad size, never the number of particles.
+func update_visuals() -> void:
+	var used := 0
+	for well in active_wells():
+		if used >= MAX_ACCRETION_VISUALS:
+			break
+		# The death view below replaces this field rather than doubling its glow.
+		if game.death_time > 0.0 and game.death_is_gravity and well.kind == "black" and well.well_position.distance_to(game.death_target) < 1.0:
+			continue
+		show_accretion(used, well.well_position, 31.0 * well.well_scale, well.kind == "white", well.hole_color)
+		used += 1
+	if game.death_time > 0.0 and game.death_is_gravity and used < MAX_ACCRETION_VISUALS:
+		show_accretion(used, game.death_target, game.death_radius, false, game.death_hole_color)
+		used += 1
+	for i in range(used, accretion_pool.size()):
+		accretion_pool[i].visible = false
+
+func show_accretion(index: int, at: Vector2, radius: float, white: bool, tint: Color) -> void:
+	if index == accretion_pool.size():
+		var visual := AccretionVisual.new()
+		add_child(visual)
+		accretion_pool.append(visual)
+	accretion_pool[index].configure(at, radius, white, Color("56ceff") if white else tint, game.visual_time)
 
 ## This layer occludes every actor inside an event horizon, but stays below HUD.
 func _init() -> void:
@@ -132,6 +160,8 @@ func _draw() -> void:
 	for well in active_wells():
 		if well.kind == "black":
 			draw_horizon(well.well_position, 31.0 * well.well_scale, well.hole_color)
+		elif well.kind == "white":
+			draw_white_core(well.well_position, 31.0 * well.well_scale)
 	if game.death_time > 0.0 and game.death_is_gravity:
 		draw_horizon(game.death_target, game.death_radius, game.death_hole_color)
 
@@ -153,46 +183,20 @@ func visual_step(delta: float) -> void:
 			exits.erase(effect)
 	queue_redraw()
 
-## The event horizon is opaque, while counter-rotating accretion streams stay
-## strictly outside it. Nothing swallowed can leak through the black core.
+## Fine plasma is drawn by the reusable textured sprites behind actors. This
+## final opaque mask makes the event horizon absolute even during ship crumble.
 func draw_horizon(at: Vector2, radius: float, color: Color) -> void:
-	var time: float = game.visual_time
-	var scale_factor := sqrt(maxf(radius/31.0,0.3))
-	var outer_reach := 92.0*scale_factor
-	var deep := color.darkened(0.5)
-	var bright := color.lightened(0.62)
-	# Long tapered logarithmic streams produce the turbulent, asymmetrical
-	# accretion spiral from the references without covering the gameplay field.
-	for lane in range(9):
-		var points := PackedVector2Array()
-		var phase := float(lane)*TAU/9.0-time*(0.42+float(lane%3)*0.07)
-		for step in range(34):
-			var t := float(step)/33.0
-			var spiral_radius := radius+3.0+outer_reach*pow(t,1.16)
-			var angle := phase+t*(2.0+0.34*sin(float(lane)*1.7))+sin(t*9.0+time*2.2+lane)*0.055
-			var flatten := 0.88+0.07*sin(float(lane)*2.1)
-			points.append(at+Vector2(cos(angle),sin(angle)*flatten)*spiral_radius)
-		var lane_mix := float(lane%4)/3.0
-		var tint := deep.lerp(color,lane_mix)
-		var alpha := 0.14+0.07*float(lane%3)
-		# Three widths turn each path into a soft gaseous ribbon: a faint outer
-		# bloom, a colored body, and an irregular hot vein at its centre.
-		draw_polyline(points,Color(tint,0.035),18.0-float(lane%3)*2.0,true)
-		draw_polyline(points,Color(tint,alpha),11.0-float(lane%3)*1.5,true)
-		if lane%2==0:
-			draw_polyline(points,Color(bright,0.32),1.7,true)
-	# Broken hot filaments hug the photon ring and rotate faster than the broad flow.
-	for filament in range(9):
-		var start := -time*(1.05+filament*0.025)+filament*TAU/9.0
-		var span := 0.24+0.22*sin(time*1.7+filament*2.0)
-		draw_arc(at,radius+5.0+float(filament%3)*3.0,start,start+span,14,Color(bright,0.62),3.8-float(filament%3)*0.7,true)
-	# Draw the absolute black disk after the accretion lanes, then add only an
-	# exterior photon rim and rotating highlights.
-	draw_circle(at, radius, Color("000006"))
-	draw_arc(at, radius + 0.8, 0, TAU, 96, Color(bright,0.92), 2.2, true)
-	for arc in range(5):
-		var start := -time * (1.2 + arc * 0.08) + arc * TAU / 5.0
-		draw_arc(at, radius + 2.5, start, start + 0.34, 10, Color(bright,0.88), 2.6, true)
+	draw_circle(at, radius, Color.BLACK)
+	draw_arc(at, radius + 0.5, 0, TAU, 112, Color(color.lightened(0.72), 0.72), 0.9, true)
+
+## A white singularity is a radiant source with the same physical core size.
+## The surrounding sprite runs its radial plasma motion outward, not inward.
+func draw_white_core(at: Vector2, radius: float) -> void:
+	for layer in range(24, 0, -1):
+		var fraction := float(layer) / 24.0
+		var tint := Color("a4e4ff").lerp(Color("ffffef"), pow(1.0 - fraction, 0.45))
+		draw_circle(at, radius * fraction, tint)
+	draw_arc(at, radius + 0.6, 0, TAU, 96, Color("efffff"), 1.3, true)
 
 ## Hull shield strength is tied to living guards, not boss health. Individual
 ## strands make the connection to each guard obvious, and fade as guards die.
