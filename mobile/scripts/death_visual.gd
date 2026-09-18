@@ -1,6 +1,7 @@
 extends Node2D
 ## Cause-specific hull destruction, drawn below the opaque event-horizon layer.
 ## Debris is created once from the real ship silhouette; no per-frame nodes.
+const Artwork = preload("res://scripts/ship_artwork.gd")
 var game: Node2D
 var pieces: Array[Dictionary] = []
 var cause := "shot"
@@ -19,12 +20,9 @@ func begin(kind: String) -> void:
 	exploded = false
 	explosion_age = -1.0
 	explosion_at = game.death_origin
-	var width: float = [1.0, 1.13, 1.28, 1.45, 1.38][clampi(game.weapons.level, 0, 4)]
-	var hull := PackedVector2Array([Vector2(0,-35),Vector2(16,-2),Vector2(33,23),Vector2(13,18),Vector2(0,27),Vector2(-13,18),Vector2(-33,23),Vector2(-16,-2)])
-	add_panel(hull, Color("bacfdd"), width)
-	add_panel(PackedVector2Array([Vector2(0,-24),Vector2(7,1),Vector2(0,13),Vector2(-7,1)]), Color("55e8d0"), width)
-	for x in ([-17, 0, 17] if game.weapons.level >= 2 else ([-11, 11] if game.weapons.level == 1 else [0])):
-		add_panel(PackedVector2Array([Vector2(x-3,-37),Vector2(x+3,-37),Vector2(x+3,-14),Vector2(x-3,-14)]), Color("607d94"), 1.0)
+	material = Artwork.surface_for(game.weapons.level, game.ship.animation_time)
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	add_textured_panels(game.weapons.level)
 	if cause == "white":
 		var at: Vector2 = game.death_origin
 		var distances := [at.x, game.arena.x-at.x, at.y, game.arena.y-at.y]
@@ -36,21 +34,25 @@ func begin(kind: String) -> void:
 	game.ship.visible = false
 	queue_redraw()
 
-## Split each triangle around its centroid so the ship cracks into small plates.
-func add_panel(polygon: PackedVector2Array, tint: Color, width: float) -> void:
-	var indices := Geometry2D.triangulate_polygon(polygon)
-	for index in range(0, indices.size(), 3):
-		var triangle := PackedVector2Array([polygon[indices[index]], polygon[indices[index+1]], polygon[indices[index+2]]])
-		var middle := (triangle[0] + triangle[1] + triangle[2]) / 3.0
-		for edge in range(3):
-			var points := PackedVector2Array([triangle[edge], triangle[(edge+1)%3], middle])
-			for j in range(3):
-				points[j].x *= width
-				points[j] = points[j].rotated(game.ship.rotation)
-			var center := (points[0]+points[1]+points[2])/3.0
-			for j in range(3):
-				points[j] -= center
-			pieces.append({"shape": points, "offset": center, "tint": tint.darkened(float(pieces.size()%4)*0.08), "spin": sin(float(pieces.size())*13.7)*3.5})
+## A fixed triangular mesh preserves the real texture instead of substituting
+## generic colored shards. Alpha keeps wing gaps empty; the horizon layer still
+## masks every fragment. The mesh is bounded at 240 pieces, regardless of tier.
+func add_textured_panels(level: int) -> void:
+	var size := Artwork.size_for(level)
+	for row in range(12):
+		for column in range(10):
+			var a := Vector2(float(column)/10.0, float(row)/12.0)
+			var b := a + Vector2(0.1, 0.0)
+			var c := a + Vector2(0.1, 1.0/12.0)
+			var d := a + Vector2(0.0, 1.0/12.0)
+			for uv in [PackedVector2Array([a,b,c]), PackedVector2Array([a,c,d])]:
+				var points := PackedVector2Array()
+				for point in uv:
+					points.append(((point-Vector2.ONE*0.5)*size*game.ship.scale).rotated(game.ship.rotation))
+				var center := (points[0]+points[1]+points[2])/3.0
+				for index in range(3):
+					points[index] -= center
+				pieces.append({"shape":points, "uv":uv, "offset":center, "spin":sin(float(pieces.size())*13.7)*3.5})
 
 ## Shot deaths explode immediately; collisions crumble before the delayed blast.
 func step(delta: float) -> void:
@@ -94,8 +96,7 @@ func _draw() -> void:
 				at = explosion_at + offset + direction * explosion_age * (45+i%7*18)
 				alpha = maxf(0.0, 1.0-explosion_age/1.2)
 		draw_set_transform(at, piece.spin*age, Vector2.ONE*shrink)
-		draw_colored_polygon(piece.shape, Color(piece.tint, alpha))
-		draw_polyline(piece.shape, Color(0.05,0.12,0.17,alpha*0.8), 0.7, true)
+		draw_polygon(piece.shape, PackedColorArray([Color(1,1,1,alpha)]), piece.uv, Artwork.FIGHTER_TEXTURE)
 	draw_set_transform(Vector2.ZERO)
 	if exploded:
 		var t := clampf(explosion_age/0.65, 0, 1)

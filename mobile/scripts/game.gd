@@ -479,10 +479,11 @@ func update_laser(delta: float) -> void:
 		laser.continuous = true
 		add_child(laser)
 	laser.visual_brightness = progress.laser_brightness
-	laser.setup_laser(ship.position + Vector2(0, -44), Vector2(ship.position.x, top_inset + 140))
+	var muzzle: Vector2 = ship.muzzle_position(weapons.level, 0, true)
+	laser.setup_laser(muzzle, Vector2(muzzle.x, top_inset + 140))
 	laser.age += delta
 	laser.absorbed = false
-	laser.beam_segments = reflected_laser(ship.position + Vector2(0, -44))
+	laser.beam_segments = reflected_laser(muzzle)
 	laser.queue_redraw()
 	var contacts: Dictionary = {}
 	var targets: Array[Node2D] = []

@@ -21,25 +21,27 @@ func fire(game: Node2D) -> float:
 	var ship := game.get("ship") as Node2D
 	if not is_instance_valid(ship):
 		return 0.17
-	var muzzle := ship.position + Vector2(0.0, -36.0)
+	# Use the rendered hardpoints immediately, even before the next physics tick
+	# copies the new weapon tier into the ship's visual state.
+	var muzzle: Vector2 = ship.muzzle_position(level)
 	var cooldown := 0.17
 	var effect := "shot"
 	match clampi(level, 0, MAX_LEVEL):
 		0:
 			spawn_shot(game, muzzle, Vector2(0.0, -850.0))
 		1:
-			spawn_shot(game, muzzle + Vector2(-11.0, 7.0), Vector2(0.0, -850.0))
-			spawn_shot(game, muzzle + Vector2(11.0, 7.0), Vector2(0.0, -850.0))
+			spawn_shot(game, ship.muzzle_position(level, -1), Vector2(0.0, -850.0))
+			spawn_shot(game, ship.muzzle_position(level, 1), Vector2(0.0, -850.0))
 		2:
 			spawn_shot(game, muzzle, Vector2(0.0, -850.0))
-			spawn_shot(game, muzzle + Vector2(-17.0, 9.0), Vector2(-110.0, -880.0).normalized() * 850.0)
-			spawn_shot(game, muzzle + Vector2(17.0, 9.0), Vector2(110.0, -880.0).normalized() * 850.0)
+			spawn_shot(game, ship.muzzle_position(level, -1), Vector2(-110.0, -880.0).normalized() * 850.0)
+			spawn_shot(game, ship.muzzle_position(level, 1), Vector2(110.0, -880.0).normalized() * 850.0)
 		3:
 			game.update_laser(0.0)
 			return 0.17
 		4:
-			for offset in [-13.0, 13.0]:
-				var rocket = spawn_shot(game, muzzle + Vector2(offset, 7.0), Vector2(0.0, -660.0))
+			for lane in [-1, 1]:
+				var rocket = spawn_shot(game, ship.muzzle_position(level, lane), Vector2(0.0, -660.0))
 				rocket.kind = "rocket"
 				rocket.damage = 3
 				rocket.blast_radius = 65.0

@@ -2,6 +2,8 @@ extends Node2D
 
 const HIT_RADIUS := 24.0
 const HullFinish = preload("res://scripts/hull_finish.gd")
+const EngineBurn = preload("res://scripts/engine_burn.gd")
+var engine_burn: Node2D
 var formation_offset := Vector2.ZERO
 var phase := 0.0
 var tint := Color("ffb86a")
@@ -23,6 +25,14 @@ var pull_start := Vector2.ZERO
 var pull_offset := Vector2.ZERO
 var phase_time := 0.0
 var launch_speed := 220.0
+
+## Alien noses point down in normal flight. The twin violet engines therefore
+## exhaust upward; rotating the entire ship keeps their force direction honest.
+func _ready() -> void:
+	engine_burn = EngineBurn.new()
+	add_child(engine_burn)
+	engine_burn.rotation = PI
+	engine_burn.configure(PackedVector2Array([Vector2(-8,17), Vector2(8,17)]), Color("b34cff"), 3.8)
 
 ## Capture the offscreen starting point and boss anchor, then enter the pull/windup/throw state machine.
 func begin_pull(origin: Vector2) -> void:
@@ -81,6 +91,9 @@ func _draw() -> void:
 			draw_polyline(points, Color("91f5da", fold_life / RELEASE_FADE_SECONDS * 0.32), 1.2, true)
 	var energy := Color("d18cff")
 	draw_circle(Vector2.ZERO, 32, Color(energy, 0.055))
+	for x in [-8.0, 8.0]:
+		draw_circle(Vector2(x,-17), 4.1, Color("351852"))
+		draw_circle(Vector2(x,-18), 2.5, Color("d8a3ff"))
 	# Scythe wings frame a narrow spear hull, matching the supplied concept at
 	# gameplay scale without depending on a texture asset.
 	for side in [-1.0, 1.0]:

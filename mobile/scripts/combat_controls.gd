@@ -146,13 +146,13 @@ func release(id: int, at: Vector2, canceled: bool = false) -> void:
 			var well = PlayerWell.new()
 			well.game = game
 			well.well_position = aim
-			well.cannon_position = game.ship.position + Vector2(0, -44)
+			well.cannon_position = game.ship.muzzle_position(game.weapons.level, 0, true)
 			well.charge = clampf(held, 1.0, 5.0)
 			game.add_child(well)
 			game.lingering_wells.append(well)
 			game.sound.play_effect("rocket")
 		elif held < 1.0 and is_instance_valid(target) and not target.is_queued_for_deletion() and rocket_cooldown <= 0.0 and missiles > 0:
-			var shot = game.weapons.spawn_shot(game, game.ship.position + Vector2(0, -44), Vector2(0, -660))
+			var shot = game.weapons.spawn_shot(game, game.ship.muzzle_position(game.weapons.level, 0, true), Vector2(0, -660))
 			shot.kind = "rocket"
 			shot.homing_target = target
 			shot.damage = 3
@@ -217,18 +217,6 @@ func _draw() -> void:
 		draw_warp_ring(pulse.at, 42.0 + progress * 44.0, game.elapsed * 1.7, 1.0 - progress)
 	if gesture == "aim":
 		draw_arc(aim, 24 + held * 5, -PI / 2, -PI / 2 + TAU * held / 5, 64, Color("c7a0ff"), 3, true)
-	# Iterate live actor arrays, never object-key dictionaries: swallowed ships
-	# may be freed between physics and drawing on the iPhone render callback.
-	for actor in game.enemies + [game.ship]:
-		if not is_instance_valid(actor) or actor.is_queued_for_deletion():
-			continue
-		var well := gravity_for(actor)
-		if well == null:
-			continue
-		var exhaust := Vector2.DOWN.rotated(actor.rotation)
-		var start: Vector2 = actor.position + exhaust * 22.0
-		draw_line(start, start + exhaust * (36 + sin(game.elapsed * 35) * 5), Color(0.3, 0.7, 1, 0.22), 12, true)
-		draw_line(start, start + exhaust * 27, Color("b8eaff"), 3, true)
 
 ## Shield and gravity taps share one luminous, broken warp-ring language.
 func draw_warp_ring(at: Vector2, radius: float, phase: float, alpha: float) -> void:
@@ -259,14 +247,28 @@ func gravity_for(actor: Node2D) -> Node2D:
 ## The nose points against gravity; lerp_angle takes the shortest return turn.
 func update_attitudes(delta: float) -> void:
 	for actor in game.enemies + [game.ship]:
+		if not is_instance_valid(actor) or actor.is_queued_for_deletion():
+			continue
 		var well := gravity_for(actor)
 		var angle: float = game.ship.lean * 0.12 if actor == game.ship else 0.0
+		var engine_load := 0.0
 		if well != null:
 			var nose: Vector2 = actor.position - well.well_position
 			if well.kind == "white":
 				nose = -nose
-			angle = nose.angle() + PI / 2.0
+			# Player art faces up; alien art faces down. Both noses oppose gravity.
+			angle = nose.angle() + (PI/2.0 if actor == game.ship else -PI/2.0)
+			engine_load = gravity_engine_load(actor.position, well)
 		actor.rotation = lerp_angle(actor.rotation, angle, 1.0 - exp(-delta * 7.0))
+		actor.engine_burn.set_load(engine_load)
+		actor.engine_burn.advance(delta)
+
+## Visual load only: bright/long near a black horizon; the opposite near white.
+## Measure from the core, so merged/charged wells behave like small ones.
+func gravity_engine_load(at: Vector2, well: Node2D) -> float:
+	var rim_distance := maxf(0.0, at.distance_to(well.well_position)-31.0*well.well_scale)
+	var proximity := 1.0-clampf(rim_distance/320.0, 0.0, 1.0)
+	return lerpf(0.22,1.0, 1.0-proximity if well.kind == "white" else proximity)
 
 ## Cancel scheduled patterns on pause, death, restart, or vibration mute.
 func stop_haptics() -> void:
