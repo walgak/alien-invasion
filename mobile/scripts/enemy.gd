@@ -93,13 +93,5 @@ func advance(delta: float, target: Vector2 = Vector2.ZERO) -> void:
 ## Keep boss-connected tractor folds underneath the reference-matched 2D hull.
 ## Reflections and armor depth are baked into the mipmapped transparent texture.
 func _draw() -> void:
-	if fold_life > 0.0:
-		var anchor := to_local(fold_origin)
-		var side := anchor.orthogonal().normalized()
-		for lane in range(5):
-			var points := PackedVector2Array()
-			for i in range(25):
-				var t := float(i) / 24.0
-				points.append(anchor.lerp(Vector2((lane - 2) * 6, 0), t) + side * sin(t * TAU * 2 + age * 5 + lane) * 3.0 * sin(t * PI))
-			draw_polyline(points, Color("91f5da", fold_life / RELEASE_FADE_SECONDS * 0.32), 1.2, true)
+	# The shared refraction shader supplies the tractor wake without line strokes.
 	draw_texture_rect(Artwork.ALIEN_TEXTURE, Artwork.rect_for(), false)

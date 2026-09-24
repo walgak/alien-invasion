@@ -58,8 +58,12 @@ func intersects(center: Vector2, radius: float) -> bool:
 ## Submit this object's visual geometry in local coordinates. Physics and collision rules are handled separately.
 func _draw() -> void:
 	if kind == "doom":
+		for layer in range(5, 0, -1):
+			draw_circle(Vector2.ZERO, 11.0 + layer * 2.0, Color(0.63, 0.3, 1.0, 0.065))
 		draw_circle(Vector2.ZERO, 12, Color("03020c"))
-		draw_arc(Vector2.ZERO, 16, 0, TAU, 32, Color("b894ff"), 4, true)
+		for fleck in range(9):
+			var angle := float(fleck) * TAU / 9.0 + age * 4.0
+			draw_circle(Vector2.from_angle(angle) * 14.0, 1.4, Color("c59aff"))
 		return
 	if kind == "laser":
 		draw_laser()
@@ -67,62 +71,86 @@ func _draw() -> void:
 	if kind == "rocket":
 		draw_rocket()
 		return
-	var tint := Color("ff816f") if hostile else Color("63f2d2")
-	var tail := -velocity.normalized() * (13.0 if hostile else 20.0)
-	draw_line(-tail * 0.3, tail, Color(tint, 0.09), 12, true)
-	draw_line(-tail * 0.3, tail, Color(tint, 0.3), 5, true)
-	draw_line(Vector2.ZERO, tail * 0.7, tint, 2.5, true)
-	# A shaded plasma bead keeps tiny shots round and readable over bright scenery.
-	draw_circle(Vector2.ZERO, 3.1, tint.darkened(0.32))
-	draw_circle(Vector2(-0.35, -0.35), 2.45, tint)
-	draw_circle(Vector2(-0.8, -0.8), 1.3, Color("f1fff9"))
+	var tint := Color("ff816f") if hostile else Color("63cfff")
+	var enhanced := kind == "plasma"
+	var forward := velocity.normalized()
+	var side := forward.orthogonal()
+	var length := 13.0 if hostile else 20.0
+	var width := 5.0 if enhanced else 3.1
+	# Three nested filled droplets replace the old straight strokes. Keeping a
+	# small fixed draw count matters when triple guns fill the screen with shots.
+	for layer in range(3, 0, -1):
+		var breadth := width * (1.0 + float(layer - 1) * 0.65)
+		var vertices := PackedVector2Array([
+			forward * width,
+			forward * (width * 0.4) + side * breadth,
+			-forward * (length * 0.45) + side * breadth * 0.48,
+			-forward * length,
+			-forward * (length * 0.45) - side * breadth * 0.48,
+			forward * (width * 0.4) - side * breadth
+		])
+		draw_colored_polygon(vertices, Color(tint, 0.9 if layer == 1 else 0.075))
+	draw_circle(Vector2(-0.35, -0.35), width * 0.62, Color("e9faff"))
 
-## Render the beam's glow and core; continuous beams remain bright instead of fading like short pulses.
+## Each bent optical segment carries a filled fluid ribbon with traveling bulges.
+## The short individual polygons stay monotonic even at sharp reflections, which
+## avoids triangulation stalls from one self-intersecting screen-sized polygon.
 func draw_laser() -> void:
 	var brightness := visual_brightness
 	var segments := beam_segments
 	if segments.is_empty():
 		segments = [beam_start, position]
-	# Three liquid filaments follow the same collision path. Their small visual
-	# sway never changes damage, and endpoints stay pinned to muzzle/impact.
-	for lane in range(3):
-		var points := PackedVector2Array()
-		for i in range(0, segments.size(), 2):
-			var a: Vector2 = segments[i]-position
-			var b: Vector2 = segments[i+1]-position
-			var normal := (b-a).normalized().orthogonal()
-			for j in range(5):
-				var t := float(j)/4.0
-				var along := float(i/2)*24.0+(b-a).length()*t
-				var envelope := 1.0
-				if i == 0:
-					envelope *= smoothstep(0,1,t)
-				if i == segments.size()-2:
-					envelope *= 1.0-smoothstep(0,1,t)
-				var sway := (sin(along*0.07-age*12.0+lane*2.1)*2.0 + sin(along*0.16+age*17)*0.7)*envelope
-				points.append(a.lerp(b,t)+normal*sway)
-		if lane == 0:
-			draw_polyline(points,Color(0.25,0.6,1,0.08 * brightness),24,true)
-			draw_polyline(points,Color(0.3,0.75,1,0.22 * brightness),10,true)
-		draw_polyline(points,Color(0.55+lane*0.18,0.85+lane*0.06,1,0.9 * brightness),2.2-float(lane)*0.5,true)
+	var traveled := 0.0
+	for index in range(0, segments.size(), 2):
+		var a: Vector2 = segments[index] - position
+		var b: Vector2 = segments[index + 1] - position
+		var length := a.distance_to(b)
+		if length <= 0.01:
+			continue
+		var normal := (b - a).normalized().orthogonal()
+		var samples := clampi(ceili(length / 18.0), 2, 32)
+		for layer in range(3):
+			var polygon := PackedVector2Array()
+			var reverse := PackedVector2Array()
+			for sample in range(samples + 1):
+				var t := float(sample) / float(samples)
+				var along := traveled + length * t
+				var wave := sin(along * 0.09 - age * 17.0)
+				var pulse := 0.8 + 0.2 * sin(along * 0.14 + age * 23.0)
+				var sway := wave * 2.1 * sin(t * PI)
+				var half_width: float = [10.0, 3.6, 1.25][layer] * pulse
+				var center := a.lerp(b, t) + normal * sway
+				polygon.append(center + normal * half_width)
+				reverse.append(center - normal * half_width)
+			reverse.reverse()
+			polygon.append_array(reverse)
+			var tint: Color = [Color(0.2, 0.56, 1.0, 0.12), Color(0.35, 0.77, 1.0, 0.65), Color(0.88, 0.97, 1.0, 0.96)][layer]
+			tint.a *= brightness
+			draw_colored_polygon(polygon, tint)
+		traveled += length
 	if absorbed:
-		var at := contact_point-position
-		var pulse := 0.85+sin(age*31)*0.15
-		for layer in range(4,0,-1):
-			draw_circle(at,float(layer)*6*pulse,Color(0.35,0.8,1,0.075*float(5-layer) * brightness))
-		draw_circle(at,4.0,Color(0.92, 1.0, 1.0, brightness))
-		for spark in range(6):
-			var direction := Vector2.from_angle(float(spark)*TAU/6.0+age*2)
-			draw_line(at+direction*6,at+direction*(12+sin(age*25+spark)*4),Color(0.65,0.9,1,0.6),1.3,true)
+		var at := contact_point - position
+		var pulse := 0.85 + sin(age * 31.0) * 0.15
+		for layer in range(4, 0, -1):
+			draw_circle(at, float(layer) * 6.0 * pulse, Color(0.35, 0.8, 1.0, 0.075 * float(5 - layer) * brightness))
+		draw_circle(at, 4.0, Color(0.92, 1.0, 1.0, brightness))
+		for spark in range(8):
+			var phase := fmod(age * 2.0 + float(spark) / 8.0, 1.0)
+			var direction := Vector2.from_angle(float(spark) * 2.39996)
+			draw_circle(at + direction * (5.0 + phase * 22.0), 2.5 * (1.0 - phase), Color(0.65, 0.9, 1.0, (1.0 - phase) * brightness))
 
 ## Draw the rocket body and animated exhaust around its current velocity direction.
 func draw_rocket() -> void:
 	var forward := velocity.normalized()
 	var side := Vector2(-forward.y, forward.x)
 	var flame_length := 22.0 + sin(age * 70.0) * 5.0
-	draw_line(-forward * 7.0, -forward * flame_length, Color(1.0, 0.37, 0.1, 0.15), 18.0, true)
-	draw_line(-forward * 7.0, -forward * flame_length, Color("ffb067"), 5.0, true)
-	draw_line(-forward * 7.0, -forward * (flame_length - 4.0), Color("fff3cc"), 2.0, true)
+	for bead in range(8, -1, -1):
+		var fraction := float(bead) / 8.0
+		var at := -forward * (7.0 + flame_length * fraction)
+		var radius := (4.0 + sin(age * 60.0 + bead) * 0.6) * (1.0 - fraction * 0.7)
+		draw_circle(at, radius * 2.4, Color(0.24, 0.64, 1.0, 0.065 * (1.0 - fraction)))
+		draw_circle(at, radius, Color(0.45, 0.83, 1.0, 1.0 - fraction * 0.8))
+		draw_circle(at, radius * 0.45, Color(0.92, 0.98, 1.0, 1.0 - fraction))
 	# Painted metal facets suggest a cylinder without adding 3D meshes or lights.
 	# Keep the reflection on the screen's upper-left side even as a rocket turns.
 	var lit_side := side if side.dot(Vector2(-0.6, -0.8)) >= 0.0 else -side

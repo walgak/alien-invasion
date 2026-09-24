@@ -70,7 +70,7 @@ func run_checks() -> void:
 		check(game.weapons.level == level, "collected weapon advances to level %d" % level)
 		game.clear_hazards()
 		game.fire_player_shot()
-		var expected: int = [0, 2, 3, 0, 2][level]
+		var expected: int = [0, 2, 3, 0, 3][level]
 		check(game.projectiles.size() == expected, "weapon level %d fires its own pattern" % level)
 	game.damage_ship()
 	check(game.lives == 2 and game.weapons.level == 4, "nonlethal damage preserves the weapon")
@@ -78,10 +78,10 @@ func run_checks() -> void:
 	game.damage_ship()
 	game.ship.invulnerable = 0
 	game.damage_ship()
-	check(game.lives == 1 and game.weapons.level == 0 and game.state == game.State.PLAYING, "lethal damage consumes upgrades and restores one life")
+	check(game.lives == 0 and game.weapons.level == 4 and game.state == game.State.LOST, "lethal damage ends the run without spending upgrades on a revival")
 	game.ship.invulnerable = 0
 	game.damage_ship()
-	check(game.state == game.State.LOST, "the final single-shooter life ends the run")
+	check(game.state == game.State.LOST and game.lives == 0, "damage after death cannot create negative lives or a revival")
 	game.start_run()
 	game.lives = 1
 	for i in range(4):
@@ -103,13 +103,13 @@ func run_checks() -> void:
 	check(not game.enemies.has(near) and not game.enemies.has(far), "continuous laser kills multiple exposed enemies")
 	game.clear_hazards()
 	game.weapons.level = 4
-	game.spawn_enemy(game.ship.position - Vector2(13, 170), Vector2.ZERO)
+	var target = game.spawn_enemy(game.ship.position - Vector2(13, 170), Vector2.ZERO)
 	game.spawn_enemy(game.ship.position + Vector2(45, -170), Vector2.ZERO)
 	for enemy in game.enemies:
 		enemy.health = 3
-	game.fire_player_shot()
+	game.combat.launch_cannon(target)
 	game.update_projectiles(0.3)
-	check(game.enemies.is_empty(), "rocket blast kills its direct target and the nearby three-hit alien")
+	check(game.enemies.is_empty(), "targeted cannon blast kills its direct target and the nearby three-hit alien")
 	game.start_run("swarm")
 	game.boss.summon_alien()
 	var alien = game.enemies[0]

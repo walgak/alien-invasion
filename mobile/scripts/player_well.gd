@@ -17,6 +17,12 @@ var origins: Dictionary[int, Vector2] = {}
 var active_age := 0.0
 var hole_color := Color("358cff")
 const PULL_SPEED := 90.0
+const MIN_LIFETIME := 3.0
+const MAX_LIFETIME := 7.5
+
+## Charge determines presentation and duration; it never raises pulling force.
+func lifetime_for_charge() -> float:
+	return lerpf(MIN_LIFETIME, MAX_LIFETIME, (clampf(charge, 1.0, 5.0) - 1.0) / 4.0)
 
 ## Only the active well takes over controls; its traveling rocket does not.
 func holds_steering() -> bool:
@@ -34,8 +40,8 @@ func step(delta: float) -> void:
 		cannon_position = cannon_position.move_toward(well_position, 1225.0 * delta)
 		if cannon_position.distance_to(well_position) < 1.0:
 			phase = "active"
-			remaining = charge * 1.5
-			well_scale = 1.8 * sqrt(charge)
+			remaining = lifetime_for_charge()
+			well_scale = 1.8 * sqrt(clampf(charge, 1.0, 5.0))
 			game.sound.play_effect("rift")
 			game.combat.vibrate("black_spawn")
 		queue_redraw()
@@ -52,7 +58,7 @@ func step(delta: float) -> void:
 		if not is_instance_valid(actor) or actor.is_queued_for_deletion():
 			continue
 		var id: int = actor.get_instance_id()
-		if not origins.has(id):
+		if actor != game.ship and not origins.has(id):
 			origins[id] = game.combat.returns.get(id, actor.position)
 			game.combat.returns.erase(id)
 		if actor == game.ship and (blocked or game.combat.shield_time > 0.0):
@@ -65,8 +71,7 @@ func step(delta: float) -> void:
 			actor.previous_position = actor.position
 		var nearest := Geometry2D.get_closest_point_to_segment(game.ship.position, before, actor.position)
 		if game.enemies.has(actor) and nearest.distance_to(game.ship.position) <= game.Enemy.HIT_RADIUS + game.Ship.HIT_RADIUS:
-			game.remove_enemy(actor)
-			game.damage_ship("An alien collided with your ship.")
+			game.handle_alien_collision(actor)
 			if game.state != game.State.PLAYING:
 				return
 			continue
@@ -74,7 +79,7 @@ func step(delta: float) -> void:
 			if actor == game.ship:
 				game.lose_ship("Caught in your own black hole.")
 			elif game.enemies.has(actor):
-				game.destroy_enemy(actor)
+				game.destroy_enemy(actor, false)
 			elif game.asteroids.has(actor):
 				game.hit_asteroid(actor, actor.health, false)
 			elif game.pickups.has(actor):
@@ -92,9 +97,10 @@ func finish_well() -> void:
 	if phase == "finished":
 		return
 	game.gravity_fields.add_exit(well_position, kind, well_scale)
+	game.request_cruise_return()
 	for id in origins.keys():
 		var actor = instance_from_id(id)
-		if is_instance_valid(actor) and not actor.is_queued_for_deletion() and not game.asteroids.has(actor):
+		if is_instance_valid(actor) and actor != game.ship and not actor.is_queued_for_deletion() and not game.asteroids.has(actor):
 			game.combat.returns[id] = origins[id]
 	phase = "finished"
 	game.lingering_wells.erase(self)
@@ -104,6 +110,7 @@ func finish_well() -> void:
 ## and its opaque horizon so the exact same artwork survives merging and death.
 func _draw() -> void:
 	if phase == "warning":
-		draw_circle(cannon_position, 10, Color("d6f7ff"))
-		draw_arc(cannon_position, 20, 0, TAU, 32, Color("4ea5ff"), 3, true)
+		for layer in range(6, 0, -1):
+			draw_circle(cannon_position, 5.0 + layer * 2.8, Color("4ea5ff", 0.04 + 0.025 * (6 - layer)))
+		draw_circle(cannon_position, 7, Color("d6f7ff"))
 		return

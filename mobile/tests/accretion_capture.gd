@@ -16,6 +16,10 @@ func check(ok: bool, message: String) -> void:
 		print("PASS: " + message)
 
 func capture(label: String) -> Image:
+	# Multiple GPU capture tools may change macOS focus. These are deterministic
+	# presentation snapshots, so clear focus-loss pause before sampling a frame.
+	if game.state == game.State.PAUSED:
+		game.state = game.State.PLAYING
 	game.interface.refresh()
 	game.refresh_space()
 	game.gravity_fields.queue_redraw()
@@ -71,7 +75,10 @@ func run() -> void:
 			game.combat.warp_pulses.append({"at": Vector2(70+i*25, 750), "age": 0.1})
 		game.refresh_space()
 		var lenses: PackedVector4Array = game.space_folds.material.get_shader_parameter("lenses")
-		check(lenses[0].x == 270.0 and game.space_folds.lens_count == 8, kind + " distortion survives a burst of tap rings")
+		var contains_well := false
+		for lens in lenses:
+			contains_well = contains_well or (lens.x == 270.0 and lens.y == 640.0 and lens.z > 200.0)
+		check(contains_well and game.space_folds.lens_count == 8, kind + " distortion survives a burst of tap rings and hazard protection")
 	game.start_run()
 	game.refresh_space()
 	check(game.gravity_fields.accretion_pool.all(func(v: Node2D) -> bool: return not v.visible), "new run hides reused accretion sprites")

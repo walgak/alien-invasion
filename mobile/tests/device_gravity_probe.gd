@@ -35,9 +35,14 @@ func run() -> void:
 			game.spawn_enemy(Vector2(80+i%7*60, 300+i/7*100), Vector2.ZERO)
 		for i in range(6):
 			game.spawn_asteroid(Vector2(80+i*65,300),Vector2.DOWN*30,20)
+		game.combat.add_gravity_charge(50.0)
+		game.combat.arm_gravity()
 		game.combat.press(0,Vector2(270,420))
-		game.combat.step(5)
 		game.combat.release(0,Vector2(270,420))
+		game.combat.step(0.34)
+		if game.lingering_wells.size() != 1:
+			record("FAIL: maximum-charge button did not launch a field")
+			return
 		for frame in range(660):
 			game._physics_process(1.0/60)
 			game._process(1.0/60)

@@ -15,6 +15,11 @@ var shake_button: Button
 var laser_button: Button
 var distortion_button: Button
 var font: Font
+var gravity_button: Button
+var laser_use_button: Button
+var cannon_button: Button
+var special_touches: Dictionary = {}
+var special_touch_msec := -1000
 
 ## Godot calls this once after the node joins the scene; initialize child nodes and cached resources here.
 func _ready() -> void:
@@ -49,6 +54,102 @@ func _ready() -> void:
 	distortion_button = make_button(false)
 	distortion_button.add_theme_font_size_override("font_size", 11)
 	distortion_button.pressed.connect(game.toggle_distortion)
+	gravity_button = make_special_button("gravity")
+	laser_use_button = make_special_button("laser")
+	cannon_button = make_special_button("cannon")
+
+## Native buttons support mouse/keyboard. iPhone multitouch is routed separately
+## before the GUI so a second finger never replaces the ship's steering finger.
+func make_special_button(action: String) -> Button:
+	var button := make_button(false)
+	button.add_theme_font_size_override("font_size", 13)
+	button.focus_mode = Control.FOCUS_NONE
+	button.pressed.connect(func():
+		if Time.get_ticks_msec() - special_touch_msec > 350:
+			activate_special(action))
+	return button
+
+func activate_special(action: String) -> void:
+	if game.state != game.State.PLAYING or game.death_time > 0.0:
+		return
+	if game.combat.gravity_blocks_control():
+		# Even taps over unavailable buttons remain useful for fighting gravity.
+		game.combat.press(-99, Vector2(game.arena.x * 0.5, game.arena.y * 0.7))
+		return
+	match action:
+		"gravity": game.combat.arm_gravity()
+		"laser": game.combat.activate_laser()
+		"cannon": game.combat.fire_cannon_volley()
+	refresh_special_buttons()
+
+func special_buttons() -> Array:
+	return [gravity_button, laser_use_button, cannon_button]
+
+## Return true only when this touch belongs to a button. A drag that began on
+## the ship can cross this panel freely; only a new press can capture a button.
+func route_special_touch(event: InputEvent) -> bool:
+	if game.state != game.State.PLAYING or game.death_time > 0.0:
+		special_touches.clear()
+		return false
+	if event is InputEventScreenDrag:
+		return special_touches.has(event.index)
+	if not event is InputEventScreenTouch:
+		return false
+	if event.pressed:
+		for index in range(3):
+			var button: Button = special_buttons()[index]
+			if button.visible and button.get_global_rect().has_point(event.position):
+				special_touches[event.index] = index
+				special_touch_msec = Time.get_ticks_msec()
+				return true
+	elif special_touches.has(event.index):
+		var index: int = special_touches[event.index]
+		var button: Button = special_buttons()[index]
+		special_touches.erase(event.index)
+		special_touch_msec = Time.get_ticks_msec()
+		if not event.canceled and button.visible and button.get_global_rect().has_point(event.position):
+			activate_special(["gravity", "laser", "cannon"][index])
+		return true
+	return false
+
+## Equipment clocks change every frame without rebuilding the GUI or clearing
+## focus. Muted styles communicate stock availability without swallowing taps.
+func _process(_delta: float) -> void:
+	if is_instance_valid(gravity_button):
+		refresh_special_buttons()
+
+func refresh_special_buttons() -> void:
+	if not is_instance_valid(gravity_button):
+		return
+	var playing: bool = game.state == game.State.PLAYING and game.death_time <= 0.0
+	for button in special_buttons():
+		button.visible = playing
+	if not playing:
+		special_touches.clear()
+		return
+	var combat = game.combat
+	var width: float = (game.arena.x - 64.0) / 3.0
+	for index in range(3):
+		var button: Button = special_buttons()[index]
+		button.position = Vector2(24.0 + index * (width + 8.0), game.arena.y - game.bottom_inset - 80.0)
+		button.size = Vector2(width, 58.0)
+	var charge: float = combat.gravity_charge
+	gravity_button.text = "GRAVITY  %d/10" % floori(charge)
+	if charge >= combat.GRAVITY_MIN_CHARGE:
+		var duration := lerpf(3.0, 7.5, clampf((charge - 10.0) / 40.0, 0.0, 1.0))
+		gravity_button.text = "GRAVITY  %.1fs" % duration
+	if combat.gravity_armed:
+		gravity_button.text = "CANCEL TARGET"
+	elif combat.pending_gravity_time >= 0.0:
+		gravity_button.text = "CHARGING…"
+	laser_use_button.text = "LASER  ×%d" % combat.laser_stock
+	if combat.laser_time > 0.0:
+		laser_use_button.text = ("PAUSE" if combat.laser_active else "RESUME") + "  %.1fs" % combat.laser_time
+	cannon_button.text = "CANNONS  %d" % combat.missiles
+	var blocked: bool = combat.gravity_blocks_control()
+	var ready: Array[bool] = [charge >= combat.GRAVITY_MIN_CHARGE and combat.pending_gravity_time < 0.0, combat.laser_stock > 0 or combat.laser_time > 0.0, combat.missiles >= 5]
+	for index in range(3):
+		special_buttons()[index].modulate = Color.WHITE if ready[index] and not blocked else Color(0.58, 0.65, 0.74)
 
 ## Create a real GUI button with shared colors and focus styling so touch and keyboard navigation work.
 func make_button(accent: bool) -> Button:
@@ -85,10 +186,11 @@ func refresh() -> void:
 	var menu: bool = game.state == game.State.MENU
 	var playing: bool = game.state == game.State.PLAYING
 	if game.death_time > 0.0:
-		for button in [primary, secondary, pause_button, sound_button, vibration_button, shake_button, laser_button, distortion_button]:
+		for button in [primary, secondary, pause_button, sound_button, vibration_button, shake_button, laser_button, distortion_button, gravity_button, laser_use_button, cannon_button]:
 			button.visible = false
 		queue_redraw()
 		return
+	refresh_special_buttons()
 	primary.visible = not playing
 	secondary.visible = not playing and not menu
 	pause_button.visible = playing
@@ -163,10 +265,10 @@ func _draw() -> void:
 		tracked("INVASION", top + 205, 56, 4.0, INK)
 		centered("Keep flying. Make every life count.", top + 250, 17, MUTED)
 		tracked("HIGH SCORE  %06d" % game.progress.best_for("endless"), top + 290, 12, 1.5, MINT)
-		centered("Hold your ship to fire · drag to steer", h - game.bottom_inset - 292, 16, Color("ffc56e"))
-		centered("Tap enemies for rockets · hold above to charge gravity", h - game.bottom_inset - 262, 13, MUTED)
-		centered("Release after 1–5 seconds · tap to resist gravity", h - game.bottom_inset - 239, 13, MUTED)
-		centered("Shield and laser pickups last 10 seconds", h - game.bottom_inset - 200, 13, INK)
+		centered("Hold your ship to fire · drag to steer", h - game.bottom_inset - 318, 16, Color("ffc56e"))
+		centered("Tap enemies for cannons · buttons deploy specials", h - game.bottom_inset - 292, 13, MUTED)
+		centered("Alien kills charge gravity · tap to resist a hole", h - game.bottom_inset - 270, 13, MUTED)
+		centered("Lasers save 10 seconds of fire · hull repairs up to 3", h - game.bottom_inset - 248, 13, INK)
 		return
 	draw_rect(Rect2(0, 0, w, top + 143), Color("080e20"))
 	text_at("SCORE", Vector2(28, top + 12), 11, MUTED)
@@ -176,8 +278,6 @@ func _draw() -> void:
 	text_at("HULL", Vector2(28, top + 84), 10, MUTED)
 	for i in range(3):
 		draw_circle(Vector2(77 + i * 22, top + 79), 5, MINT if i < game.lives else Color("293349"))
-	if game.weapons.level > 0:
-		text_at("+ BACKUP", Vector2(152, top + 84), 10, Color("ffc56e"))
 	text_at(game.weapons.weapon_name(), Vector2(w - 125, top + 84), 12, Color("ffc56e"))
 	if is_instance_valid(game.boss):
 		var boss_label: String = BOSS_NAMES.get(game.boss.kind, "BOSS")
@@ -190,14 +290,15 @@ func _draw() -> void:
 		tracked("SECTOR %02d  ·  DIFFICULTY %d%%" % [game.bosses_defeated + 1, game.difficulty_percent()], top + 119, 10, 1.0, MUTED)
 	if game.state == game.State.PLAYING:
 		var timed := ""
-		text_at("MISSILES %d" % game.combat.missiles, Vector2(28, top + 181), 12, Color("ffc56e"))
 		if game.combat.shield_time > 0.0:
 			timed += "SHIELD %.1fs  " % game.combat.shield_time
-		if game.combat.laser_time > 0.0:
+		if game.combat.laser_active and game.combat.laser_time > 0.0:
 			timed += "LASER %.1fs" % game.combat.laser_time
 		centered(timed, top + 162, 12, MINT)
-		if game.combat.gesture == "aim" and not game.gravity_is_active():
-			centered("GRAVITY CHARGE %.1f / 5s" % game.combat.held, h - game.bottom_inset - 38, 13, Color("c7a0ff"))
+		if game.combat.gravity_armed:
+			centered("TAP A DESTINATION · LIFT TO LAUNCH", h - game.bottom_inset - 94, 13, Color("96cfff"))
+		elif game.combat.pending_gravity_time >= 0.0:
+			centered("FOLDING SPACE", h - game.bottom_inset - 94, 13, Color("96cfff"))
 		if game.combat.gravity_blocks_control() and not is_instance_valid(game.boss):
 			centered("KEEP TAPPING · GRAVITY REMAINS", h * 0.43, 19, MINT)
 		if game.boss_warning > 0.0:
@@ -233,21 +334,6 @@ func draw_boss_notice() -> void:
 		return
 	# Keep instructions clear of the white hole that now often appears above the ship.
 	var y: float = game.arena.y * 0.52
-	if boss.kind == "white":
-		draw_rect(Rect2(Vector2(2.5, 2.5), size - Vector2(5, 5)), Color("36505e"), false, 3)
-		if boss.phase in ["warning", "active"]:
-			var edge_start := Vector2(3, size.y - 3)
-			var edge_end := Vector2(size.x - 3, size.y - 3)
-			if boss.white_push_direction == Vector2.UP:
-				edge_start.y = 3
-				edge_end.y = 3
-			elif boss.white_push_direction == Vector2.LEFT:
-				edge_start = Vector2(3, 3)
-				edge_end = Vector2(3, size.y - 3)
-			elif boss.white_push_direction == Vector2.RIGHT:
-				edge_start = Vector2(size.x - 3, 3)
-				edge_end = Vector2(size.x - 3, size.y - 3)
-			draw_line(edge_start, edge_end, Color("ffb86a"), 5)
 	if boss.phase in ["firefight", "arrival"]:
 		if boss.phase_time < 2.5:
 			centered("Dodge the boss's shots. Keep firing back.", y - 20, 14, MUTED)

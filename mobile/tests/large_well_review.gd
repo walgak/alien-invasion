@@ -64,7 +64,7 @@ func protected_field(kind: String, at: Vector2) -> Node2D:
 	game.combat.shield_time = 10
 	return well
 
-## Run against a disposable save and exercise the maximum size, death, revival,
+## Run against a disposable save and exercise maximum size, fatal core contact,
 ## merging, and timer completion without depending on rendering performance.
 func run() -> void:
 	if not OS.get_environment("ALIEN_SAVE_PATH").ends_with("large-well-review-record.cfg"):
@@ -86,7 +86,7 @@ func run() -> void:
 	check(game.state == game.State.PLAYING and game.lingering_wells.is_empty() and game.combat.returns.is_empty(), "maximum field frees swallowed actors and completes restoration")
 	fresh()
 	well = maximum_well(game.ship.position)
-	await frames(125)
+	await frames(ceili(game.death_visual.DURATION * 60.0) + 3)
 	check(game.state == game.State.LOST and game.death_time == 0 and game.interface.primary.visible, "unprotected maximum core completes loss animation instead of hanging")
 	fresh()
 	game.weapons.level = 2
@@ -95,9 +95,9 @@ func run() -> void:
 	for i in range(5):
 		game.spawn_enemy(Vector2(240 + i * 10, 520), Vector2.ZERO)
 	await frames(1)
-	check(game.state == game.State.PLAYING and game.lives == 1 and game.weapons.level == 0, "maximum core consumes one emergency upgrade without invalid actors")
-	await frames(660, true)
-	check(game.state == game.State.PLAYING and game.lingering_wells.is_empty() and game.combat.returns.is_empty(), "revived pilot can resist until field and restoration finish")
+	check(game.state == game.State.LOST and game.lives == 0 and game.weapons.level == 2, "upgraded weapons do not grant a revival from a lethal maximum core")
+	await frames(ceili(game.death_visual.DURATION * 60.0) + 3)
+	check(game.state == game.State.LOST and game.death_time == 0 and game.interface.primary.visible, "upgraded hull finishes its complete death sequence without reviving")
 	fresh()
 	game.combat.shield_time = 30
 	well = maximum_well(Vector2(270, 420))

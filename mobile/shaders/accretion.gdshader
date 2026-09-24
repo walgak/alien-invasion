@@ -41,5 +41,20 @@ void fragment() {
 		gas = mix(gas, vec3(0.91, 0.98, 1.0), 0.22 + inner * 0.26);
 		alpha = min(0.96, alpha * 1.13);
 	}
+	// Bounded shader particles share the exact disk angular velocity. Their
+	// radial cells advect inward for black holes and outward for white holes;
+	// no per-frame nodes, arrays, line segments or particle spawning is needed.
+	float particle_angle = angle - direction * visual_time * 0.23 - shell * 1.9;
+	float angular_cell = particle_angle * 24.0 / TAU;
+	float column = mod(floor(angular_cell), 24.0);
+	float seed = fract(sin(column * 127.1 + 17.7) * 43758.5453);
+	float radial_cell = shell * 5.0 - direction * visual_time * (0.68 + seed * 0.28) + seed * 7.0;
+	vec2 local = vec2(fract(angular_cell) - 0.5, fract(radial_cell) - 0.5);
+	float sparkle = exp(-dot(local * vec2(15.0, 24.0), local * vec2(15.0, 24.0)));
+	float halo = exp(-dot(local * vec2(6.0, 10.0), local * vec2(6.0, 10.0))) * 0.2;
+	float particle_envelope = smoothstep(0.01, 0.07, shell) * (1.0 - smoothstep(0.75, 0.98, shell));
+	float particles = (sparkle + halo) * particle_envelope;
+	gas += hot_color.rgb * particles * 1.3;
+	alpha = max(alpha, min(1.0, particles));
 	COLOR = vec4(gas, alpha);
 }

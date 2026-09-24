@@ -37,9 +37,11 @@ func run() -> void:
 		game.boss.take_hit(10000)
 		await shot(kind + "-remnant")
 	game.start_run()
+	game.combat.add_gravity_charge(20.0)
+	game.combat.arm_gravity()
 	game.combat.press(0, Vector2(250, 380))
-	game.combat.step(2)
 	game.combat.release(0, Vector2(250, 380))
+	game.combat.step(0.34)
 	var well: Node2D = game.lingering_wells[0]
 	well.step(1)
 	game.spawn_enemy(Vector2(100, 360), Vector2.ZERO)

@@ -13,6 +13,10 @@ uniform int strand_count = 0;
 uniform vec4 strands[6]; // boss/tail endpoint, rock/cannon endpoint
 uniform vec4 strand_styles[6]; // width, strength, simulation time, travel direction
 uniform float refraction_strength : hint_range(0.0, 1.0) = 1.0;
+uniform float edge_strength = 0.0;
+uniform float edge_release = 0.0;
+uniform float screen_corner_radius = 0.0;
+uniform float visual_time = 0.0;
 
 void fragment() {
 	// Sum a bounded set of well/rock lenses and tethers before sampling the sky once.
@@ -31,6 +35,7 @@ void fragment() {
 		// lenses retain their deeper throat distortion.
 		bool ring_mode = style.z > 1.5;
 		bool shield_mode = style.z > 2.5;
+		bool death_mode = style.z > 3.5;
 		bool object_mode = style.z > 0.5 && !ring_mode;
 		float flatten = object_mode ? 1.0 : (ring_mode ? 0.94 : 0.83);
 		vec2 surface = delta / vec2(1.0, flatten);
@@ -39,22 +44,26 @@ void fragment() {
 		vec2 normal = surface / radius;
 		float shell = max(radius - style.x, 0.0);
 		float ring_distance = abs(radius - style.x);
-		float ring_envelope = exp(-ring_distance * ring_distance / 155.0);
+		float ring_width = death_mode ? 60.0 : (shield_mode ? 28.0 : 24.0);
+		float ring_envelope = exp(-ring_distance * ring_distance / (ring_width * ring_width));
 		float envelope = ring_mode ? ring_envelope : (1.0 - smoothstep(lens.z * 0.66, lens.z, radius)) * smoothstep(style.x * 0.65, style.x + 9.0, radius);
 		float phase = shell * 0.255 - style.w * style.y * 5.5;
 		float wave = sin(phase);
 		float ripple = wave * envelope;
 		float throat = ring_mode ? ring_envelope : exp(-shell * shell / (object_mode ? 620.0 : 1750.0));
-		float bend = ring_mode ? (ring_envelope * sin(ring_distance * 0.32 - style.w * 7.0) * 25.0 * lens.w) : (ripple * (object_mode ? 3.0 : 9.0) + throat * (object_mode ? 15.0 : 27.0) * -style.y) * lens.w;
+		float bend = ring_mode ? (ring_envelope * clamp((radius - style.x) / ring_width, -1.0, 1.0) * (shield_mode ? 5.0 : 10.0) * lens.w * (1.0 + 0.12 * sin(style.w * 3.0))) : (ripple * (object_mode ? 3.0 : 9.0) + throat * (object_mode ? 15.0 : 27.0) * -style.y) * lens.w;
+		// One broad pressure front avoids tightly aliased concentric creases at
+		// death-wave strength. It stretches and compresses a wide band of sky.
+		if (death_mode) { bend = -ring_envelope * clamp((radius - style.x) / 60.0, -1.0, 1.0) * 4.0 * lens.w; }
 		vec2 tangent = vec2(-normal.y, normal.x);
 		// A smooth spiral throat carries the sky around the event horizon as well
 		// as into/out of it. Integer angular harmonics keep the atan seam invisible.
 		float swirl = 1.0;
 		if (!ring_mode && !object_mode) {
 			float angle = atan(surface.y, surface.x);
-			swirl = -style.y * (1.0 + 0.16 * sin(angle * 2.0 + shell * 0.06 - style.w * 0.7));
+			swirl = style.y * (1.0 + 0.16 * sin(angle * 2.0 + shell * 0.06 - style.w * 0.7));
 		}
-		displacement += (normal * bend + tangent * throat * (ring_mode ? 9.0 : (object_mode ? 0.0 : 6.0)) * swirl * lens.w) * vec2(1.0, flatten);
+		displacement += (normal * bend + tangent * throat * (death_mode ? 0.0 : (ring_mode ? 2.0 : (object_mode ? 0.0 : 6.0))) * swirl * lens.w) * vec2(1.0, flatten);
 		// Opposing light and shadow on each fold give its refracted ridge thickness.
 		float crest = pow(max(0.0, cos(phase)), 12.0) * envelope;
 		float trough = pow(max(0.0, -cos(phase + 0.55)), 6.0) * envelope;
@@ -63,9 +72,9 @@ void fragment() {
 		float lighting = 0.4 + 0.6 * max(dot(normal, normalize(vec2(-0.5, -0.8))), 0.0);
 		vec3 tint = style.y < 0.0 && !object_mode ? vec3(0.52, 0.40, 1.0) : vec3(0.40, 0.84, 1.0);
 		tint = mix(tint, lens_colors[i].rgb, lens_colors[i].a);
-		gleam += shield_mode ? vec3(0.0) : tint * (crest * 0.105 * lighting + rim * (ring_mode ? 0.55 : 0.2)) * lens.w;
-		shade += (trough * (shield_mode ? 0.006 : 0.2) + throat * (shield_mode ? 0.004 : 0.15)) * lens.w;
-		dispersion += (crest + rim) * (shield_mode ? 0.0 : 0.65) * lens.w;
+		gleam += shield_mode ? vec3(0.0) : tint * (ring_mode ? ring_envelope * 0.06 : (crest * 0.105 * lighting + rim * 0.2)) * lens.w;
+		shade += (ring_mode ? throat * 0.008 : (trough * 0.2 + throat * 0.15)) * lens.w;
+		dispersion += (ring_mode ? ring_envelope * (shield_mode ? 0.0 : 0.1) : (crest + rim) * 0.65) * lens.w;
 	}
 	for (int i = 0; i < 6; i++) {
 		if (i >= strand_count) { break; }
@@ -95,6 +104,24 @@ void fragment() {
 		gleam += vec3(0.33, 0.70, 0.9) * highlight * envelope * ends * style.y * 0.085;
 		shade += shadow * envelope * ends * style.y * 0.22;
 		dispersion += envelope * style.y * 0.3;
+	}
+	// A rounded-rectangle optical bubble follows the display's shape. Its broad
+	// refraction replaces painted boundary lines; release discharges the same
+	// edge field with light whenever any white hole expires or annihilates.
+	if (edge_strength > 0.0 || edge_release > 0.0) {
+		vec2 centered = pixel - arena_size * 0.5;
+		vec2 q = abs(centered) - (arena_size * 0.5 - vec2(7.0 + screen_corner_radius));
+		vec2 outside = max(q, vec2(0.0));
+		float distance_inside = -(length(outside) + min(max(q.x, q.y), 0.0) - screen_corner_radius);
+		vec2 normal = q.x > q.y ? vec2(sign(centered.x), 0.0) : vec2(0.0, sign(centered.y));
+		if (length(outside) > 0.01) { normal = normalize(outside) * sign(centered); }
+		float envelope = exp(-pow((distance_inside - 15.0) / 34.0, 2.0));
+		float release_envelope = exp(-pow((distance_inside - (1.0 - edge_release) * 100.0) / 45.0, 2.0));
+		float wave = sin(distance_inside * 0.09 - visual_time * 4.0);
+		displacement += normal * (wave * 38.0 + 35.0) * envelope * edge_strength;
+		displacement += normal * release_envelope * 75.0 * edge_release;
+		gleam += vec3(0.45, 0.85, 1.0) * (envelope * 0.07 * edge_strength + release_envelope * pow(edge_release, 3.0) * 0.65);
+		dispersion += envelope * edge_strength + release_envelope * edge_release;
 	}
 	// Keep sampling inside the copied viewport, including folds beside an edge.
 	vec2 half_pixel = SCREEN_PIXEL_SIZE * 0.5;

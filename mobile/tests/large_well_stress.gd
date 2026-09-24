@@ -27,9 +27,12 @@ func run() -> void:
 		game.spawn_enemy(Vector2(60 + (i % 7) * 65, 250 + (i / 7) * 200), Vector2.ZERO)
 	for i in range(8):
 		game.spawn_asteroid(Vector2(55 + i * 55, 310), Vector2.DOWN * 20, 20)
+	game.combat.add_gravity_charge(50.0)
+	game.combat.arm_gravity()
 	game.combat.press(0, Vector2(270, 420))
-	game.combat.step(5)
 	game.combat.release(0, Vector2(270, 420))
+	game.combat.step(0.34)
+	assert(game.lingering_wells.size() == 1, "Maximum-charge field must actually launch")
 	var max_cpu_us := 0
 	var cpu_us := 0
 	for frame in range(660):

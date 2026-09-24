@@ -3,14 +3,14 @@ extends RefCounted
 
 const Projectile = preload("res://scripts/projectile.gd")
 const MAX_LEVEL := 4
-const NAMES := ["SINGLE", "DOUBLE", "TRIPLE", "LASER", "ROCKETS"]
+const NAMES := ["SINGLE", "DOUBLE", "TRIPLE", "LASER", "PLASMA"]
 var level := 0
 
 ## Translate the clamped upgrade level into the label shown in the HUD.
 func weapon_name() -> String:
 	return NAMES[clampi(level, 0, MAX_LEVEL)]
 
-## Advance one weapon tier without exceeding the final rocket tier.
+## Advance one weapon tier without exceeding the final enhanced-plasma tier.
 func upgrade() -> void:
 	level = clampi(level + 1, 0, MAX_LEVEL)
 	if level == 3:
@@ -40,13 +40,12 @@ func fire(game: Node2D) -> float:
 			game.update_laser(0.0)
 			return 0.17
 		4:
-			for lane in [-1, 1]:
-				var rocket = spawn_shot(game, ship.muzzle_position(level, lane), Vector2(0.0, -660.0))
-				rocket.kind = "rocket"
-				rocket.damage = 3
-				rocket.blast_radius = 65.0
-			cooldown = 0.38
-			effect = "rocket"
+			# Stronger plasma keeps the same three guns, cadence and 850 speed.
+			for lane in [-1, 0, 1]:
+				var direction := Vector2(float(lane) * 110.0, -880.0).normalized()
+				var plasma = spawn_shot(game, ship.muzzle_position(level, lane), direction * 850.0)
+				plasma.kind = "plasma"
+				plasma.damage = 2
 	var sound := game.get("sound") as Node
 	if is_instance_valid(sound):
 		sound.call("play_effect", effect)

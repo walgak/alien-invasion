@@ -6,7 +6,7 @@ A playable Godot prototype developed from the original Python/Pygame game, inclu
 
 On this Mac, double-click `Play.command`. Alternatively, import `project.godot` in Godot and press **F5**. No Python packages or third-party Godot plugins are needed.
 
-Select **Launch endless flight**. Random alien groups and asteroids arrive regularly. About 45% of regular aliens zigzag; alien shot intervals are 1.05–1.9 seconds. Boss music announces an approaching boss after roughly 40–55 seconds of ordinary flight; victories continue the run with a short recovery. All four bosses appear once per shuffled set:
+Select **Launch endless flight**. Random alien groups and asteroids arrive regularly. About 45% of regular aliens zigzag; alien firing uses a 1.05–1.9-second reference divided by the current difficulty scale. Boss music announces an approaching boss after roughly 40–55 seconds of ordinary flight; victories continue the run with a short recovery. All four bosses appear once per shuffled set:
 
 
 | Flight | Objective |
@@ -16,15 +16,15 @@ Select **Launch endless flight**. Random alien groups and asteroids arrive regul
 | Swarm carrier | Dodge or shoot alien ships pulled from offscreen, tethered to the boss and thrown toward you. |
 | Asteroid forge | Shoot the boss as it pulls rocks from offscreen on attached space-fold strands, then slings them toward the ship. Small, medium, and large rocks take 5, 8, and 12 shots initially. |
 
-Every boss fight repeats the same cycle: exchange fire and dodge the boss's aimed volleys, face its signature special attack, then return to the firefight. A new special is scheduled after a random 5–9 seconds of normal fighting. Surviving a special does not damage the boss or end the battle. Only player weapons hitting its visible core reduce its health; reaching zero wins the fight and resumes endless flight. Boss health increases as more bosses are defeated.
+Every boss fight repeats the same cycle: exchange fire and dodge the boss's aimed volleys, face its signature special attack, then return to the firefight. A new special is scheduled after a random 5–9 seconds of normal fighting. Surviving a special does not damage the boss or end the battle. Player weapons and redirected asteroids reduce its health after the alien guards are destroyed; reaching zero wins the fight and resumes endless flight. Boss health increases as more bosses are defeated.
 
 Black-hole and white-hole attacks begin with a rift cannon fired five times faster than normal boss bullets. The cannon folds space as it travels, then explodes with an original high-to-low sci-fi blast and creates the hole. The hole stays active for four seconds of tapping. The asteroid boss warns, then pulls a finite barrage of rocks from offscreen using space-fold strands anchored to its body. Each rock pulls inward, pauses for a brief wind-up, and is slung toward the ship's position at release as its strands fade. The boss waits for the rocks to be dodged or destroyed before resuming normal shots. Damage already dealt to the boss persists between cycles.
 
-**Touch:** hold and drag in the lower flight area to steer and fire; lifting the finger leaves the ship idle. During an unshielded hole attack, lift your finger and tap repeatedly anywhere in the playfield. A shield preserves steering and firing during gravity. Old hostile bullets clear when tapping starts so they cannot hit you while steering is unavailable.
+**Touch:** hold and drag in the lower flight area to steer and fire; lifting the finger leaves the ship idle. During an unshielded hole attack, lift your finger and tap repeatedly anywhere in the playfield. A shield preserves steering and firing during gravity. The automatic hazard ward deflects incoming threats while steering is unavailable.
 
 Each tap fully cancels the hole's force for a brief beat. Keep tapping to hold the current position exactly. Tapping never pushes the ship away and never recovers ground lost; when the tap window expires, the pull or push resumes at full strength. The force meter shows whether neutralisation is active.
 
-Both gravity holes form in the lower-middle region (28–72% screen width, 57–70% screen height). Cannons aim at a fixed point rather than tracking the ship. A clearance check redirects an unsafe landing before the core opens. White holes push away from their core, usually downward. Any of the four edges can destroy the ship, and vertical displacement persists between special attacks. After lingering gravity ends, the ship flies smoothly back to its normal position.
+Both gravity holes form in the lower-middle region (28–72% screen width, 57–70% screen height). Cannons aim at a fixed point rather than tracking the ship. A clearance check redirects an unsafe landing before the core opens. White holes push away from their core, usually downward. Any of the four edges can destroy the ship, and surviving each attack schedules a smooth return to cruising height without resetting horizontal position.
 
 **Mouse:** click and drag to steer; click repeatedly to neutralise a hole.
 
@@ -36,11 +36,26 @@ Pause also activates when the application loses focus. The endless high score sa
 
 This is a desktop-playable project with mobile input and a portrait layout. It is not an App Store/Google Play release but supports a signed iPhone development installation. Physical-device touch feel, cutouts, interruptions, audio behavior, battery use, and difficulty still need to be tested. Android signing is not configured. The iOS preset exports an Xcode project for development signing with the configured Apple team.
 
-Random enemies drop weapon upgrades and life pickups. Extra basic upgrades have a 2% chance; advanced upgrades have a 0.5% chance with at most one laser/rocket upgrade drop per boss interval. Life drops have a 2% chance. Weapons progress from single to double, triple, and explosive rockets; laser is a separate ten-second pickup. Hull lives cap at three. Upgrades collectively supply one emergency life on lethal damage: weapons reset to single with one hull life remaining. Ordinary damage preserves the upgrade. Every defeated boss guarantees one drop. Surplus drops at maximum capacity score bonus points.
+### Special weapons
+
+- **Gravity:** eligible alien kills charge the button: 10 kills unlock the smallest hole and 50 fill it. Press the button, tap a safe destination, then lift. A one-third-second muzzle-charge animation plays before launch. A single hole lasts **3–7.5 seconds**; stored charge changes size and duration, never pull strength. Hole absorption and annihilation kills do not recharge it. If unshielded gravity interrupts preparation, the launch is canceled and the charge stays banked.
+- **Laser:** collect up to 99 charges. Its button selects a ten-second firing budget; lifting the steering finger pauses the clock. Toggle back to the primary guns and resume the same remaining budget later. Expiry restores the previous weapon and never automatically spends another charge.
+- **Cannons:** start with 30; drops add five, up to 99. Tapping an enemy fires one homing cannon. With at least five in stock, the button launches a volley at visible small aliens, prioritizing those nearest escape. It spends only the available ammunition needed for their health, accounting for cannons already in flight. Both controls share one inventory.
+
+The primary progression is **single → double → triple → enhanced triple plasma**. All primary bullets travel at 850 units/second with a 0.17-second cadence. Normal bullets deal one damage, enhanced plasma two, and cannons three plus splash within 65 pixels. The continuous laser instantly kills small aliens, deals one boss hit per 0.25 seconds, and reflects away from the player when it touches asteroids. It also pushes asteroids, with a stronger effect on small rocks.
+
+Hull lives have a strict maximum of three; health pickups refill them and weapon upgrades grant no backup life. Alien contact destroys the alien with an electrical discharge and costs one life. Unprotected asteroid contact and an escaped alien's homing gravity cannon are instant losses.
+
+Forced gravity tapping automatically supplies a hazard ward that deflects bullets, rocks and colliding aliens. It does **not** protect from the gravity core or lethal white-hole boundary. A collected ten-second shield also grants gravity immunity, steering and firing, including special weapons. Shields drop at one third the hull-repair rate. Only asteroids redirected by the player’s hole, shield/ward or laser can damage enemies: small aliens die; bosses take one cannon’s damage, respecting their alien guards. Fragments retain this ownership.
+
+Every hole closure requests smooth recovery to the normal cruising **Y** position while retaining X. Recovery waits for all overlapping gravity to end, including when a collected shield is active. Bosses recruit only aliens above the screen midpoint; lower aliens continue forward. Boss hulls stay clear of player event horizons for the entire attack, with a gravity-only distortion shield that does not change ordinary weapon damage.
 
 Final art, difficulty balancing, and store submission remain future work. Hole attacks temporarily replace dragging with tapping; that control switch and the tapping intensity are the main things to playtest. The tap rate and attack timing are tunable in `scripts/boss.gd`.
 
 ## Code guide
+
+- `combat_controls.gd`: independent steering/target fingers, special inventories, hazard ward and return bookkeeping.
+- `death_visual.gd`, `impact_visual.gd`: textured hull failure, fire, pressure wave and pooled electrical contact effects.
 
 - `game.gd`: run state, input, scoring, spawning, collisions, and app lifecycle.
 - `ship.gd`, `enemy.gd`, `projectile.gd`: arcade actors and summoned alien motion.
@@ -51,11 +66,11 @@ Final art, difficulty balancing, and store submission remain future work. Hole a
 - `progress.gd`: best scores and sound preference in a local ConfigFile.
 - `sound.gd`: original, synthesized effects and looping flight and boss music generated in memory, including the rift cannon pitch drop.
 
-All new artwork is drawn with Godot primitives; the icon is an original SVG. No artwork or recordings from the Python game are bundled here. Godot's bundled font is used. This document does not change the original repository's licensing.
+The 2D artwork combines detailed raster sprites, procedural rocks, plasma shaders and an original SVG icon. Asset prompts and provenance are recorded alongside the committed images. Original Python artwork and outside sound recordings are not bundled into the Godot game.
 
 ## Verification
 
-The headless checks cover run reset, three-life semantics, save/load, swept projectile collisions, steering, pause, touch ownership, both hole failure/survival paths, asteroid damage/destruction, weapon upgrades, emergency lives, and endless records. A second check sends events through Godot's GUI/input pipeline. Rendering captures use Godot's actual desktop renderer, including cannon frames and matching hole/asteroid frames with refraction disabled for comparison. Headless checks validate shader syntax but cannot verify GPU output.
+The headless checks cover run reset, three-life semantics, save/load, swept projectile collisions, steering, pause, touch ownership, both hole failure/survival paths, asteroid damage/destruction, weapon upgrades, special inventories, and endless records. A second check sends events through Godot's GUI/input pipeline. Rendering captures use Godot's actual desktop renderer, including cannon frames and matching hole/asteroid frames with refraction disabled for comparison. Headless checks validate shader syntax but cannot verify GPU output.
 
 From this directory, use a temporary save path ending in `smoke-record.cfg`:
 
@@ -69,7 +84,7 @@ ALIEN_SAVE_PATH=/tmp/alien-endless-record.cfg godot --headless --path . --script
 
 To capture screens, set `ALIEN_CAPTURE_DIR` to an existing output directory and run `tests/capture.gd` with a graphical display. The save override keeps test scores separate from your real records.
 
-Difficulty begins at 1% and rises by one point per boss defeated. It changes enemy firing frequency and drop chances, while movement, wave timing, bullet speeds, and gravity strength stay constant. Small alien ships take 3 hits initially, gaining one hit every two victories up to 9. Asteroids begin at 5/8/12 hits by size and gain one hit every two victories. Boss health follows floor(100 - 780 / (12 + victories)): 35, 40, 44, 48… with a 99-hit ceiling. The underlying curve approaches 100 without reaching it. Single/double/triple bullets all travel at 850 units/s with a 0.17-second firing interval. Rockets travel at 660 units/s; the ten-second laser instantly kills aliens, reflects harmlessly off asteroids, and deals one boss hit per 0.25 seconds. Original flight music switches to boss music during encounters. Planets drift through the sky and are replaced after passing offscreen.
+Difficulty begins at 1% and rises by one point per boss defeated. It changes enemy firing frequency and drop chances, while movement, wave timing, bullet speeds, and gravity strength stay constant. Small alien ships take 3 hits initially, gaining one hit every two victories up to 9. Asteroids begin at 5/8/12 hits by size and gain one hit every two victories. Boss health follows floor(100 - 780 / (12 + victories)): 35, 40, 44, 48… with a 99-hit ceiling. The underlying curve approaches 100 without reaching it. Single/double/triple bullets all travel at 850 units/s with a 0.17-second firing interval. Rockets travel at 660 units/s; the ten-second laser instantly kills aliens, pushes asteroids and reflects away from the player, and deals one boss hit per 0.25 seconds. Original flight music switches to boss music during encounters. Planets drift through the sky and are replaced after passing offscreen.
 
 ## iPhone development build
 
@@ -81,44 +96,17 @@ godot --headless --path mobile --export-debug iOS ../build/ios/AlienInvasion.zip
 open build/ios/AlienInvasion.xcodeproj
 ```
 
-Select your paired iPhone in Xcode and Run. The phone must have Developer Mode enabled and remain unlocked for installation/launch. Wireless deployment works with a paired device on the same network. Build output is ignored by Git. This is development signing, not an App Store release. See [Godot's iOS export guide](https://docs.godotengine.org/en/stable/tutorials/export/exporting_for_ios.html).
+Select your paired iPhone in Xcode and Run. The phone must have Developer Mode enabled and remain unlocked for installation/launch. Wireless deployment works with a paired device on the same network. If a development profile expires, let Xcode renew it with automatic signing before reinstalling. iOS may require trusting the renewed developer profile in Settings → General → VPN & Device Management. Build output is ignored by Git. This is development signing, not an App Store release. See [Godot's iOS export guide](https://docs.godotengine.org/en/stable/tutorials/export/exporting_for_ios.html).
 # Drop progression
 
 Drop rates above are the 50% reference. They scale with difficulty: at 1%, basic weapon and life drops each have a 0.04% chance per kill, and advanced upgrades have a 0.01% chance. At 50%, these reach 2%, 2%, and 0.5%. The advanced drop cap still applies; each regular or summoned swarm guarantees a drop on its first defeated alien, and each boss guarantees one drop. Extra drops retain these scaled chances.
 
 Shooting and explosion effects use a low-bass palette. Gravity spawns and boss deaths descend to an 18 Hz sub-bass tail with audible harmonics; a dedicated impact voice prevents gunfire from interrupting them. Guaranteed rewards choose weapons or life pickups while preserving the one-advanced-weapon-per-boss-interval limit. At a full pickup budget, the oldest uncollected pickup is replaced by the guaranteed reward.
 
-## Boss shields, death attacks, and continuous laser
+## Presentation and code
 
-Surviving aliens remain when a boss arrives and physically form its shield. The boss is invulnerable until every guard is defeated. Unfinished attacks keep their own remaining lifetime after boss death. Black bosses implode; white bosses explode. Each leaves a larger hole lasting eight seconds, in addition to any existing well. Keep tapping until gravity ends; the ship then returns smoothly to cruise position.
+The game remains 2D. Detailed player and alien sprites have baked armor depth, blue/violet engine plasma, and matching weapon hardpoints. Black-hole particles spiral inward; white holes emit them outward, with spin matching the disk. Gravity taps, shields, tethers and screen edges use soft plasma and background refraction rather than line strokes. White departures always release light, including the edge bubble. Rounded iPhone edges use the safe-area geometry; desktop edges remain square.
 
-Weapon pickups add visible barrels and progressively wider ship hulls. The laser is a continuous electric beam: ordinary aliens die instantly, asteroids reflect the beam away from the player, and bosses lose one health every 0.25 seconds. Leaving the beam resets exposure. Ship hits have dedicated audio, and explosions are louder.
+Ship deaths bend, stretch and snap the textured hull, ignite a fire explosion, then expand a distortion wave beyond the screen before showing the menu. Black event horizons mask every fragment and fire pixel inside the core. Black-hole engine burn increases strongly with proximity; player engines stay blue. Lighting remains consistent within each sector and changes gradually between sectors.
 
-Read [the commented-code guide](../docs/CODE_GUIDE.md) for ownership, update order, tuning values, test commands and the iPhone workflow.
-
-## Current touch controls
-
-Hold the lower flight area to fire and drag to steer. Release to float idle. Tap an enemy to launch a targeted rocket. Hold the upper playfield for 1–5 seconds and release to create a charged black hole; during gravity, taps only neutralise force. Shields and lasers last ten seconds. Lasers reflect off asteroids, and shields are the only protection against asteroid impact or an escaped alien's cannon. Sound and vibration have separate menu switches. See `../docs/CODE_GUIDE.md` for implementation notes and tuning.
-
-Shields last ten seconds and drop at one third the hull-repair rate. Asteroid impact and an escaped alien’s homing black-hole cannon are instant losses unless shielded; direct alien contact costs one life. Hold the upper playfield for 1–5 seconds and release to launch a player black hole. Gravity cancels firing, and surviving pulled actors return smoothly afterward. Each survived white-hole attack also returns the player toward the normal flight position.
-
-### Latest combat behavior
-
-Targeting missiles start at 30 and missile drops add five. Laser time drains only while firing. A shield allows movement and shooting during gravity; it also allows charging a gravity counterattack. Player holes last 1.5 times their 1–5-second charge. Black holes attract and merge, white holes repel, and opposite holes cancel into a player-safe shockwave. Asteroids keep altered trajectories; surviving ships recover with visible thrust, and player recovery changes only height. Tractor bosses leave a glowing remnant until their current barrage finishes. A death animation explains the loss before the menu appears. Lighting eases between sector directions without sudden changes.
-
-
-### Gravity and visual polish
-
-Black holes swallow fragmented hull plates behind an opaque event horizon. Shot deaths explode; collision and white-edge deaths crumble first. Ships rotate their thrusters against gravity and ease upright afterwards. Shielded players can steer, shoot, and charge another black hole; a shielded escape-cannon hit produces a harmless visual shockwave.
-
-The flowing laser bends through gravity and terminates in a glow on a boss or its guard-powered shield. Rockets retain gravity curvature while homing. Every expired hole leaves a two-stage pulse, and gravity has gentle acceleration/deceleration plus continuous low vibration. Background planets vary in size, surface and rings, appear less often, and share a smoothly changing distant light source; passing foreground suns have been removed.
-
-Fresh asteroid scale selects its initial material: ash, magma, or cyan ore. Interlocking plates with rounded shading and moving mineral highlights give these 2D rocks depth. Destroyed large rocks break into two medium fragments, then into four small fragments; all fragments keep their original mineral material and use their new size's normal health progression. Opposing sideways impulses spread the pieces while preserving average momentum. Every destroyed piece earns 25 points. Swallowed, escaped and colliding rocks do not create fragments.
-
-Ships and bosses use brighter raised armor, shaded recesses, beveled rims and simulated reflection highlights. Rockets and pickups share the same 2D shading approach; no 3D models or rendering viewport are used.
-
-Black and white holes share a detailed animated accretion texture: inward blue or alien-coloured plasma surrounds an opaque black horizon; outward icy plasma surrounds a luminous white core. The hole distortion is 40% stronger, with active fields prioritized over cosmetic tap rings. The background has richer cyan, violet and magenta nebulae without brightening the entire void.
-
-The player shield remains a gravity lens, with a faint cyan halo added only for visibility: it strongly distorts the sky and redirects incoming bullets and rocks along curved paths. Resistance taps keep a separate segmented gravity-warp pulse. Black-hole cores have luminous spiral accretion ribbons around a fully opaque event horizon. Player-created holes are blue-cyan; alien hole colour is randomly selected and remains stable for the encounter. The escaped-alien cannon has an offscreen warning marker, boss shields break with a brief time beat, and explosions use rock, armor, or energy debris appropriate to their source. Touch release is handled once, while enemy haptics are rate-limited without repeatedly restarting the continuous gravity rumble.
-
-Ships, bosses, asteroids, weapons, and explosions retain the crisp code-drawn 2D style. Boss hit positions evade player-created wells before they open.
+See the [code guide](../docs/CODE_GUIDE.md) for ownership, tuning and test commands, the [fighter assets](assets/ships/README.md) for sprites and prompts, and the [gravity assets](assets/effects/README.md) for accretion textures. Artifacts in `build/` are generated and ignored by Git.

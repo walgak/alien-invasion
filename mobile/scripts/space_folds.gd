@@ -7,6 +7,8 @@ const PlayerWell = preload("res://scripts/player_well.gd")
 const FoldShader = preload("res://shaders/space_folds.gdshader")
 var lens_count := 0
 var strand_count := 0
+var white_edge_strength := 0.0
+var white_edge_release := 0.0
 
 ## Construct defaults before this object enters the scene tree; do not depend on ready child nodes here.
 func _init() -> void:
@@ -27,9 +29,24 @@ func update_effects(game: Node2D) -> void:
 	var strands := PackedVector4Array()
 	var strand_styles := PackedVector4Array()
 	var boss: Node2D = game.boss
+	white_edge_strength = 0.0
+	white_edge_release = 0.0
+	for well in game.gravity_fields.active_wells():
+		if well.kind == "white":
+			white_edge_strength = 1.0
+	for effect in game.gravity_fields.exits:
+		if effect.kind == "white":
+			white_edge_release = maxf(white_edge_release, 1.0 - clampf(effect.age / 1.2, 0.0, 1.0))
+	# Safe-area insets identify rounded home-indicator iPhones. Keep desktop and
+	# square displays square; a conservative corner follows the physical inset.
+	var corner_radius := clampf(game.bottom_inset * 1.5, 24.0, 58.0) if OS.get_name() == "iOS" and game.bottom_inset > 0.0 else 0.0
+	material.set_shader_parameter("screen_corner_radius", corner_radius)
+	material.set_shader_parameter("edge_strength", white_edge_strength)
+	material.set_shader_parameter("edge_release", white_edge_release)
+	material.set_shader_parameter("visual_time", game.visual_time)
 	# Reserve one slot for the shield, then pack active wells before short tap
 	# pulses and exit waves. Rapid tapping must never evict an active gravity lens.
-	if game.combat.shield_time > 0.0 and lenses.size() < MAX_LENSES:
+	if game.combat.hazards_protected() and lenses.size() < MAX_LENSES:
 		# The shield is intentionally extreme: it should visibly drag stars and
 		# nebulae around the hull even on a small, bright phone display.
 		lenses.append(Vector4(game.ship.position.x, game.ship.position.y, 152.0, 13.5))
@@ -47,6 +64,26 @@ func update_effects(game: Node2D) -> void:
 	for well in game.lingering_wells:
 		if well.kind in ["black", "white"] and well.holds_steering():
 			append_active_well(well, lenses, styles, lens_colors)
+	# Boss immunity reads as the same refractive bubble as the player's shield.
+	# This visual does not change the guard-based damage gate.
+	if is_instance_valid(boss) and boss.visible and (game.boss_is_shielded() or boss.has_player_gravity_threat()) and lenses.size() < MAX_LENSES:
+		var guards: Array = game.enemies.filter(func(enemy: Node2D) -> bool: return enemy.shield_guard)
+		var shield_strength := float(guards.size()) / maxf(1.0, boss.guard_total)
+		var gravity_shield: bool = boss.has_player_gravity_threat()
+		lenses.append(Vector4(boss.body_position.x, boss.body_position.y, 185.0, 8.5 if gravity_shield else 2.0 + shield_strength * 4.5))
+		styles.append(Vector4(104.0, 1.0, 3.0, game.visual_time))
+	if game.combat.pending_gravity_time >= 0.0 and lenses.size() < MAX_LENSES:
+		var muzzle: Vector2 = game.ship.muzzle_position(game.weapons.level, 0, true)
+		var preparation: float = 1.0 - clampf(game.combat.pending_gravity_time * 3.0, 0.0, 1.0)
+		lenses.append(Vector4(muzzle.x, muzzle.y, 75.0, 1.5 + preparation * 2.5))
+		styles.append(Vector4(4.0 + (1.0 - preparation) * 20.0, -1.0, 1.0, game.visual_time))
+	if game.death_visual.has_method("warp_state") and lenses.size() < MAX_LENSES:
+		var death_warp: Dictionary = game.death_visual.warp_state()
+		if not death_warp.is_empty():
+			var at: Vector2 = death_warp.at
+			var radius: float = death_warp.radius
+			lenses.append(Vector4(at.x, at.y, radius + 100.0, death_warp.strength))
+			styles.append(Vector4(radius, 1.0, 4.0, game.visual_time))
 	for pulse in game.combat.warp_pulses:
 		if lenses.size() >= MAX_LENSES:
 			break
@@ -71,11 +108,6 @@ func update_effects(game: Node2D) -> void:
 			radius = (effect.radius + 95.0) * (1.0 - age / 0.55)
 		lenses.append(Vector4(effect.at.x, effect.at.y, radius + 75.0, 1.5 * (1.0 - age / 1.2)))
 		styles.append(Vector4(maxf(radius, 2.0), -1.0 if black else 1.0, 2.0, game.visual_time))
-	if is_instance_valid(boss) and game.boss_is_shielded() and lenses.size() < MAX_LENSES:
-		var guards: Array = game.enemies.filter(func(enemy: Node2D) -> bool: return enemy.shield_guard)
-		var shield_strength := float(guards.size()) / maxf(1.0, boss.guard_total)
-		lenses.append(Vector4(boss.body_position.x, boss.body_position.y, 145.0, 0.75 + shield_strength * 0.65))
-		styles.append(Vector4(76.0, 1.0, 2.0, game.visual_time * 0.65))
 	for well in game.lingering_wells:
 		if well.kind in ["asteroid", "swarm"] and lenses.size() < MAX_LENSES:
 			var core: Vector2 = well.body_position + Vector2(0, 42)
@@ -139,7 +171,7 @@ func update_effects(game: Node2D) -> void:
 	material.set_shader_parameter("strands", strands)
 	material.set_shader_parameter("strand_styles", strand_styles)
 	material.set_shader_parameter("refraction_strength", game.progress.distortion_strength)
-	visible = lens_count > 0 or strand_count > 0
+	visible = lens_count > 0 or strand_count > 0 or white_edge_strength > 0.0 or white_edge_release > 0.0
 
 ## Amplify only active gravity throats; all shield, pulse and tether values stay
 ## independent. The shared eight-lens budget bounds fragment work on the phone.

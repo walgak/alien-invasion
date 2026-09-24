@@ -57,8 +57,6 @@ func close_well(well: Node2D) -> void:
 	if well is PlayerWell:
 		well.finish_well()
 	else:
-		if well.kind == "white":
-			game.returning_to_cruise = true
 		well.return_to_firefight()
 
 ## Advance attraction, repulsion and safe annihilation, then delayed blast damage.
@@ -108,7 +106,8 @@ func step(delta: float) -> void:
 			wave.fired = true
 			for enemy in game.enemies.duplicate():
 				if enemy.position.distance_to(wave.at) <= wave.radius:
-					game.damage_target(enemy, "enemy", enemy.health)
+					# A player-generated gravity chain must not refill its own charge.
+					game.destroy_enemy(enemy, false)
 			for rock in game.asteroids.duplicate():
 				if rock.position.distance_to(wave.at) <= wave.radius:
 					game.damage_target(rock, "rock", 5)
@@ -153,7 +152,7 @@ func _draw() -> void:
 			draw_circle(wave.at, 15 + wave.age * 90, Color(0.8, 0.9, 1, 0.7))
 		else:
 			var progress: float = clampf((wave.age - 0.35) / 0.75, 0.0, 1.0)
-			draw_arc(wave.at, maxf(1.0, wave.radius * progress), 0, TAU, 96, Color(0.7, 0.95, 1, 1 - progress), 6, true)
+			draw_soft_light(wave.at, maxf(1.0, wave.radius * progress), Color("b9f8ff"), (1.0 - progress) * 0.18)
 
 	# Always composite opaque cores last. Ships, beam filaments and hull shards
 	# must never show through the event horizon regardless of scene insertion order.
@@ -187,7 +186,6 @@ func visual_step(delta: float) -> void:
 ## final opaque mask makes the event horizon absolute even during ship crumble.
 func draw_horizon(at: Vector2, radius: float, color: Color) -> void:
 	draw_circle(at, radius, Color.BLACK)
-	draw_arc(at, radius + 0.5, 0, TAU, 112, Color(color.lightened(0.72), 0.72), 0.9, true)
 
 ## A white singularity is a radiant source with the same physical core size.
 ## The surrounding sprite runs its radial plasma motion outward, not inward.
@@ -196,25 +194,26 @@ func draw_white_core(at: Vector2, radius: float) -> void:
 		var fraction := float(layer) / 24.0
 		var tint := Color("a4e4ff").lerp(Color("ffffef"), pow(1.0 - fraction, 0.45))
 		draw_circle(at, radius * fraction, tint)
-	draw_arc(at, radius + 0.6, 0, TAU, 96, Color("efffff"), 1.3, true)
 
-## Hull shield strength is tied to living guards, not boss health. Individual
-## strands make the connection to each guard obvious, and fade as guards die.
+## The full shield silhouette is refraction, never a stroked circle or spokes.
+## Its soft light weakens with the guards; a separate gravity-only field is
+## visible while the boss avoids a player horizon and grants no damage immunity.
 func draw_guard_shield() -> void:
 	if not is_instance_valid(game.boss) or game.boss.phase == "arrival":
 		return
 	var guards: Array = game.enemies.filter(func(e: Node2D) -> bool: return e.shield_guard)
-	if guards.is_empty():
+	var gravity_shield: bool = game.boss.has_player_gravity_threat()
+	if guards.is_empty() and not gravity_shield:
 		return
 	var strength := float(guards.size()) / maxf(1.0, game.boss.guard_total)
 	var center: Vector2 = game.boss.body_position
-	draw_circle(center, 76, Color(0.2, 0.75, 1, 0.025 + strength * 0.075))
-	for i in range(12):
-		var angle: float = float(i) * TAU / 12.0 + game.visual_time * 0.06
-		draw_arc(center, 76, angle, angle + TAU / 12.0 * (0.3 + 0.65 * strength), 8, Color(0.35, 0.86, 1, 0.18 + 0.55 * strength), 1.0 + strength * 2.0, true)
-	for guard in guards:
-		var direction: Vector2 = (guard.position - center).normalized()
-		draw_line(center + direction * 76, guard.position, Color(0.3, 0.8, 1, 0.15 + strength * 0.2), 1.5, true)
+	draw_soft_light(center, 112.0, Color("8f95ff") if gravity_shield else Color("69d9ff"), 0.008 + strength * 0.014)
+
+## Nested filled discs form a soft light volume without a painted outline.
+func draw_soft_light(at: Vector2, radius: float, tint: Color, alpha: float) -> void:
+	for layer in range(7, 0, -1):
+		var fraction := float(layer) / 7.0
+		draw_circle(at, radius * fraction, Color(tint, alpha * (1.0 - fraction * 0.72)))
 
 ## Black: contract first, then release. White: immediate outward energy and two
 ## expanding folds. All counts are fixed so larger charges cost no extra geometry.
@@ -224,16 +223,11 @@ func draw_exits() -> void:
 		var black: bool = effect.kind == "black"
 		var tint := Color("b894ff") if black else Color("b9f8ff")
 		var outward_age: float = age - (0.55 if black else 0.0)
-		for ring in range(2):
-			var t := clampf((age - float(ring) * 0.09) / (0.55 if black else 0.95), 0.0, 1.0)
-			var radius: float = (effect.radius + 95.0) * (1.0 - t) if black else effect.radius + t * 180.0
-			if t < 1.0:
-				draw_arc(effect.at, maxf(1.0, radius), 0, TAU, 80, Color(tint, (1.0 - t) * 0.65), 2.5, true)
 		if black and age < 0.55:
 			draw_circle(effect.at, maxf(0.1, effect.radius * (1.0 - age / 0.55)), Color("01030a"))
 		if outward_age >= 0.0:
 			var t := clampf(outward_age / 0.65, 0, 1)
-			for ray in range(20):
-				var direction := Vector2.from_angle(float(ray) * TAU / 20.0 + float(ray % 3) * 0.07)
-				var radius: float = 15 + sqrt(t) * (125 + ray % 4 * 14)
-				draw_line(effect.at + direction * radius * 0.65, effect.at + direction * radius, Color(tint, (1 - t) * 0.65), 2, true)
+			draw_soft_light(effect.at, 22.0 + sqrt(t) * (effect.radius + 185.0), tint, (1.0 - t) * (0.28 if not black else 0.18))
+			# White departure immediately releases the compressed screen bubble.
+			if not black:
+				draw_rect(Rect2(Vector2.ZERO, game.arena), Color("d8f9ff", pow(1.0 - t, 4.0) * 0.22))

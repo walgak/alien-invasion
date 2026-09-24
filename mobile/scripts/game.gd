@@ -82,6 +82,7 @@ var death_radius := 31.0
 var death_synthetic := false
 var death_hole_color := Color("a45cff")
 var death_visual = preload("res://scripts/death_visual.gd").new()
+var impact_visual = preload("res://scripts/impact_visual.gd").new()
 var target_light := sector_light
 var guard_break_time := 0.0
 var shake_time := 0.0
@@ -100,6 +101,7 @@ func _ready() -> void:
 	add_child(gravity_fields)
 	death_visual.game = self
 	add_child(death_visual)
+	add_child(impact_visual)
 	add_child(sound)
 	sound.enabled = progress.sound_enabled
 	interface.game = self
@@ -192,8 +194,15 @@ func restore_cruise_position() -> void:
 	ship.lean = 0.0
 	pointer_id = -1
 
+## Every gravity exit converges on one recovery path. Never restore a stale
+## upper-screen position captured by a second overlapping field, or change X.
+func request_cruise_return() -> void:
+	returning_to_cruise = true
+	combat.returns.erase(ship.get_instance_id())
+
 ## Free every run-owned actor, including persistent laser and detached attacks, when restarting or returning to title.
 func clear_actors() -> void:
+	impact_visual.clear()
 	combat.reset()
 	gravity_fields.shockwaves.clear()
 	gravity_fields.exits.clear()
@@ -201,8 +210,7 @@ func clear_actors() -> void:
 	guard_break_time = 0.0
 	shake_time = 0.0
 	shake_strength = 0.0
-	death_visual.pieces.clear()
-	death_visual.queue_redraw()
+	death_visual.clear()
 	if is_instance_valid(laser):
 		laser.queue_free()
 	laser = null
@@ -252,7 +260,7 @@ func _physics_process(delta: float) -> void:
 	if combat.gravity_blocks_control() or combat.controls_actor(ship):
 		ship.animate(delta)
 		ship.invulnerable = maxf(0, ship.invulnerable - delta)
-	elif returning_to_cruise:
+	elif returning_to_cruise and not gravity_is_active():
 		ship.position.y = move_toward(ship.position.y, cruise_position().y, 260.0 * delta)
 		ship.move_ship(delta, clampf(direction, -1, 1), arena.x)
 		ship.invulnerable = maxf(ship.invulnerable, 0.2)
@@ -316,8 +324,6 @@ func update_director(delta: float) -> void:
 	if boss_timer <= 0.0:
 		pending_boss = next_boss_kind()
 		boss_warning = 3.0
-		for enemy in enemies:
-			enemy.shield_guard = true
 		sound.set_boss_music(true)
 		interface.refresh()
 		return
@@ -386,10 +392,11 @@ func begin_boss(kind: String) -> void:
 	boss.health = boss.max_health
 	add_child(boss)
 	boss.step(0.0)
-	for i in range(enemies.size()):
-		enemies[i].shield_guard = true
-		enemies[i].guard_angle = TAU * float(i) / maxf(1.0, enemies.size())
-	boss.guard_total = enemies.size()
+	var guards: Array = enemies.filter(func(enemy: Node2D) -> bool: return enemy.position.y < arena.y*0.5)
+	for i in range(guards.size()):
+		guards[i].shield_guard = true
+		guards[i].guard_angle = TAU * float(i) / maxf(1.0, guards.size())
+	boss.guard_total = guards.size()
 	sound.set_boss_music(true)
 	interface.refresh()
 
@@ -416,7 +423,7 @@ func defeat_boss(defeated: Node2D) -> void:
 					particle.velocity = (at - particle.position) * 2.0
 	defeated.queue_free()
 	boss = null
-	returning_to_cruise = true
+	request_cruise_return()
 	ship.invulnerable = maxf(ship.invulnerable, 2.5)
 	guaranteed_drop(Vector2(ship.position.x, ship.position.y - 130.0))
 	recovery_time = 3.0
@@ -483,7 +490,7 @@ func update_laser(delta: float) -> void:
 	laser.setup_laser(muzzle, Vector2(muzzle.x, top_inset + 140))
 	laser.age += delta
 	laser.absorbed = false
-	laser.beam_segments = reflected_laser(muzzle)
+	laser.beam_segments = reflected_laser(muzzle, delta)
 	laser.queue_redraw()
 	var contacts: Dictionary = {}
 	var targets: Array[Node2D] = []
@@ -496,7 +503,7 @@ func update_laser(delta: float) -> void:
 			continue
 		var at: Vector2 = actor.body_position if kind == "boss" else actor.position
 		var radius: float = Boss.HIT_RADIUS if kind == "boss" else (Enemy.HIT_RADIUS if kind == "enemy" else actor.radius)
-		if not laser.intersects(at, radius):
+		if not visible_shot_intersects(laser, at, radius):
 			continue
 		var id := actor.get_instance_id()
 		var exposure: float = laser_exposure.get(id, 0.0) + delta
@@ -512,7 +519,7 @@ func update_laser(delta: float) -> void:
 
 ## Trace bounded short rays through gravity. Asteroids reflect at the surface;
 ## boss hulls/shields absorb at first contact, so beams cannot cross the boss.
-func reflected_laser(start: Vector2) -> Array[Vector2]:
+func reflected_laser(start: Vector2, pressure_delta: float = 0.0) -> Array[Vector2]:
 	var segments: Array[Vector2] = []
 	var origin := start
 	var direction := Vector2.UP
@@ -552,6 +559,13 @@ func reflected_laser(start: Vector2) -> Array[Vector2]:
 				break
 			visited.append(reflector)
 			var normal: Vector2 = (end-reflector.position).normalized()
+			# The beam transfers momentum continuously; a small rock responds
+			# more strongly. Preview traces (delta zero) never alter the simulation.
+			if pressure_delta > 0.0:
+				var push := (direction-normal*0.7).normalized()
+				reflector.velocity += push * 180.0 * pow(20.0/reflector.radius,2.0) * pressure_delta
+				reflector.velocity = reflector.velocity.limit_length(550.0)
+				reflector.player_deflected = true
 			direction = direction - 2.0 * direction.dot(normal) * normal
 			if direction.y > 0.0:
 				direction = Vector2(normal.y, -normal.x)
@@ -589,6 +603,7 @@ func _process(delta: float) -> void:
 		shake_time = maxf(0.0, shake_time - delta)
 		shake_strength = move_toward(shake_strength, 0.0, delta * 24.0)
 		visual_time += delta
+		impact_visual.step(delta)
 		gravity_fields.visual_step(delta)
 		sector_light = sector_light.slerp(target_light, 1.0-exp(-delta*0.035)).normalized()
 		if state != State.PLAYING:
@@ -637,8 +652,7 @@ func update_enemies(delta: float) -> void:
 			enemy.position.x = clampf(enemy.position.x, 32.0, arena.x - 32.0)
 		var closest := Geometry2D.get_closest_point_to_segment(ship.position, enemy.previous_position, enemy.position)
 		if closest.distance_to(ship.position) < Ship.HIT_RADIUS + Enemy.HIT_RADIUS:
-			remove_enemy(enemy)
-			damage_ship("An alien collided with your ship.")
+			handle_alien_collision(enemy)
 			if state != State.PLAYING:
 				return
 			continue
@@ -685,12 +699,16 @@ func update_projectiles(delta: float) -> void:
 			var speed := 1225.0 if shot.kind == "doom" else 660.0
 			shot.velocity = shot.velocity.normalized().lerp((aim-shot.position).normalized(), 1.0-exp(-delta*4.0)).normalized()*speed
 		bend_projectile(shot, delta)
-		if shot.hostile and combat.shield_time > 0.0:
+		if shot.hostile and combat.hazards_protected():
 			deflect_shield_projectile(shot, delta)
 		shot.advance(delta)
 		if shot.hostile:
 			if shot.intersects(ship.position, Ship.HIT_RADIUS + 3.0):
-				if combat.shield_time > 0.0:
+				if combat.hazards_protected():
+					if shot.kind == "doom":
+						gravity_fields.visual_shockwave(ship.position)
+						remove_projectile(shot)
+						continue
 					# Reposition at the lens boundary rather than deleting the shot. The
 					# curved escape path proves that the shield redirected its momentum.
 					var radial: Vector2 = (shot.position-ship.position).normalized()
@@ -718,12 +736,12 @@ func update_projectiles(delta: float) -> void:
 		else:
 			var targets: Array[Dictionary] = []
 			for rock in asteroids:
-				if target_is_exposed(rock, "rock") and shot.intersects(rock.position, rock.radius):
+				if target_is_exposed(rock, "rock") and visible_shot_intersects(shot, rock.position, rock.radius):
 					targets.append({"actor": rock, "type": "rock", "at": rock.position})
-			if is_instance_valid(boss) and target_is_exposed(boss, "boss") and shot.intersects(boss.body_position, Boss.HIT_RADIUS):
+			if is_instance_valid(boss) and target_is_exposed(boss, "boss") and visible_shot_intersects(shot, boss.body_position, Boss.HIT_RADIUS):
 				targets.append({"actor": boss, "type": "boss", "at": boss.body_position})
 			for enemy in enemies:
-				if target_is_exposed(enemy, "enemy") and shot.intersects(enemy.position, Enemy.HIT_RADIUS):
+				if target_is_exposed(enemy, "enemy") and visible_shot_intersects(shot, enemy.position, Enemy.HIT_RADIUS):
 					targets.append({"actor": enemy, "type": "enemy", "at": enemy.position})
 			targets.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 				return shot.previous_position.distance_squared_to(a.at) < shot.previous_position.distance_squared_to(b.at))
@@ -763,16 +781,50 @@ func deflect_shield_projectile(shot: Node2D, delta: float) -> void:
 	var strength := approach*pow(1.0-clampf(distance/180.0,0.0,1.0),1.35)
 	shot.velocity = shot.velocity.lerp(desired,clampf((1.0-exp(-delta*26.0))*strength*3.2,0.0,0.92)).normalized()*shot.velocity.length()
 	if shot.kind == "doom" and distance < 120.0:
+		if is_instance_valid(shot.homing_target):
+			gravity_fields.visual_shockwave(shot.position)
 		shot.homing_target = null
 	shot.queue_redraw()
 
-## Reject targets outside the playable area or still in boss arrival, including hits from lasers and splash.
+## Partly visible targets are vulnerable. Only the actually visible swept shot
+## segment can register a hit, so this does not restore offscreen spawn kills.
 func target_is_exposed(actor: Node2D, kind: String) -> bool:
 	var at: Vector2 = actor.body_position if kind == "boss" else actor.position
 	var radius: float = Boss.HIT_RADIUS if kind == "boss" else (actor.radius if kind == "rock" else Enemy.HIT_RADIUS)
 	if kind == "boss" and actor.phase == "arrival":
 		return false
-	return at.x - radius >= 0.0 and at.x + radius <= arena.x and at.y - radius >= top_inset + 140.0 and at.y + radius <= arena.y
+	var nearest := at.clamp(Vector2(0,top_inset+140.0),arena)
+	return nearest.distance_squared_to(at) <= radius*radius
+
+## Liang–Barsky clipping gives collision a real on-screen segment even if a
+## high-speed bullet crosses the boundary between physics frames.
+func clipped_shot_segment(from: Vector2, to: Vector2) -> PackedVector2Array:
+	var step := to-from
+	var low := 0.0
+	var high := 1.0
+	var p := [-step.x,step.x,-step.y,step.y]
+	var q := [from.x,arena.x-from.x,from.y-(top_inset+140.0),arena.y-from.y]
+	for i in range(4):
+		if absf(p[i]) < 0.00001:
+			if q[i] < 0.0: return PackedVector2Array()
+		else:
+			var t: float = q[i]/p[i]
+			if p[i] < 0.0: low=maxf(low,t)
+			else: high=minf(high,t)
+			if low > high: return PackedVector2Array()
+	return PackedVector2Array([from+step*low,from+step*high])
+
+func visible_shot_intersects(shot: Node2D, at: Vector2, radius: float) -> bool:
+	var segments: Array[Vector2] = []
+	if shot.kind == "laser" and not shot.beam_segments.is_empty():
+		segments.assign(shot.beam_segments)
+	else:
+		segments.assign([shot.previous_position,shot.position])
+	for i in range(0,segments.size()-1,2):
+		var clipped := clipped_shot_segment(segments[i],segments[i+1])
+		if clipped.size() == 2 and Geometry2D.get_closest_point_to_segment(at,clipped[0],clipped[1]).distance_squared_to(at) <= pow(radius+(5.0 if shot.kind=="laser" else 0.0),2.0):
+			return true
+	return false
 
 ## Route damage by actor type while enforcing exposure and the boss's alien shield gate.
 func damage_target(actor: Node2D, kind: String, amount: int) -> void:
@@ -807,10 +859,12 @@ func remove_projectile(shot: Node2D) -> void:
 	shot.queue_free()
 
 ## Award score and the group's guaranteed/random pickup before removing the defeated alien.
-func destroy_enemy(enemy: Node2D) -> void:
+func destroy_enemy(enemy: Node2D, award_gravity_charge: bool = true) -> void:
 	if not enemies.has(enemy):
 		return
 	burst(enemy.position, enemy.tint, 18)
+	if award_gravity_charge:
+		combat.add_gravity_charge()
 	combat.vibrate("enemy")
 	if not enemy.drop_group.is_empty() and not enemy.drop_group.dropped:
 		enemy.drop_group.dropped = true
@@ -832,6 +886,22 @@ func remove_enemy(enemy: Node2D) -> void:
 	enemies.erase(enemy)
 	enemy.queue_free()
 
+## Contact discharges hull energy into the alien. Hazard protection deflects it
+## instead; invulnerability prevents repeated life loss, not the impact visual.
+func handle_alien_collision(enemy: Node2D) -> void:
+	if not enemies.has(enemy): return
+	if combat.hazards_protected():
+		var radial: Vector2 = (enemy.position-ship.position).normalized()
+		if radial == Vector2.ZERO: radial=Vector2.RIGHT
+		enemy.position=ship.position+radial*(Enemy.HIT_RADIUS+Ship.HIT_RADIUS+20.0)
+		enemy.previous_position=enemy.position
+		enemy.velocity=radial*maxf(enemy.velocity.length(),140.0)
+		return
+	# The transient effect is also used during a lethal collision before the menu.
+	impact_visual.play_collision(ship.position,enemy.position)
+	destroy_enemy(enemy)
+	damage_ship("An alien collided with your ship.")
+
 ## Ensure a pickup even at the actor cap, choosing life versus weapon while preserving advanced-tier rarity.
 func guaranteed_drop(at: Vector2) -> void:
 	# Keep the guarantee even when old, uncollected drops fill the actor budget.
@@ -839,7 +909,7 @@ func guaranteed_drop(at: Vector2) -> void:
 		var oldest: Node2D = pickups.pop_front()
 		oldest.queue_free()
 	var pending := pickups.filter(func(drop: Node2D) -> bool: return drop.kind == "weapon").size()
-	var projected: int = weapons.level + pending
+	var projected: int = (combat.previous_weapon if combat.laser_active else weapons.level) + pending
 	var kind := "life"
 	if projected < 2:
 		kind = "weapon" if rng.randf() < 0.65 else "life"
@@ -853,12 +923,13 @@ func maybe_drop_pickup(at: Vector2) -> void:
 	kills_since_drop += 1
 	var roll := rng.randf()
 	var pending := pickups.filter(func(drop: Node2D) -> bool: return drop.kind == "weapon").size()
-	var advanced: bool = weapons.level + pending >= 2
+	var primary: int = combat.previous_weapon if combat.laser_active else weapons.level
+	var advanced: bool = primary + pending >= 2
 	var drop_scale := difficulty_scale()
 	if advanced:
 		# Reserve the sector allowance when dropped, including uncollected drops.
 		if advanced_drop_sector != bosses_defeated and roll < minf(1.0, 0.005 * drop_scale):
-			spawn_pickup(at, "laser" if weapons.level >= 4 else "weapon")
+			spawn_pickup(at, "laser" if primary >= 4 else "weapon")
 			advanced_drop_sector = bosses_defeated
 			kills_since_drop = 0
 	elif roll < minf(1.0, 0.02 * drop_scale):
@@ -875,10 +946,10 @@ func spawn_pickup(at: Vector2, kind: String) -> void:
 	if kind == "life" and rng.randf() < 0.25:
 		kind = "missiles"
 	# Support drops are 3:1 hull to shield. Rare advanced rolls may grant a
-	# temporary laser instead of the final permanent rocket upgrade.
+	# stored laser instead of the final permanent plasma upgrade.
 	if kind == "life" and rng.randf() < 0.25:
 		kind = "shield"
-	if kind == "weapon" and weapons.level >= 2 and rng.randf() < 0.5:
+	if kind == "weapon" and (combat.previous_weapon if combat.laser_active else weapons.level) >= 2 and rng.randf() < 0.5:
 		kind = "laser"
 	pickup.kind = kind
 	pickup.position = Vector2(clampf(at.x, 30.0, arena.x - 30.0), maxf(at.y, top_inset + 110.0))
@@ -910,14 +981,14 @@ func collect_pickup(pickup: Node2D) -> void:
 	if not pickups.has(pickup):
 		return
 	if pickup.kind == "missiles":
-		combat.missiles += 5
-		pickup_notice = "TARGETED MISSILES +5"
+		combat.missiles = mini(99,combat.missiles+5)
+		pickup_notice = "TARGETED CANNONS +5"
 	elif pickup.kind == "shield":
 		combat.shield_time = 10.0
 		pickup_notice = "SHIELD · 10 SECONDS"
 	elif pickup.kind == "laser":
-		combat.equip_laser()
-		pickup_notice = "LASER · 10 SECONDS"
+		combat.collect_laser()
+		pickup_notice = "LASER STORED · 10 SECONDS"
 	elif pickup.kind == "life":
 		if lives < MAX_LIVES:
 			lives += 1
@@ -926,7 +997,7 @@ func collect_pickup(pickup: Node2D) -> void:
 			add_score(100)
 			pickup_notice = "FULL HULL  +100"
 	else:
-		if combat.laser_time > 0.0:
+		if combat.laser_active:
 			weapons.level = combat.previous_weapon
 		if weapons.level < WeaponSystem.MAX_LEVEL:
 			weapons.upgrade()
@@ -935,7 +1006,7 @@ func collect_pickup(pickup: Node2D) -> void:
 		else:
 			add_score(150)
 			pickup_notice = "MAX WEAPON  +150"
-		if combat.laser_time > 0.0:
+		if combat.laser_active:
 			combat.previous_weapon = weapons.level
 			weapons.level = 3
 	pickup_notice_time = 2.0
@@ -987,10 +1058,11 @@ func update_asteroids(delta: float) -> void:
 			if well is PlayerWell and well.holds_steering():
 				rock.motion_phase = "flight"
 				rock.velocity += (well.well_position - rock.position).normalized() * 90.0 * delta
+				if delta > 0.0: rock.player_deflected = true
 		if is_instance_valid(boss) and boss.kind == "asteroid":
 			rock.fold_origin = boss.body_position + Vector2(0, 42)
 		rock.advance(delta, ship.position)
-		if combat.shield_time > 0.0:
+		if combat.hazards_protected():
 			var shield_offset: Vector2 = rock.position-ship.position
 			var shield_distance := maxf(shield_offset.length(),1.0)
 			if shield_distance < 155.0 and rock.velocity.dot(shield_offset) < 0.0:
@@ -998,6 +1070,7 @@ func update_asteroids(delta: float) -> void:
 				var side := 1.0 if rock.velocity.cross(radial)>=0.0 else -1.0
 				var redirected: Vector2 = (radial*0.85+radial.orthogonal()*side).normalized()*rock.velocity.length()
 				rock.velocity=rock.velocity.lerp(redirected,clampf((1.0-shield_distance/155.0)*delta*8.0,0.0,0.82)).normalized()*rock.velocity.length()
+				if delta > 0.0: rock.player_deflected = true
 		var swallowed := false
 		for well in lingering_wells:
 			if well is PlayerWell and well.holds_steering() and rock.position.distance_to(well.well_position) < 29.0 * well.well_scale:
@@ -1006,14 +1079,17 @@ func update_asteroids(delta: float) -> void:
 				break
 		if swallowed:
 			continue
+		if rock.player_deflected and resolve_deflected_rock(rock):
+			continue
 		var closest := Geometry2D.get_closest_point_to_segment(ship.position, rock.previous_position, rock.position)
 		if closest.distance_to(ship.position) <= rock.radius + Ship.HIT_RADIUS:
-			if combat.shield_time > 0.0:
+			if combat.hazards_protected():
 				var radial:Vector2=(rock.position-ship.position).normalized()
 				if radial==Vector2.ZERO: radial=Vector2.RIGHT
 				rock.position=ship.position+radial*(rock.radius+Ship.HIT_RADIUS+8.0)
 				rock.previous_position=rock.position
 				rock.velocity=(radial+radial.orthogonal()).normalized()*maxf(rock.velocity.length(),120.0)
+				rock.player_deflected=true
 				continue
 			remove_asteroid(rock)
 			instant_loss("An asteroid struck your ship.")
@@ -1021,6 +1097,24 @@ func update_asteroids(delta: float) -> void:
 				return
 		elif rock.motion_phase == "flight" and (rock.position.y > arena.y + 80 or rock.position.y < -140 or rock.position.x < -140 or rock.position.x > arena.x + 140):
 			remove_asteroid(rock)
+
+## Redirected ore is a player weapon until destroyed. Resolve one impact and
+## fracture immediately, preventing a single overlap from draining boss HP.
+func resolve_deflected_rock(rock: Node2D) -> bool:
+	for enemy in enemies.duplicate():
+		if not target_is_exposed(enemy,"enemy"): continue
+		var contact := Geometry2D.get_closest_point_to_segment(enemy.position,rock.previous_position,rock.position)
+		if contact.distance_to(enemy.position) <= rock.radius+Enemy.HIT_RADIUS:
+			destroy_enemy(enemy)
+			hit_asteroid(rock,rock.health)
+			return true
+	if is_instance_valid(boss) and target_is_exposed(boss,"boss"):
+		var contact := Geometry2D.get_closest_point_to_segment(boss.body_position,rock.previous_position,rock.position)
+		if contact.distance_to(boss.body_position) <= rock.radius+(76.0 if boss_is_shielded() else Boss.HIT_RADIUS):
+			damage_target(boss,"boss",3)
+			hit_asteroid(rock,rock.health)
+			return true
+	return false
 
 ## Only weapon/shockwave destruction fractures ore. Absorbed rocks vanish whole.
 ## Removing the parent first prevents same-frame hits from duplicating its reward.
@@ -1051,28 +1145,27 @@ func fracture_asteroid(rock: Node2D) -> void:
 			travel + side * 62.0 * direction, child_radius, 0, Vector2.INF, Vector2.ZERO, rock.visual_kind)
 		child.rotation = rock.rotation + direction * 0.3
 		child.spin = rock.spin + direction * 0.65
+		child.player_deflected = rock.player_deflected
 
 ## Remove a rock from the update list before scheduling its node for deletion.
 func remove_asteroid(rock: Node2D) -> void:
 	asteroids.erase(rock)
 	rock.queue_free()
 
-## Handle lethal gravity contact, consuming an upgrade-backed emergency life if one is available.
+## Gravity cores and unshielded edges end the run regardless of remaining hull lives.
 func lose_ship(reason: String) -> void:
 	if state != State.PLAYING or combat.shield_time > 0.0:
 		return
 	lives = 0
-	if use_emergency_life():
-		return
 	ship.visible = false
 	loss_reason = reason
 	burst(ship.position, Color("ff816f"), 42)
 	sound.play_effect("hit")
 	finish_run(false)
 
-## Apply one hull hit unless invulnerable, play dedicated feedback, and handle emergency life or game over.
+## Ordinary shots and alien collisions cost one of the three refillable hull lives.
 func damage_ship(reason: String = "Enemy fire destroyed your ship.") -> void:
-	if state != State.PLAYING or ship.invulnerable > 0.0 or combat.shield_time > 0.0:
+	if state != State.PLAYING or ship.invulnerable > 0.0 or combat.hazards_protected():
 		return
 	combat.vibrate("hit")
 	lives -= 1
@@ -1080,8 +1173,6 @@ func damage_ship(reason: String = "Enemy fire destroyed your ship.") -> void:
 	burst(ship.position, Color("ff816f"), 28)
 	sound.play_effect("hit")
 	if lives == 0:
-		if use_emergency_life():
-			return
 		loss_reason = reason
 		ship.visible = false
 		finish_run(false)
@@ -1091,26 +1182,10 @@ func damage_ship(reason: String = "Enemy fire destroyed your ship.") -> void:
 		if shot.hostile:
 			remove_projectile(shot)
 
-## Consume the weapon upgrade to revive at one hull life, clear hazards, and reset the weapon to single.
+## Compatibility query: weapon upgrades never grant additional lives.
 func use_emergency_life() -> bool:
-	if weapons.level <= 0:
-		return false
-	weapons.level = 0
-	combat.laser_time = 0.0
-	combat.previous_weapon = 0
-	lives = 1
-	ship.visible = true
-	ship.invulnerable = 2.5
-	restore_cruise_position()
-	clear_hazards()
-	if is_instance_valid(boss):
-		boss.return_to_firefight()
-	shot_timer = 0.0
-	pickup_notice = "EMERGENCY LIFE · SINGLE SHOT"
-	pickup_notice_time = 3.0
-	sound.play_effect("pickup")
-	interface.refresh()
-	return true
+	# Kept as a compatibility query for older tooling; upgrades are never lives.
+	return false
 
 ## End a lost run and save records; the legacy win path delegates to endless boss victory handling.
 func finish_run(won: bool) -> void:
@@ -1141,7 +1216,7 @@ func choose_sector_light() -> void:
 
 ## Freeze gameplay but delay the menu for a distinct, cause-specific destruction.
 func start_death_animation() -> void:
-	death_time = 1.8
+	death_time = death_visual.DURATION
 	death_origin = ship.position
 	death_target = ship.position
 	death_radius = 31.0
@@ -1173,7 +1248,7 @@ func start_death_animation() -> void:
 func update_death_animation(delta: float) -> void:
 	death_time = maxf(0.0, death_time-delta)
 	if death_synthetic:
-		death_radius = lerpf(3.0,31.0,clampf((1.8-death_time)/0.8,0,1))
+		death_radius = lerpf(3.0,31.0,clampf((death_visual.DURATION-death_time)/0.8,0,1))
 	for well in gravity_fields.active_wells():
 		well.animation_time += delta
 		well.queue_redraw()
@@ -1299,10 +1374,13 @@ func burst(at: Vector2, tint: Color, count: int) -> void:
 func _input(event: InputEvent) -> void:
 	if state != State.PLAYING:
 		return
-	if event is InputEventScreenTouch and not event.pressed and combat.finger == event.index:
+	if interface.route_special_touch(event):
+		get_viewport().set_input_as_handled()
+		return
+	if event is InputEventScreenTouch and not event.pressed and combat.owns_pointer(event.index):
 		combat.release(event.index, event.position, event.canceled)
 		get_viewport().set_input_as_handled()
-	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed and event.device != InputEvent.DEVICE_ID_EMULATION and combat.finger == -2:
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed and event.device != InputEvent.DEVICE_ID_EMULATION and combat.owns_pointer(-2):
 		combat.release(-2, event.position)
 		get_viewport().set_input_as_handled()
 
@@ -1352,9 +1430,7 @@ func _notification(what: int) -> void:
 func _draw() -> void:
 	if state == State.MENU:
 		var center := Vector2(arena.x * 0.5, arena.y * 0.475)
-		draw_arc(center, 106, 0.0, TAU, 90, Color("203248"), 1, true)
-		draw_arc(center, 130, visual_time * 0.15, visual_time * 0.15 + PI * 1.15, 80, Color("284856"), 1, true)
-		draw_circle(center + Vector2.from_angle(visual_time * 0.15) * 130, 3, Color("55e8d0"))
+		draw_circle(center, 120, Color(0.12,0.55,0.85,0.035))
 	# An escaped alien attacks from below. This indicator tracks its cannon until
 	# the fast projectile enters the playfield, so a sudden loss has a visible cause.
 	for shot in projectiles:
@@ -1364,7 +1440,7 @@ func _draw() -> void:
 		var direction: Vector2 = (ship.position - edge).normalized()
 		var side := direction.orthogonal()
 		draw_colored_polygon(PackedVector2Array([edge + direction * 16, edge - direction * 8 + side * 8, edge - direction * 8 - side * 8]), Color("c7a0ff"))
-		draw_arc(edge, 22 + sin(visual_time * 8.0) * 3.0, 0, TAU, 28, Color(0.72, 0.45, 1.0, 0.7), 2, true)
+		draw_circle(edge, 23 + sin(visual_time * 8.0)*3.0, Color(0.72,0.45,1.0,0.12))
 	for particle in particles:
 		var tint: Color = particle.tint
 		tint.a = particle.life / particle.duration
@@ -1375,5 +1451,5 @@ func _draw() -> void:
 			var side := direction.orthogonal()
 			draw_colored_polygon(PackedVector2Array([particle.position + direction * particle.radius * 1.8, particle.position - direction * particle.radius + side * particle.radius, particle.position - direction * particle.radius - side * particle.radius]), tint)
 		else:
-			var direction: Vector2 = particle.velocity.normalized()
-			draw_line(particle.position - direction * particle.radius * 2.0, particle.position + direction * particle.radius, tint, particle.radius, true)
+			draw_circle(particle.position,particle.radius*2.5,Color(tint,tint.a*0.13))
+			draw_circle(particle.position,particle.radius,tint)

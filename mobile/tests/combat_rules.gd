@@ -70,7 +70,7 @@ func run() -> void:
 	game.weapons.level = 2
 	game.ship.invulnerable = 99
 	game.update_asteroids(0.01)
-	check(game.state == game.State.LOST and game.lives == 0, "asteroid impact bypasses hull, backup and normal invulnerability")
+	check(game.state == game.State.LOST and game.lives == 0, "asteroid impact bypasses ordinary hull lives and normal invulnerability")
 	fresh()
 	game.spawn_asteroid(Vector2(270, 1030), Vector2.DOWN * 100, 20)
 	game.update_asteroids(0.01)
@@ -100,13 +100,15 @@ func run() -> void:
 	check(game.state == game.State.LOST, "shield expires after ten gameplay seconds")
 	fresh()
 	game.weapons.level = 2
-	game.combat.equip_laser()
+	game.combat.collect_laser()
+	game.combat.activate_laser()
 	game.combat.press(0, game.ship.position)
 	game.combat.step(9.9)
 	check(game.weapons.level == 3, "laser lasts ten seconds")
 	game.combat.step(0.11)
 	check(game.weapons.level == 2, "laser restores previous weapon")
-	game.combat.equip_laser()
+	game.combat.collect_laser()
+	game.combat.activate_laser()
 	game.pause_run()
 	tick(2)
 	check(game.combat.laser_time == 10, "pause does not spend laser duration")
@@ -128,7 +130,8 @@ func run() -> void:
 	game.begin_boss("black")
 	game.boss.step(1.5)
 	game.ship.position.x = game.boss.body_position.x
-	game.combat.equip_laser()
+	game.combat.collect_laser()
+	game.combat.activate_laser()
 	game.combat.press(0, game.ship.position)
 	var boss_hp: float = game.boss.health
 	game.update_laser(0.24)
@@ -149,23 +152,27 @@ func run() -> void:
 	game.combat.step(0.9)
 	game.combat.release(0, Vector2(270, 400))
 	check(game.lingering_wells.is_empty(), "short empty tap does not launch gravity")
+	game.combat.add_gravity_charge(80.0)
+	game.combat.arm_gravity()
 	game.combat.press(0, Vector2(270, 400))
-	game.combat.step(7)
 	game.combat.release(0, Vector2(270, 400))
+	game.combat.step(game.combat.GRAVITY_PREPARATION)
 	var well: Node2D = game.lingering_wells[0]
-	check(well.charge == 5 and not well.holds_steering(), "charge caps at five and first launches a rocket")
+	check(well.charge == 5 and not well.holds_steering(), "kill charge caps at size five and first launches a rocket")
 	well.step(1)
 	check(well.holds_steering() and well.remaining == 7.5, "lifetime starts on implosion")
 	fresh()
-	game.spawn_enemy(Vector2(70, 250), Vector2.ZERO)
+	game.spawn_enemy(Vector2(20, 180), Vector2.ZERO)
 	enemy = game.enemies[0]
 	var original: Vector2 = enemy.position
+	game.combat.add_gravity_charge(10.0)
+	game.combat.arm_gravity()
 	game.combat.press(0, Vector2(270, 400))
-	game.combat.step(1)
 	game.combat.release(0, Vector2(270, 400))
+	game.combat.step(game.combat.GRAVITY_PREPARATION)
 	well = game.lingering_wells[0]
 	well.step(1)
-	check(is_equal_approx(well.well_scale, 1.8) and well.remaining == 1.5, "minimum charge matches boss death-well size and lasts one and a half seconds")
+	check(is_equal_approx(well.well_scale, 1.8) and well.remaining == 3.0, "minimum kill charge matches boss death-well size and lasts three seconds")
 	well.step(0.1)
 	check(enemy.position.distance_to(original) < 9.0 and enemy.position.distance_to(original) > 7.0, "pull accelerates gently below the original ninety-pixel speed")
 	var before_large: Vector2 = enemy.position
@@ -184,10 +191,10 @@ func run() -> void:
 	game.begin_boss("asteroid")
 	game.boss.step(1.5)
 	var boss_position: Vector2 = game.boss.body_position
-	well.step(1.21)
+	well.step(well.remaining + 0.01)
 	check(game.boss.body_position == boss_position, "boss resists player well")
 	check(game.combat.returns.has(enemy.get_instance_id()), "surviving alien schedules return")
-	game.combat.step(1)
+	game.combat.step(2)
 	check(enemy.position.is_equal_approx(original), "survivor returns to original position")
 	fresh()
 	var health_drops := 0

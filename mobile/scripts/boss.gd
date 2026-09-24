@@ -2,6 +2,8 @@ extends Node2D
 ## A repeating firefight, random special attack, and return to the firefight.
 
 const HIT_RADIUS := 54.0
+## Protect the complete visible hull, not merely its smaller damage collider.
+const GRAVITY_HULL_RADIUS := 96.0
 const HullFinish = preload("res://scripts/hull_finish.gd")
 const WARNING_SECONDS := 1.25
 const ACTIVE_SECONDS := 4.0
@@ -114,8 +116,6 @@ func step(delta: float) -> void:
 		# Expiration must run before contact handling. A shielded core/edge
 		# contact cannot keep returning early and strand an attack forever.
 		if phase_time >= well_duration:
-			if kind == "white":
-				game.returning_to_cruise = true
 			return_to_firefight()
 			return
 		var force_blocked: bool = neutralise_time > 0.0 or game.combat.shield_time > 0.0
@@ -139,30 +139,68 @@ func step(delta: float) -> void:
 		if kind == "white" and touches_screen_edge() and game.combat.shield_time <= 0.0:
 			game.lose_ship("The white hole pushed you into the boundary.")
 			return
+	if not lingering:
+		body_position = safe_player_well_position(body_position, false)
 	queue_redraw()
 
 ## Boss hulls are immune to player gravity, but no longer sit visually behind a
 ## well. They read its destination and burn sideways before the core opens.
 func update_player_well_dodge(delta: float, patrol: Vector2) -> void:
-	var threat: Node2D
-	var nearest := INF
+	var desired := safe_player_well_position(patrol) - patrol
+	dodge_offset = dodge_offset.move_toward(desired, (420.0 if desired != Vector2.ZERO else 190.0) * delta)
+	# A merged/moving well can sweep across a previously safe path. Project that
+	# intermediate point too, so easing cannot carry the hull through a core.
+	dodge_offset = safe_player_well_position(patrol + dodge_offset, false) - patrol
+
+## The shield explains gravity immunity only; damage still follows guard health.
+func has_player_gravity_threat() -> bool:
+	if game.combat.pending_gravity_time >= 0.0:
+		return true
 	for well in game.lingering_wells:
-		if well.get_script()!=game.PlayerWell or well.phase == "finished":
+		if well.get_script() == game.PlayerWell and well.phase != "finished" and not well.is_queued_for_deletion():
+			return true
+	return false
+
+## Evaluate every live player horizon, including growth after a merge. Warning
+## rockets use their future size so the boss begins its dodge before impact.
+func player_well_clearance(at: Vector2, anticipate: bool = true) -> float:
+	var clearance := INF
+	if anticipate and game.combat.pending_gravity_time >= 0.0:
+		var scale: float = 1.8 * sqrt(clampf(game.combat.pending_gravity_charge, 1.0, 5.0))
+		clearance = at.distance_to(game.combat.pending_gravity_target) - 31.0 * scale - GRAVITY_HULL_RADIUS - 12.0
+	for well in game.lingering_wells:
+		if well.get_script() != game.PlayerWell or well.phase == "finished" or well.is_queued_for_deletion():
 			continue
-		var distance: float = patrol.distance_squared_to(well.well_position)
-		if distance < nearest:
-			nearest = distance
-			threat = well
-	var desired := Vector2.ZERO
-	if threat != null and nearest < 430.0*430.0:
-		var side := 1.0 if threat.well_position.x < patrol.x else -1.0
-		var target_x := clampf(patrol.x+side*190.0,84.0,game.arena.x-84.0)
-		desired.x = target_x-patrol.x
-		# A well placed above the boss also forces a shallow dive; otherwise the
-		# boss climbs, keeping its silhouette outside the event horizon.
-		desired.y = 62.0 if threat.well_position.y < patrol.y else -58.0
-	var speed := 420.0 if desired != Vector2.ZERO else 190.0
-	dodge_offset = dodge_offset.move_toward(desired,speed*delta)
+		if not anticipate and well.phase != "active":
+			continue
+		var size: float = 1.8 * sqrt(clampf(well.charge, 1.0, 5.0)) if well.phase == "warning" else well.well_scale
+		clearance = minf(clearance, at.distance_to(well.well_position) - 31.0 * size - GRAVITY_HULL_RADIUS - 12.0)
+	return clearance
+
+## A fixed candidate grid avoids iterative collision oscillation between two
+## adjacent wells. Nearest safe point wins; if the arena is fully covered, move
+## above the screen until room opens instead of hiding behind a horizon.
+func safe_player_well_position(at: Vector2, anticipate: bool = true) -> Vector2:
+	if player_well_clearance(at, anticipate) >= 0.0:
+		return at
+	var best := Vector2(at.x, -GRAVITY_HULL_RADIUS - 180.0)
+	# Even a large merged horizon can cover the usual offscreen fallback. Place
+	# the escape point above every actual radius rather than trusting a fixed Y.
+	for well in game.lingering_wells:
+		if well.get_script() == game.PlayerWell and well.phase != "finished" and not well.is_queued_for_deletion():
+			var size: float = 1.8 * sqrt(clampf(well.charge, 1.0, 5.0)) if well.phase == "warning" else well.well_scale
+			best.y = minf(best.y, well.well_position.y - size * 31.0 - GRAVITY_HULL_RADIUS * 2.0)
+	if anticipate and game.combat.pending_gravity_time >= 0.0:
+		best.y = minf(best.y, game.combat.pending_gravity_target.y - 31.0 * 1.8 * sqrt(clampf(game.combat.pending_gravity_charge, 1.0, 5.0)) - GRAVITY_HULL_RADIUS * 2.0)
+	var best_distance := INF
+	for y in range(10):
+		for x in range(9):
+			var candidate := Vector2(lerpf(GRAVITY_HULL_RADIUS, game.arena.x - GRAVITY_HULL_RADIUS, float(x) / 8.0), lerpf(game.top_inset + GRAVITY_HULL_RADIUS, game.arena.y - GRAVITY_HULL_RADIUS, float(y) / 9.0))
+			var distance := at.distance_squared_to(candidate)
+			if distance < best_distance and player_well_clearance(candidate, anticipate) >= 0.0:
+				best = candidate
+				best_distance = distance
+	return best
 
 ## Aim three enemy projectiles at the ship's current position; their trajectories remain dodgeable after firing.
 func fire_volley() -> void:
@@ -175,6 +213,7 @@ func fire_volley() -> void:
 func return_to_firefight() -> void:
 	if phase == "active" and kind in ["black", "white"]:
 		game.gravity_fields.add_exit(well_position, kind, well_scale)
+		game.request_cruise_return()
 	if lingering:
 		if kind in ["asteroid", "swarm"]:
 			game.burst(body_position + Vector2(0, 42), Color("ffb86a"), 18)
@@ -342,9 +381,7 @@ func _draw() -> void:
 	draw_space_folds(well_position, radius, tint, active)
 	# Active disks and their core masks are shared with player/lingering wells.
 	if not active:
-		draw_arc(well_position, radius, animation_time, animation_time + PI * 1.65, 48, tint, 2, true)
-		draw_line(well_position - Vector2(9,0), well_position + Vector2(9,0), tint, 1, true)
-		draw_line(well_position - Vector2(0,9), well_position + Vector2(0,9), tint, 1, true)
+		draw_circle(well_position, radius, Color(tint, 0.04))
 
 ## Draw the three non-carrier bosses as related warships with different tools:
 ## gravity bosses use enclosing scythes; the forge uses armored crusher arms.
@@ -416,41 +453,29 @@ func draw_swarm_body() -> void:
 	draw_circle(Vector2(0, 29), 13.0 + pulse, Color(tint, 0.17))
 	draw_circle(Vector2(0, 29), 6.0, Color("f1dcff"))
 	if phase in ["warning", "active", "clearing"]:
-		draw_arc(Vector2(0, 42), 16.0 + pulse * 3.0, animation_time * 2.0, animation_time * 2.0 + TAU * 0.8, 32, Color(tint, 0.6), 2.0, true)
+		for layer in range(5, 0, -1):
+			draw_circle(Vector2(0, 42), 4.0 + layer * 3.0 + pulse, Color(tint, 0.035))
 	if hit_flash > 0.0:
 		draw_circle(Vector2.ZERO, 40.0, Color(1, 1, 1, 0.5))
 	draw_set_transform(Vector2.ZERO)
 
-## Draw inward or outward animated rings around a well; the screen shader provides background distortion.
+## Refraction owns the folding surface. Only diffuse warning light is painted;
+## active fields use the textured disk and shader particles without line rings.
 func draw_space_folds(center: Vector2, core_radius: float, tint: Color, active: bool) -> void:
-	# The background shader bends the sky. These sparse glints sit on its ridges.
-	var direction := 1.0 if kind == "white" else -1.0
-	var spacing := TAU / 0.255
-	var offset := fposmod(animation_time * direction * 5.5 / 0.255, spacing)
-	var outer := (164.0 if active else 112.0) * well_scale
-	for i in range(6):
-		var ring_radius := core_radius + offset + i * spacing
-		if ring_radius > outer:
-			break
-		var envelope := (1.0 - smoothstep(outer * 0.66, outer, ring_radius)) * smoothstep(core_radius, core_radius + 12.0, ring_radius)
-		var points := PackedVector2Array()
-		for n in range(33):
-			var angle := -2.9 + float(n) / 32.0 * 1.7
-			points.append(center + Vector2(cos(angle), sin(angle) * 0.83) * ring_radius)
-		draw_polyline(points, Color(tint, envelope * (0.17 if active else 0.05)), 1.0, true)
+	if not active:
+		for layer in range(6, 0, -1):
+			draw_circle(center, core_radius + layer * 6.0, Color(tint, 0.008))
 
 ## Render the traveling space-fold projectile and its luminous tail.
 func draw_rift_cannon(tint: Color) -> void:
-	var trail := PackedVector2Array()
 	var direction := cannon_velocity.normalized()
 	var side := direction.orthogonal()
 	for i in range(18):
 		var t := float(i) / 17.0
 		var base := cannon_position - direction * t * 86.0
 		var wave := side * sin(animation_time * 24.0 + t * 16.0) * (10.0 * (1.0 - t))
-		trail.append(base + wave)
-	draw_polyline(trail, Color(tint, 0.24), 7.0, true)
-	draw_polyline(trail, Color(tint, 0.55), 2.4, true)
+		draw_circle(base + wave, 9.0 * (1.0 - t) + 1.0, Color(tint, (1.0 - t) * 0.16))
+		draw_circle(base + wave, 3.8 * (1.0 - t) + 0.5, Color(tint.lightened(0.55), (1.0 - t) * 0.4))
 	draw_circle(cannon_position, 9.5, Color("f5ffff") if kind == "white" else Color("f0e5ff"))
 	draw_circle(cannon_position, 17.0, Color(tint, 0.25))
 
@@ -464,6 +489,6 @@ func draw_tractor_remnant() -> void:
 		var angle := i * TAU / 5.0 + sin(animation_time) * 0.08
 		var offset := Vector2.from_angle(angle) * 25.0
 		draw_colored_polygon(PackedVector2Array([at + offset, at + offset * 1.5 + Vector2(9, 4), at + offset * 1.4 - Vector2(4, 8)]), tint.darkened(0.5))
-		draw_arc(at, 31, angle, angle + 0.65, 12, Color(tint, 0.7), 3, true)
+		draw_circle(at + offset, 7, Color(tint, 0.22))
 	draw_circle(at, 11 + sin(animation_time * 17) * 2, tint)
 	draw_circle(at, 5, Color.WHITE)

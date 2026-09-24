@@ -15,7 +15,10 @@ float noise(vec2 p) {
 void fragment() {
 	// The hot mouth opens into turbulent, feathery plasma. Longitudinal advection
 	// moves noise out of the nozzle; no strokes define the flame silhouette.
-	float plume_length = mix(0.17,0.94,engine_load);
+	// Rising engine effort is unmistakable well before the event horizon. The
+	// dormant nozzle remains the same small light; color still comes from its owner.
+	float effort = pow(clamp(engine_load,0.0,1.0),0.58);
+	float plume_length = mix(0.075,0.96,effort);
 	float y = max(UV.y-0.018,0.0)/plume_length;
 	float x = (UV.x-0.5)*2.0;
 	float clock = visual_time*7.0+phase;
@@ -24,7 +27,7 @@ void fragment() {
 	float curl = sin(y*22.0-clock*1.7+sin(y*9.0+clock))*0.13*y;
 	// Broader billows and a widening core keep the plume from reading as a laser.
 	float spread = sin(clamp(y,0.0,1.0)*3.14159);
-	float width = 0.25 + 0.30*spread + (n-0.5)*0.34*y;
+	float width = mix(0.18,0.34,effort) + 0.34*spread + (n-0.5)*0.34*y;
 	float profile = exp(-pow(abs(x+curl)/max(width,0.045),2.0)*1.9);
 	float tail = (1.0-smoothstep(0.56,1.0,y)) * smoothstep(0.0,0.022,UV.y);
 	float plasma = profile * tail * (0.56+n*0.45+fine*0.25);
@@ -33,5 +36,5 @@ void fragment() {
 	float bloom = exp(-abs(x)*6.0)*(1.0-smoothstep(0.0,0.7,y))*0.24;
 	vec3 hot = mix(engine_color.rgb,vec3(0.84,0.96,1.0),0.71);
 	vec3 color = mix(engine_color.rgb,hot,clamp(core*0.9,0.0,1.0));
-	COLOR = vec4(color, clamp(plasma+core*0.25+bloom,0.0,1.0) * (1.0-smoothstep(0.92,1.0,abs(x))));
+	COLOR = vec4(color*(1.0+effort*0.38), clamp(plasma+core*0.25+bloom,0.0,1.0) * (1.0-smoothstep(0.92,1.0,abs(x))));
 }

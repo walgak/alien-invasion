@@ -32,8 +32,8 @@ func set_nozzles(nozzles: PackedVector2Array, width: float) -> void:
 	nozzle_positions = nozzles
 	nozzle_width = width
 	for i in range(mini(jets.size(), nozzles.size())):
-		jets[i].size = Vector2(width*4.8, 116.0)
-		jets[i].position = nozzles[i] - Vector2(width*2.4, 2.0)
+		jets[i].size = Vector2(width*6.8, 228.0)
+		jets[i].position = nozzles[i] - Vector2(width*3.4, 2.0)
 
 func set_load(amount: float) -> void:
 	load_target = clampf(amount, 0.0, 1.0)

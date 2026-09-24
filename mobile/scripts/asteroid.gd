@@ -25,6 +25,9 @@ var swing_direction := 1.0
 var visual_kind := ""
 var visual_seed := 1
 var plates: Array[PackedVector2Array] = []
+## Set only when the player actually changes this rock's momentum. Ambient and
+## boss-thrown asteroids cannot damage their own fleet without that intervention.
+var player_deflected := false
 
 ## Godot calls this once after the node joins the scene; initialize child nodes and cached resources here.
 func _ready() -> void:
@@ -148,7 +151,7 @@ func advance(delta: float, target: Vector2 = Vector2.ZERO) -> void:
 
 ## Submit this object's visual geometry in local coordinates. Physics and collision rules are handled separately.
 func _draw() -> void:
-	draw_fold_lines()
+	# Boss-connected pulls are rendered by the refractive space-fold layer.
 	var glow := Color("ff641f") if visual_kind != "ice" else Color("38dfff")
 	draw_circle(Vector2.ZERO, radius * 1.13, Color(glow,0.07))
 	draw_colored_polygon(outline, Color("fff0d5") if flash > 0 else (Color("0d1a35") if visual_kind == "ice" else Color("6c2b17")))
@@ -207,24 +210,3 @@ func draw_ice_craters() -> void:
 		draw_circle(at,crater_radius,Color("101c3d"))
 		draw_arc(at,crater_radius,0.15-rotation,2.5-rotation,20,Color(0.35,0.94,1.0,0.72),1.5,true)
 		draw_arc(at,crater_radius*0.72,PI-rotation,TAU-rotation,16,Color(0.15,0.04,0.35,0.7),1.2,true)
-
-## Draw boss-to-rock tethers in the rock's rotated local space; fade them after release.
-func draw_fold_lines() -> void:
-	if fold_life <= 0:
-		return
-	var alpha := fold_life / RELEASE_FADE_SECONDS
-	var start := to_local(fold_origin)
-	var side := start.orthogonal().normalized() if start.length() > 0.001 else Vector2.RIGHT
-	for lane in range(7):
-		var points := PackedVector2Array()
-		var lane_offset := float(lane - 3) * radius * 0.18
-		var boss_hook := side * lane_offset * 0.3
-		var rock_hook := Vector2.from_angle(lane * TAU / 7.0) * radius * 0.72
-		for i in range(28):
-			var t := float(i) / 27.0
-			var base := (start + boss_hook).lerp(rock_hook, t)
-			var wave := side * sin(t * TAU * 2.8 + lane * 0.9 + rotation) * radius * 0.11 * sin(t * PI)
-			points.append(base + wave)
-		var line_alpha := alpha * (0.5 if lane == 3 else 0.25)
-		draw_polyline(points, Color("b9f8ff", line_alpha), 1.8 if lane == 3 else 1.0, true)
-	draw_circle(start, 5.0, Color("b9f8ff", alpha * 0.22))

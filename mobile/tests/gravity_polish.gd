@@ -128,7 +128,11 @@ func run() -> void:
 		game._process(0.1)
 		check(game.death_visual.exploded == (game.death_visual.cause=="shot"),"only gunfire explodes immediately")
 		game._process(0.4)
-		check(game.death_visual.exploded == (game.death_visual.cause!="black"),"ram/edge crumble before explosion; black holes only swallow")
+		check(game.death_visual.exploded,"ram, edge and black-hole deaths ignite after the metal deforms")
+		game._process(0.6)
+		check(not game.death_visual.warp_state().is_empty() and game.death_time>0.0,"fire is followed by expanding distortion before the menu")
+		game._process(game.death_visual.DURATION)
+		check(game.death_time==0.0 and game.death_visual.warp_state().is_empty(),"death distortion completes without leaving a permanent effect")
 	game.free()
 	await process_frame
 	print("GRAVITY POLISH: %d passed; %d failed" % [passed,failed])

@@ -42,18 +42,18 @@ func run() -> void:
 	game.set_physics_process(false)
 	game.set_process(false)
 	game.sound.enabled = false
-	for pattern in [{"level": 0, "lanes": [0]}, {"level": 1, "lanes": [-1, 1]}, {"level": 2, "lanes": [0, -1, 1]}, {"level": 4, "lanes": [-1, 1]}]:
+	for pattern in [{"level": 0, "lanes": [0]}, {"level": 1, "lanes": [-1, 1]}, {"level": 2, "lanes": [0, -1, 1]}, {"level": 4, "lanes": [-1, 0, 1]}]:
 		var level: int = pattern.level
 		fresh(level)
 		var cooldown: float = game.fire_player_shot()
 		check(game.projectiles.size() == pattern.lanes.size(), "tier %d emits the expected number of shots" % level)
-		check(is_equal_approx(cooldown, 0.38 if level == 4 else 0.17), "tier %d preserves its firing interval" % level)
+		check(is_equal_approx(cooldown, 0.17), "tier %d preserves its firing interval" % level)
 		for index in range(mini(game.projectiles.size(), pattern.lanes.size())):
 			var shot: Node2D = game.projectiles[index]
 			var muzzle: Vector2 = game.ship.muzzle_position(level, pattern.lanes[index])
 			check(shot.position.is_equal_approx(muzzle) and shot.previous_position.is_equal_approx(muzzle), "tier %d shot %d starts at its rotated barrel without a phantom collision sweep" % [level, index])
-			var expected_velocity := Vector2(0, -660) if level == 4 else Vector2(0, -850)
-			if level == 2 and index > 0:
+			var expected_velocity := Vector2(0, -850)
+			if (level == 2 and index > 0) or level == 4:
 				expected_velocity = Vector2(float(pattern.lanes[index]) * 110, -880).normalized() * 850
 			check(shot.velocity.is_equal_approx(expected_velocity), "tier %d shot %d preserves its flight direction and speed" % [level, index])
 		await process_frame
@@ -73,9 +73,11 @@ func run() -> void:
 
 	fresh(4)
 	var aim := Vector2(130, 430)
+	game.combat.add_gravity_charge(20.0)
+	game.combat.arm_gravity()
 	game.combat.press(2, aim)
-	game.combat.held = 2.0
 	game.combat.release(2, aim)
+	game.combat.step(game.combat.GRAVITY_PREPARATION)
 	check(game.lingering_wells.size() == 1 and game.lingering_wells[0].cannon_position.is_equal_approx(game.ship.muzzle_position(4, 0, true)), "charged gravity cannon leaves the special hardpoint")
 	check(game.lingering_wells.size() == 1 and game.lingering_wells[0].well_position == aim and game.lingering_wells[0].charge == 2.0, "moving the launch point preserves gravity targeting and charge")
 	# Alien artwork has two barrels, but alternating their ports must not double
