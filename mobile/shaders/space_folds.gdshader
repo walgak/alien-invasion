@@ -1,9 +1,10 @@
 shader_type canvas_item;
-// Sample only the already-drawn background. Foreground actors render after this pass.
+// Refract the transparent celestial layer only. Distant stars are a separate
+// canvas underneath this pass and can never enter these displaced samples.
 // The matching controller in space_folds.gd must keep array capacities synchronized.
 render_mode unshaded;
 
-uniform sampler2D screen_texture : hint_screen_texture, repeat_disable, filter_linear;
+uniform sampler2D celestial_texture : repeat_disable, filter_linear;
 uniform vec2 arena_size = vec2(540.0, 960.0);
 uniform int lens_count = 0;
 uniform vec4 lenses[8]; // center, influence radius, strength
@@ -17,12 +18,31 @@ uniform float edge_strength = 0.0;
 uniform float edge_release = 0.0;
 uniform float screen_corner_radius = 0.0;
 uniform float visual_time = 0.0;
+uniform float solar_activity = 0.45;
+
+float wind_hash(vec2 p) { return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+// Solar particles are the nearby tracer for strong gravity distortion. The
+// independent unwarped star layer is not reused here, even at low wind density.
+vec4 solar_wind(vec2 pixel) {
+	vec2 flow=pixel+vec2(sin(pixel.y*0.003+visual_time*0.11)*26.0,-visual_time*72.0);
+	flow.x-=flow.y*0.18;
+	vec2 cell=floor(flow/vec2(22.0,58.0));
+	float seed=wind_hash(cell);
+	vec2 offset=vec2(wind_hash(cell+19.3),wind_hash(cell+57.9));
+	vec2 delta=(fract(flow/vec2(22.0,58.0))-mix(vec2(0.18),vec2(0.82),offset))*vec2(22.0,58.0);
+	float core=exp(-dot(delta/vec2(0.72,2.3),delta/vec2(0.72,2.3)));
+	float halo=exp(-dot(delta/vec2(2.6,5.0),delta/vec2(2.6,5.0)))*0.13;
+	float present=step(1.0-solar_activity*0.60,seed);
+	float brightness=(core+halo)*present*(0.36+solar_activity*0.38);
+	return vec4(mix(vec3(0.13,0.40,0.63),vec3(0.64,0.85,0.94),offset.x)*brightness,brightness);
+}
 
 void fragment() {
 	// Sum a bounded set of well/rock lenses and tethers before sampling the sky once.
 	// Final red/blue offset samples add subtle dispersion along the same displacement.
 	vec2 pixel = UV * arena_size;
 	vec2 displacement = vec2(0.0);
+	vec2 local_refraction = vec2(0.0);
 	vec3 gleam = vec3(0.0);
 	float shade = 0.0;
 	float dispersion = 0.0;
@@ -63,7 +83,12 @@ void fragment() {
 			float angle = atan(surface.y, surface.x);
 			swirl = style.y * (1.0 + 0.16 * sin(angle * 2.0 + shell * 0.06 - style.w * 0.7));
 		}
-		displacement += (normal * bend + tangent * throat * (death_mode ? 0.0 : (ring_mode ? 2.0 : (object_mode ? 0.0 : 6.0))) * swirl * lens.w) * vec2(1.0, flatten);
+		vec2 lens_displacement = (normal * bend + tangent * throat * (death_mode ? 0.0 : (ring_mode ? 2.0 : (object_mode ? 0.0 : 6.0))) * swirl * lens.w) * vec2(1.0, flatten);
+		displacement += lens_displacement;
+		// The nearby shield is an optical bubble, so its glass may visibly bend
+		// a planet behind it. This is separate from that planet's subtle physical
+		// tide under a distant well; neither pass ever samples the star canvas.
+		if (shield_mode && !death_mode) { local_refraction += lens_displacement * 0.36; }
 		// Opposing light and shadow on each fold give its refracted ridge thickness.
 		float crest = pow(max(0.0, cos(phase)), 12.0) * envelope;
 		float trough = pow(max(0.0, -cos(phase + 0.55)), 6.0) * envelope;
@@ -115,8 +140,8 @@ void fragment() {
 		float distance_inside = -(length(outside) + min(max(q.x, q.y), 0.0) - screen_corner_radius);
 		vec2 normal = q.x > q.y ? vec2(sign(centered.x), 0.0) : vec2(0.0, sign(centered.y));
 		if (length(outside) > 0.01) { normal = normalize(outside) * sign(centered); }
-		float envelope = exp(-pow((distance_inside - 15.0) / 34.0, 2.0));
-		float release_envelope = exp(-pow((distance_inside - (1.0 - edge_release) * 100.0) / 45.0, 2.0));
+		float envelope = exp(-pow((distance_inside - 5.0) / 11.3333, 2.0));
+		float release_envelope = exp(-pow((distance_inside - (1.0 - edge_release) * 33.3333) / 15.0, 2.0));
 		float wave = sin(distance_inside * 0.09 - visual_time * 4.0);
 		displacement += normal * (wave * 38.0 + 35.0) * envelope * edge_strength;
 		displacement += normal * release_envelope * 75.0 * edge_release;
@@ -124,11 +149,17 @@ void fragment() {
 		dispersion += envelope * edge_strength + release_envelope * edge_release;
 	}
 	// Keep sampling inside the copied viewport, including folds beside an edge.
-	vec2 half_pixel = SCREEN_PIXEL_SIZE * 0.5;
-	vec2 warped_uv = clamp(SCREEN_UV + displacement / arena_size * refraction_strength, half_pixel, vec2(1.0) - half_pixel);
-	vec2 fringe = normalize(displacement + vec2(0.001)) * min(dispersion, 1.0) / arena_size * refraction_strength;
-	vec3 sky = texture(screen_texture, warped_uv).rgb;
-	sky.r = texture(screen_texture, clamp(warped_uv + fringe, half_pixel, vec2(1.0) - half_pixel)).r;
-	sky.b = texture(screen_texture, clamp(warped_uv - fringe, half_pixel, vec2(1.0) - half_pixel)).b;
-	COLOR = vec4(sky * (1.0 - min(shade, 0.5)) + gleam, 1.0);
+	vec2 half_pixel = vec2(0.5)/arena_size;
+	vec2 warp=displacement/arena_size*refraction_strength;
+	vec2 warped_uv=UV+warp;
+	// Wind bends strongly, but vast background worlds barely move. Their own
+	// atmosphere/moon tides supply the subtle, localized physical response.
+	float body=texture(celestial_texture,UV).a;
+	float distant_scale=mix(0.025,0.002,smoothstep(0.90,0.99,body));
+	vec2 celestial_uv=clamp(UV+warp*distant_scale+local_refraction/arena_size*refraction_strength,half_pixel,vec2(1.0)-half_pixel);
+	vec4 sky=texture(celestial_texture,celestial_uv);
+	vec4 wind=solar_wind(warped_uv*arena_size);
+	vec3 premultiplied=sky.rgb*sky.a*(1.0-min(shade*0.08,0.12))+wind.rgb+gleam;
+	float alpha=max(sky.a,clamp(wind.a+length(gleam)*0.45,0.0,0.96));
+	COLOR=vec4(premultiplied/max(alpha,0.001),alpha);
 }

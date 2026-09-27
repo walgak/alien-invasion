@@ -40,8 +40,8 @@ func advance(delta: float) -> void:
 	else:
 		previous_position = position
 		position += velocity * delta
-	if kind != "bullet":
-		queue_redraw()
+	# Ordinary plasma also breathes and must point along a gravity-bent velocity.
+	queue_redraw()
 
 ## Test the entire traveled segment against a target circle to prevent fast shots tunneling between frames.
 func intersects(center: Vector2, radius: float) -> bool:
@@ -71,26 +71,40 @@ func _draw() -> void:
 	if kind == "rocket":
 		draw_rocket()
 		return
-	var tint := Color("ff816f") if hostile else Color("63cfff")
+	var tint := Color("ff816f") if hostile else Color("42bfff")
 	var enhanced := kind == "plasma"
 	var forward := velocity.normalized()
+	if forward == Vector2.ZERO:
+		forward = Vector2.UP
 	var side := forward.orthogonal()
-	var length := 13.0 if hostile else 20.0
-	var width := 5.0 if enhanced else 3.1
-	# Three nested filled droplets replace the old straight strokes. Keeping a
-	# small fixed draw count matters when triple guns fill the screen with shots.
+	var pulse := 0.9 + 0.1 * sin(age * 35.0)
+	var length := (17.0 if hostile else 24.0) * pulse
+	var width := (5.8 if enhanced else 3.5) * pulse
+	# Smooth luminous droplets have a hot front, translucent turbulent shoulders
+	# and a fading tail. Vertex colour gives the volume depth without line strokes.
 	for layer in range(3, 0, -1):
-		var breadth := width * (1.0 + float(layer - 1) * 0.65)
+		var breadth := width * (1.0 + float(layer - 1) * 0.7)
+		var curl := sin(age * 31.0 + layer) * width * 0.14
 		var vertices := PackedVector2Array([
-			forward * width,
-			forward * (width * 0.4) + side * breadth,
-			-forward * (length * 0.45) + side * breadth * 0.48,
+			forward * width * 1.25,
+			forward * width * 0.75 + side * breadth * 0.8,
+			side * breadth,
+			-forward * (length * 0.4) + side * (breadth * 0.6 + curl),
 			-forward * length,
-			-forward * (length * 0.45) - side * breadth * 0.48,
-			forward * (width * 0.4) - side * breadth
+			-forward * (length * 0.4) - side * (breadth * 0.6 - curl),
+			-side * breadth,
+			forward * width * 0.75 - side * breadth * 0.8
 		])
-		draw_colored_polygon(vertices, Color(tint, 0.9 if layer == 1 else 0.075))
-	draw_circle(Vector2(-0.35, -0.35), width * 0.62, Color("e9faff"))
+		var colors := PackedColorArray()
+		for vertex in vertices:
+			var heat := clampf((vertex.dot(forward) + length) / (length + width), 0.0, 1.0)
+			var color := tint.lerp(Color("effcff"), heat * 0.52 if layer == 1 else 0.0)
+			color.a = (0.2 + heat * 0.8) * (0.93 if layer == 1 else 0.08)
+			colors.append(color)
+		draw_polygon(vertices, colors)
+	for halo in range(3, 0, -1):
+		draw_circle(forward * width * 0.2, width * float(halo) * 0.68, Color(tint, 0.055))
+	draw_circle(forward * width * 0.2 - side * width * 0.13, width * 0.58, Color("effcff"))
 
 ## Each bent optical segment carries a filled fluid ribbon with traveling bulges.
 ## The short individual polygons stay monotonic even at sharp reflections, which

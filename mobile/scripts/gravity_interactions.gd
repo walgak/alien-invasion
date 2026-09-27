@@ -3,11 +3,111 @@ extends Node2D
 ## collide. Merges conserve area and remaining lifetime, never restart a timer.
 const PlayerWell = preload("res://scripts/player_well.gd")
 const AccretionVisual = preload("res://scripts/accretion_visual.gd")
+const BossCollapse = preload("res://scripts/boss_collapse.gd")
 const MAX_ACCRETION_VISUALS := 12
 var game: Node2D
 var shockwaves: Array[Dictionary] = []
 var exits: Array[Dictionary] = []
 var accretion_pool: Array[Node2D] = []
+var collapses: Array[Node2D] = []
+
+## A second field freezes all participating lifetimes until a merge/discharge
+## resolves the encounter. Animation, resistance windows and movement continue.
+func lifetime_frozen(well: Node2D) -> bool:
+	return well.holds_steering() and active_wells().size() >= 2
+
+## Sum vectors before moving anything. Distance weights are bounded; opposing
+## forces cancel rather than depending on which well happened to update first.
+func net_force_for(actor: Node2D) -> Vector2:
+	if actor == game.ship and game.combat.shield_time > 0.0:
+		return Vector2.ZERO
+	var force := Vector2.ZERO
+	for well in active_wells():
+		if actor != game.ship and not well is PlayerWell:
+			continue
+		var offset: Vector2 = well.well_position - actor.position
+		var weight := clampf(220.0 / maxf(offset.length(), 80.0), 0.35, 1.8)
+		var strength: float
+		if well is PlayerWell:
+			strength = well.PULL_SPEED * (0.86 + 0.14 * clampf(well.active_age / 2.0, 0.0, 1.0))
+		else:
+			var progress := clampf(well.phase_time / well.well_duration, 0.0, 1.0)
+			strength = (lerpf(66.0, 86.0, progress) if well.kind == "black" else -lerpf(118.0, 94.0, progress)) * well.proximity_multiplier
+		force += offset.normalized() * strength * weight
+	return force.limit_length(180.0)
+
+## The controller calls this once each physics frame. A neutralising tap is an
+## exact zero displacement, including in overlapping opposed fields.
+func apply_player_force(delta: float) -> void:
+	var wells := active_wells()
+	# Expiration wins over lethal contact, matching the original boss contract.
+	# A lone last-frame core must not swallow the ship on the frame it closes.
+	if wells.size() == 1 and seconds_left(wells[0]) <= delta:
+		close_well(wells[0])
+		return
+	if wells.is_empty() or game.combat.shield_time > 0.0:
+		return
+	var previous: Vector2 = game.ship.position
+	var neutralised: bool = wells.any(func(well: Node2D) -> bool: return well.neutralise_time > 0.0)
+	if not neutralised:
+		game.ship.position += net_force_for(game.ship) * delta
+	game.ship.target_x = game.ship.position.x
+	for well in wells:
+		if well.kind == "black" and Geometry2D.get_closest_point_to_segment(well.well_position, previous, game.ship.position).distance_to(well.well_position) < 29.0 * well.well_scale:
+			game.lose_ship("Caught in the black hole.")
+			return
+		if well.kind == "white" and well.touches_screen_edge():
+			game.lose_ship("The white hole pushed you into the boundary.")
+			return
+
+## Player wells share one actor-motion owner, preventing double integration.
+func owns_actor_motion(well: Node2D) -> bool:
+	for candidate in active_wells():
+		if candidate is PlayerWell:
+			return candidate == well
+	return false
+
+## Gravity rockets detonate at the first existing horizon they cross. Analytic
+## segment/circle intersection prevents tunnelling at their fivefold speed.
+func intercept_cannon(from: Vector2, to: Vector2, exclude: Node2D) -> Dictionary:
+	var best := 2.0
+	var result: Dictionary = {}
+	var velocity := to - from
+	var length_squared := velocity.length_squared()
+	if length_squared < 0.0001:
+		return result
+	for well in active_wells():
+		if well == exclude:
+			continue
+		var radius: float = 31.0 * well.well_scale
+		var offset: Vector2 = from - well.well_position
+		var projection := offset.dot(velocity)
+		var discriminant := projection * projection - length_squared * (offset.length_squared() - radius * radius)
+		if discriminant < 0.0:
+			continue
+		# Both roots behind the ray origin mean the projectile is moving away;
+		# clamping a negative entry root alone would invent an immediate impact.
+		var exit_fraction := (-projection + sqrt(discriminant)) / length_squared
+		if exit_fraction < 0.0:
+			continue
+		var fraction := maxf(0.0, (-projection - sqrt(discriminant)) / length_squared)
+		if fraction <= 1.0 and fraction < best:
+			best = fraction
+			var contact: Vector2 = from + velocity * fraction
+			var normal: Vector2 = (contact - well.well_position).normalized()
+			if normal == Vector2.ZERO:
+				normal = -velocity.normalized()
+			result = {"at": well.well_position + normal * (radius + 2.0), "well": well}
+	return result
+
+## Snapshot the defeated hull before its node is freed. A finite presentation
+## object opens the larger death field only after the visible transformation.
+func add_boss_collapse(defeated: Node2D) -> void:
+	var effect := BossCollapse.new()
+	effect.game = game
+	effect.configure(defeated)
+	add_child(effect)
+	collapses.append(effect)
 
 ## Reuse the same small visual pool across launches, merges and deaths. Large
 ## charged fields change uniforms and quad size, never the number of particles.
@@ -53,11 +153,11 @@ func seconds_left(well: Node2D) -> float:
 	return well.remaining if well is PlayerWell else maxf(0.0, well.well_duration - well.phase_time)
 
 ## Close an individual field without killing its owning boss or other attacks.
-func close_well(well: Node2D) -> void:
+func close_well(well: Node2D, departing_force: Vector2 = Vector2.INF) -> void:
 	if well is PlayerWell:
-		well.finish_well()
+		well.finish_well(departing_force)
 	else:
-		well.return_to_firefight()
+		well.return_to_firefight(departing_force)
 
 ## Advance attraction, repulsion and safe annihilation, then delayed blast damage.
 func step(delta: float) -> void:
@@ -67,6 +167,7 @@ func step(delta: float) -> void:
 		well.proximity_multiplier = 1.0
 		if whites.size() >= 2:
 			well.proximity_multiplier += 2.0 * clampf(1.0 - well.well_position.distance_to(game.ship.position) / 350.0, 0.0, 1.0)
+			well.pressure_front_radius = maxf(well.pressure_front_radius, 31.0 * well.well_scale) + 110.0 * delta
 	for i in range(wells.size()):
 		var a: Node2D = wells[i]
 		if not a.holds_steering() or a.is_queued_for_deletion():
@@ -78,23 +179,29 @@ func step(delta: float) -> void:
 			var offset: Vector2 = b.well_position - a.well_position
 			var distance := offset.length()
 			var direction := offset.normalized() if distance > 0.01 else Vector2.RIGHT
-			if a.kind == b.kind:
-				var motion := direction * minf(35.0 * delta, distance * 0.25 + 0.1)
-				if a.kind == "white":
-					motion = -motion
-				a.well_position += motion
-				b.well_position -= motion
-				if a.kind == "white":
-					for well in [a, b]:
-						well.well_position = well.well_position.clamp(Vector2(35, game.top_inset + 170), game.arena - Vector2(35, 35))
+			var motion := direction * minf(45.0 * delta, distance * 0.25 + 0.1)
 			if a.kind == "white" and b.kind == "white":
+				motion = -motion
+			a.well_position += motion
+			b.well_position -= motion
+			if a.kind == "white" and b.kind == "white":
+				for well in [a, b]:
+					well.well_position = well.well_position.clamp(Vector2(35, game.top_inset + 170), game.arena - Vector2(35, 35))
+				if a.pressure_front_radius + b.pressure_front_radius >= a.well_position.distance_to(b.well_position):
+					visual_shockwave((a.well_position + b.well_position) * 0.5)
+					var departing_force := net_force_for(game.ship)
+					close_well(a, departing_force)
+					close_well(b, departing_force)
+					game.sound.play_effect("rift")
+					break
 				continue
 			if a.well_position.distance_to(b.well_position) > 31.0 * (a.well_scale + b.well_scale):
 				continue
 			if a.kind != b.kind:
 				shockwaves.append({"at": (a.well_position + b.well_position) * 0.5, "age": 0.0, "radius": minf(280.0, 80.0 + 31.0 * (a.well_scale + b.well_scale)), "fired": false})
-				close_well(a)
-				close_well(b)
+				var departing_force := net_force_for(game.ship)
+				close_well(a, departing_force)
+				close_well(b, departing_force)
 				game.sound.play_effect("rift")
 				game.combat.vibrate("gravity")
 				break
@@ -176,11 +283,23 @@ func add_exit(at: Vector2, kind: String, size: float) -> void:
 
 ## The visual clock keeps exit effects finite without keeping a gravity force alive.
 func visual_step(delta: float) -> void:
+	for collapse in collapses.duplicate():
+		if game.state != game.State.PLAYING:
+			collapses.erase(collapse)
+			collapse.queue_free()
+		else:
+			collapse.step(delta)
 	for effect in exits.duplicate():
 		effect.age += delta
 		if effect.age >= 1.2:
 			exits.erase(effect)
 	queue_redraw()
+
+## Restart/title transitions must not leave a delayed boss death field queued.
+func clear_collapses() -> void:
+	for collapse in collapses:
+		collapse.queue_free()
+	collapses.clear()
 
 ## Fine plasma is drawn by the reusable textured sprites behind actors. This
 ## final opaque mask makes the event horizon absolute even during ship crumble.

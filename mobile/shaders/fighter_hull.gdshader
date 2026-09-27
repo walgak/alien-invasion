@@ -1,12 +1,16 @@
 shader_type canvas_item;
 render_mode unshaded;
+#include "res://shaders/hull_damage.gdshaderinc"
 uniform bool side_ports = false;
 uniform bool laser_port = false;
 uniform bool recovering = false;
 uniform float visual_time = 0.0;
 varying vec4 vertex_tint;
 
-void vertex() { vertex_tint = COLOR; }
+void vertex() {
+	vertex_tint = COLOR;
+	VERTEX = damaged_vertex(VERTEX);
+}
 
 void fragment() {
 	vec4 hull = texture(TEXTURE, UV);
@@ -23,5 +27,5 @@ void fragment() {
 	float nose = exp(-dot(nose_uv,nose_uv));
 	if (laser_port) { hull.rgb += vec3(0.32,0.7,0.9)*nose; }
 	if (recovering) { hull.rgb = mix(hull.rgb, vec3(0.65,0.88,1.0), 0.10+0.06*sin(visual_time*10.0)); }
-	COLOR = hull * vertex_tint;
+	COLOR = damaged_hull(hull, UV) * vertex_tint;
 }

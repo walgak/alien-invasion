@@ -20,6 +20,8 @@ func _init() -> void:
 ## Pack visible lens and tether geometry into fixed-size shader arrays, keeping GPU work bounded.
 func update_effects(game: Node2D) -> void:
 	size = game.arena
+	material.set_shader_parameter("celestial_texture",game.space_background.celestial_texture())
+	material.set_shader_parameter("solar_activity",game.space_background.wind_strength)
 	var lenses := PackedVector4Array()
 	var styles := PackedVector4Array()
 	# An alpha of zero uses the usual cool fold tint; active wells supply their
@@ -47,10 +49,11 @@ func update_effects(game: Node2D) -> void:
 	# Reserve one slot for the shield, then pack active wells before short tap
 	# pulses and exit waves. Rapid tapping must never evict an active gravity lens.
 	if game.combat.hazards_protected() and lenses.size() < MAX_LENSES:
-		# The shield is intentionally extreme: it should visibly drag stars and
-		# nebulae around the hull even on a small, bright phone display.
-		lenses.append(Vector4(game.ship.position.x, game.ship.position.y, 152.0, 13.5))
-		styles.append(Vector4(47.0, 1.0, 3.0, game.visual_time))
+		# Solar wind gives the shield strong optical motion. Distant stars are
+		# deliberately absent from this shader's input texture.
+		var shield_radius: float = game.combat.shield_radius()
+		lenses.append(Vector4(game.ship.position.x, game.ship.position.y, shield_radius+105.0, 13.5))
+		styles.append(Vector4(shield_radius, 1.0, 3.0, game.visual_time))
 	# The escaped-alien cannon creates a synthetic horizon during the death
 	# animation. Give that visible hole the same live lens as ordinary fields.
 	if game.death_time > 0.0 and game.death_is_gravity and game.death_synthetic:
@@ -64,6 +67,23 @@ func update_effects(game: Node2D) -> void:
 	for well in game.lingering_wells:
 		if well.kind in ["black", "white"] and well.holds_steering():
 			append_active_well(well, lenses, styles, lens_colors)
+	# Colliding white pressure fronts have their own outward-moving optical
+	# surface before both fields release. Fronts never alter lethal core size.
+	for well in game.gravity_fields.active_wells():
+		if well.kind == "white" and lenses.size() < MAX_LENSES:
+			var front: float = well.get("pressure_front_radius") if well.get("pressure_front_radius") != null else 0.0
+			if front > 31.0*well.well_scale+1.0:
+				lenses.append(Vector4(well.well_position.x,well.well_position.y,front+80.0,1.8))
+				styles.append(Vector4(front,1.0,2.0,game.visual_time))
+	var collapses: Variant = game.gravity_fields.get("collapses")
+	if collapses is Array:
+		for collapse in collapses:
+			if lenses.size() >= MAX_LENSES:
+				break
+			var progress: float = clampf(collapse.age/collapse.OPEN_TIME,0.0,1.0)
+			var radius := lerpf(110.0,8.0,progress) if collapse.kind == "black" else lerpf(20.0,155.0,progress)
+			lenses.append(Vector4(collapse.position.x,collapse.position.y,radius+75.0,2.0))
+			styles.append(Vector4(radius,-1.0 if collapse.kind == "black" else 1.0,2.0,game.visual_time))
 	# Boss immunity reads as the same refractive bubble as the player's shield.
 	# This visual does not change the guard-based damage gate.
 	if is_instance_valid(boss) and boss.visible and (game.boss_is_shielded() or boss.has_player_gravity_threat()) and lenses.size() < MAX_LENSES:
@@ -171,7 +191,9 @@ func update_effects(game: Node2D) -> void:
 	material.set_shader_parameter("strands", strands)
 	material.set_shader_parameter("strand_styles", strand_styles)
 	material.set_shader_parameter("refraction_strength", game.progress.distortion_strength)
-	visible = lens_count > 0 or strand_count > 0 or white_edge_strength > 0.0 or white_edge_release > 0.0
+	# This pass also composites the transparent celestial scene on the stars,
+	# so it remains visible even when there are no gravity lenses.
+	visible = true
 
 ## Amplify only active gravity throats; all shield, pulse and tether values stay
 ## independent. The shared eight-lens budget bounds fragment work on the phone.

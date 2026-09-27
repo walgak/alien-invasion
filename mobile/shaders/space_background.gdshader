@@ -1,5 +1,5 @@
 shader_type canvas_item;
-// Opaque background layer. This runs per pixel, before ships and the refraction pass.
+// Transparent gas/planet layer. Stars live in a different, unwarped canvas.
 // Coordinates are logical viewport pixels; visual_time is frozen by the pause menu.
 render_mode unshaded;
 
@@ -8,6 +8,8 @@ uniform float visual_time = 0.0;
 uniform vec3 sector_light = vec3(-0.4, -0.3, 0.8);
 uniform float light_period = 0.0;
 uniform vec2 camera_jitter = vec2(0.0);
+uniform int field_count = 0;
+uniform vec4 gravity_fields[4]; // centre, outward/inward sign, visual scale
 
 varying vec2 canvas_position;
 
@@ -61,11 +63,25 @@ void vertex() {
 	canvas_position = VERTEX;
 }
 
+// Distant bodies feel only a tiny optical tide, never foreground gameplay pull.
+// The bounded sum vanishes when a hole closes; their normal travel continues.
+vec2 tidal_force(vec2 at) {
+	vec2 force=vec2(0.0);
+	for (int i=0;i<4;i++) {
+		if (i>=field_count) { break; }
+		vec2 delta=gravity_fields[i].xy-at;
+		float d=length(delta);
+		force+=delta/max(d,1.0)*(-gravity_fields[i].z)*exp(-d/440.0)*min(gravity_fields[i].w,2.0);
+	}
+	return force;
+}
+
 void fragment() {
-	// Composite nebula, scrolling star layers, one passing planet, then the vignette.
+	// Premultiplied compositing below preserves transparent gaps between gas and
+	// opaque bodies. The final divide provides ordinary straight-alpha output.
 	vec2 p = canvas_position + camera_jitter;
 	vec2 uv = p / max(arena_size, vec2(1.0));
-	vec2 sky = (p - vec2(0.0, visual_time * 5.0)) / 410.0;
+	vec2 sky = (p - tidal_force(p)*1.2 - vec2(0.0, visual_time * 5.0)) / 410.0;
 	float broad = cloud_noise(sky * 1.3 + vec2(6.2, 3.8));
 	float cloud = cloud_noise(sky * 4.2 + vec2(broad * 2.5, broad * -1.8));
 	float band_distance = (uv.x - 0.73 + 0.40 * sin(uv.y * 4.0 + 0.5)) * 1.75;
@@ -74,7 +90,8 @@ void fragment() {
 	// reuse the existing two noise fields, so colour depth adds no noise octaves.
 	float filaments = smoothstep(0.32, 0.79, cloud) * band;
 	float cloud_edges = smoothstep(0.43, 0.72, cloud) * band;
-	vec3 color = mix(vec3(0.006, 0.011, 0.029), vec3(0.012, 0.025, 0.057), broad);
+	vec3 color = vec3(0.0);
+	float opacity = clamp(filaments*0.64+cloud_edges*0.13,0.0,0.78);
 	float colour_region = smoothstep(0.16, 0.84, 0.5 + 0.5 * sin(sky.y * 0.78 + sky.x * 0.50 + broad * 4.0));
 	vec3 cool_cloud = mix(vec3(0.12, 0.075, 0.56), vec3(0.025, 0.43, 0.55), colour_region);
 	float magenta_region = smoothstep(0.32, 0.91, 0.5 + 0.5 * sin(sky.x * 1.20 - sky.y * 0.52 + broad * 5.4));
@@ -83,8 +100,6 @@ void fragment() {
 	// Narrow luminous wisps suggest lit gas, without whitening the entire sky.
 	vec3 wisp_tint = mix(vec3(0.10, 0.30, 0.55), vec3(0.38, 0.10, 0.42), magenta_region);
 	color += wisp_tint * cloud_edges * pow(cloud, 3.0) * 0.80;
-	color += star_layer(p - vec2(0.0, visual_time * 20.0), 62.0, 11.7) * 0.72;
-	color += star_layer(p - vec2(19.0, visual_time * 42.0), 141.0, 82.1) * 0.87;
 
 	// A spherical planet supplies curved surface detail and a lit horizon for
 	// the refraction pass. Its low contrast leaves bullets and ships readable.
@@ -103,14 +118,19 @@ void fragment() {
 	float annulus = smoothstep(1.18,1.25,ring_r)*(1.0-smoothstep(1.8,1.88,ring_r));
 	float ring_alpha = annulus * (0.38+0.15*sin(ring_r*180.0)) * step(0.68,variation);
 	vec3 ring_color = mix(vec3(0.28,0.20,0.10),vec3(0.12,0.32,0.39),variation);
-	if (ring.y < 0.0) { color = mix(color,ring_color,ring_alpha); }
-	float atmosphere = exp(-abs(radius-1.01)*43.0);
+	if (ring.y < 0.0) { color = mix(color,ring_color,ring_alpha); opacity=ring_alpha+opacity*(1.0-ring_alpha); }
+	vec2 planet_tide=tidal_force(planet_center);
+	float atmosphere_radius=length(planet-planet_tide*0.026*smoothstep(0.74,1.12,radius));
+	float atmosphere = exp(-abs(atmosphere_radius-1.01)*43.0);
+	float planet_type=mod(planet_id,4.0);
+	vec3 atmosphere_color=planet_type<1.0 ? vec3(0.055,0.31,0.46) : (planet_type<2.0 ? vec3(0.45,0.22,0.065) : (planet_type<3.0 ? vec3(0.13,0.36,0.47) : vec3(0.38,0.12,0.09)));
 	vec3 light_direction = normalize(sector_light);
 
 	vec3 normal = vec3(planet, sqrt(max(0.0, 1.0 - dot(planet, planet))));
 	float sunlight = max(0.0, dot(normal, light_direction));
 	float hemisphere_light = 0.19 + 0.81 * max(0.0, dot(normalize(vec3(planet, 0.17)), light_direction));
-	color += vec3(0.055, 0.31, 0.46) * atmosphere * hemisphere_light * 0.74;
+	color += atmosphere_color * atmosphere * hemisphere_light * 0.74;
+	opacity=max(opacity,atmosphere*hemisphere_light*0.40);
 	if (radius < 1.0) {
 		vec2 surface = vec2(atan(normal.x, max(normal.z, 0.001)), asin(clamp(normal.y, -1.0, 1.0)));
 		float land = cloud_noise(surface * 5.2 + vec2(11.3 + planet_id * 7.0, 21.8));
@@ -138,19 +158,47 @@ void fragment() {
 		planet_color += vec3(0.028, 0.116, 0.170) * pow(1.0 - normal.z, 3.0) * sunlight;
 		float silhouette = 1.0 - smoothstep(0.992, 1.0, radius);
 		color = mix(color, planet_color, silhouette);
+		opacity=silhouette+opacity*(1.0-silhouette);
 	}
-	if (ring.y >= 0.0) { color = mix(color,ring_color,ring_alpha); }
+	if (ring.y >= 0.0) { color = mix(color,ring_color,ring_alpha); opacity=ring_alpha+opacity*(1.0-ring_alpha); }
 	// A small cratered moon passes beside each planet with a different parallax
 	// speed. These bounded analytic shapes avoid textures and extra draw nodes.
 	vec2 moon_center = planet_center + vec2(mix(-170.0, 170.0, variation), -165.0);
-	vec2 moon = (p - moon_center) / (26.0 + variation * 22.0);
+	float moon_size=26.0+variation*22.0;
+	vec2 moon_tide=tidal_force(moon_center);
+	vec2 planet_direction=normalize(planet_center-moon_center);
+	float competition=clamp(length(moon_tide-planet_direction*0.22)*float(field_count>0),0.0,1.0);
+	vec2 tide_axis=normalize(moon_tide+vec2(0.0001));
+	vec2 moon_local=(p-moon_center)/moon_size;
+	float along=dot(moon_local,tide_axis), across=dot(moon_local,vec2(-tide_axis.y,tide_axis.x));
+	vec2 moon=vec2(along/(1.0+competition*0.26),across/(1.0-competition*0.08));
 	float moon_r = length(moon);
 	if (moon_r < 1.0 && variation > 0.3) {
-		vec3 moon_normal = vec3(moon, sqrt(max(0.0, 1.0 - dot(moon, moon))));
+		vec2 world_moon=tide_axis*moon.x+vec2(-tide_axis.y,tide_axis.x)*moon.y;
+		vec3 moon_normal = vec3(world_moon, sqrt(max(0.0, 1.0 - dot(moon, moon))));
 		float craters = noise(moon * 15.0 + planet_id);
 		vec3 moon_color = vec3(0.24, 0.26, 0.31) * (0.12 + max(0.0, dot(moon_normal, light_direction))) * (0.55 + craters * 0.45);
-		color = mix(color, moon_color, 1.0 - smoothstep(0.97, 1.0, moon_r));
+		float crack=1.0-smoothstep(0.01,0.045,abs(sin(moon.x*8.0+sin(moon.y*9.0)*1.2)));
+		moon_color*=1.0-crack*competition*0.87;
+		float coverage=1.0-smoothstep(0.97,1.0,moon_r);
+		color=mix(color,moon_color,coverage); opacity=coverage+opacity*(1.0-coverage);
+	}
+	// Few larger plates and tiny grains pull from the moon's stressed limb.
+	// Fixed fifteen candidates, evaluated only within its small bounding region.
+	if (competition>0.08 && variation>0.3 && length(moon_local)<3.8) {
+		for (int fragment=0;fragment<15;fragment++) {
+			float seed=hash21(vec2(float(fragment)+planet_id,51.7));
+			float side=hash21(vec2(float(fragment),73.2))*2.0-1.0;
+			float travel=fract(visual_time*(0.09+seed*0.04)+seed);
+			vec2 at=tide_axis*(1.0+travel*2.1*competition)+vec2(-tide_axis.y,tide_axis.x)*side*(0.36+travel*0.5);
+			float fragment_size=fragment<3 ? mix(0.075,0.13,seed) : mix(0.013,0.028,seed);
+			vec2 d=moon_local-at;
+			float rock_r=max(abs(d.x)*0.85+abs(d.y)*0.48,abs(d.y)*0.9);
+			float cover=(1.0-smoothstep(fragment_size*0.7,fragment_size,rock_r))*competition*sin(travel*3.14159);
+			vec3 fragment_color=mix(vec3(0.11,0.13,0.17),vec3(0.32,0.36,0.42),seed);
+			color=mix(color,fragment_color,cover);opacity=cover+opacity*(1.0-cover);
+		}
 	}
 	float vignette = 1.0 - 0.30 * smoothstep(0.2, 0.83, length(uv - vec2(0.5)));
-	COLOR = vec4(color * vignette, 1.0);
+	COLOR = vec4(color * vignette / max(opacity,0.001),opacity);
 }

@@ -49,10 +49,12 @@ var proximity_multiplier := 1.0
 var guard_total := 0
 var dodge_offset := Vector2.ZERO
 var hole_color := Color("a45cff")
+var pressure_front_radius := 0.0
+var collapse_snapshot := false
 
 ## Godot calls this once after the node joins the scene; initialize child nodes and cached resources here.
 func _ready() -> void:
-	if lingering:
+	if lingering or collapse_snapshot:
 		return
 	return_to_firefight()
 	phase = "arrival"
@@ -62,7 +64,8 @@ func step(delta: float) -> void:
 	if health <= 0 or game.state != game.State.PLAYING:
 		return
 	animation_time += delta
-	phase_time += delta
+	if not game.gravity_fields.lifetime_frozen(self):
+		phase_time += delta
 	tap_flash = maxf(0.0, tap_flash - delta)
 	hit_flash = maxf(0.0, hit_flash - delta)
 	if not lingering:
@@ -85,7 +88,12 @@ func step(delta: float) -> void:
 		if cannon_active:
 			cannon_previous_position = cannon_position
 			cannon_position += cannon_velocity * delta
-			if Geometry2D.get_closest_point_to_segment(well_position, cannon_previous_position, cannon_position).distance_to(well_position) <= 18.0:
+			var collision: Dictionary = game.gravity_fields.intercept_cannon(cannon_previous_position, cannon_position, self)
+			if not collision.is_empty():
+				cannon_position = collision.at
+				well_position = collision.at
+				activate_special(true)
+			elif Geometry2D.get_closest_point_to_segment(well_position, cannon_previous_position, cannon_position).distance_to(well_position) <= 18.0:
 				activate_special()
 		elif phase_time >= WARNING_SECONDS:
 			activate_special()
@@ -118,27 +126,7 @@ func step(delta: float) -> void:
 		if phase_time >= well_duration:
 			return_to_firefight()
 			return
-		var force_blocked: bool = neutralise_time > 0.0 or game.combat.shield_time > 0.0
 		neutralise_time = maxf(0.0, neutralise_time - delta)
-		var previous_position: Vector2 = game.ship.position
-		if not force_blocked:
-			var direction: Vector2 = (well_position - previous_position).normalized()
-			if kind == "white":
-				direction = -direction
-			var fraction := clampf(phase_time / well_duration, 0.0, 1.0)
-			# Same average travel budget, with gentle acceleration/deceleration.
-			var strength := lerpf(66.0, 86.0, fraction) if kind == "black" else lerpf(118.0, 94.0, fraction)
-			strength *= proximity_multiplier
-			game.ship.position += direction * strength * delta
-		if game.combat.shield_time <= 0.0:
-			game.ship.target_x = game.ship.position.x
-		var closest := Geometry2D.get_closest_point_to_segment(well_position, previous_position, game.ship.position)
-		if kind == "black" and closest.distance_to(well_position) < 29 * well_scale and game.combat.shield_time <= 0.0:
-			game.lose_ship("Caught in the black hole.")
-			return
-		if kind == "white" and touches_screen_edge() and game.combat.shield_time <= 0.0:
-			game.lose_ship("The white hole pushed you into the boundary.")
-			return
 	if not lingering:
 		body_position = safe_player_well_position(body_position, false)
 	queue_redraw()
@@ -210,10 +198,11 @@ func fire_volley() -> void:
 		game.spawn_hostile_shot(muzzle, aim.rotated(angle) * 245.0)
 
 ## Finish a special and schedule another firefight. Detached attacks free themselves instead of restarting.
-func return_to_firefight() -> void:
+func return_to_firefight(release_force: Vector2 = Vector2.INF) -> void:
 	if phase == "active" and kind in ["black", "white"]:
+		var departing_force: Vector2 = game.gravity_fields.net_force_for(game.ship) if release_force == Vector2.INF else release_force
 		game.gravity_fields.add_exit(well_position, kind, well_scale)
-		game.request_cruise_return()
+		game.request_cruise_return(departing_force)
 	if lingering:
 		if kind in ["asteroid", "swarm"]:
 			game.burst(body_position + Vector2(0, 42), Color("ffb86a"), 18)
@@ -234,6 +223,8 @@ func begin_special() -> void:
 	phase_time = 0.0
 	neutralise_time = 0.0
 	if kind in ["black", "white"]:
+		# Smooth size growth approaches a 1.7x ceiling without sudden stage jumps.
+		well_scale = 1.0 + 0.7 * (1.0 - exp(-float(game.bosses_defeated) / 30.0))
 		position_gravity_hole()
 		launch_rift_cannon()
 	else:
@@ -241,19 +232,20 @@ func begin_special() -> void:
 	queue_redraw()
 
 ## Start the force/barrage timer only after the warning or cannon landing; unsafe gravity landings are redirected.
-func activate_special() -> void:
+func activate_special(intercepted: bool = false) -> void:
 	game.combat.vibrate(kind + "_spawn" if kind in ["black", "white"] else "enemy")
-	if not lingering and kind in ["black", "white"] and well_position.distance_to(game.ship.position) < minf(130.0, game.arena.x * 0.22):
+	if not intercepted and not lingering and kind in ["black", "white"] and well_position.distance_to(game.ship.position) < gravity_spawn_clearance():
 		position_gravity_hole()
 		aim_cannon_at_hole()
 		return
 	cannon_active = false
 	phase = "active"
 	phase_time = 0.0
+	pressure_front_radius = 31.0 * well_scale
 	neutralise_time = 0.0
 	asteroid_timer = 0.0
 	swarm_count = 0
-	swarm_reward = {"dropped": false}
+	swarm_reward = {"dropped": false, "color": game.ALIEN_HOLE_COLORS[game.rng.randi_range(0, game.ALIEN_HOLE_COLORS.size() - 1)]}
 	game.sound.play_effect("rift" if kind in ["black", "white"] else "burst")
 	if kind in ["black", "white"]:
 		if game.combat.shield_time <= 0.0:
@@ -307,6 +299,7 @@ func summon_alien() -> void:
 	var alien: Node2D = game.spawn_enemy(start, velocity, true, body_position + Vector2(0, 42))
 	alien.shot_timer = 0.55
 	alien.drop_group = swarm_reward
+	alien.set_palette(swarm_reward.get("color", Color("c26bff")))
 	game.sound.play_effect("fold")
 
 ## Choose a lower-middle landing region, maximizing clearance if the random point is too close to the ship.
@@ -314,13 +307,18 @@ func position_gravity_hole() -> void:
 	# Fixed lower-middle arena region, never a ship-relative target.
 	var region := Rect2(game.arena * Vector2(0.28, 0.57), game.arena * Vector2(0.44, 0.13))
 	var candidate := Vector2(game.rng.randf_range(region.position.x, region.end.x), game.rng.randf_range(region.position.y, region.end.y))
-	if candidate.distance_to(game.ship.position) < 130.0:
+	if candidate.distance_to(game.ship.position) < gravity_spawn_clearance():
 		# The farthest corner maximizes reaction room even after prior drift.
 		for corner in [region.position, region.end, Vector2(region.end.x, region.position.y), Vector2(region.position.x, region.end.y)]:
 			if corner.distance_to(game.ship.position) > candidate.distance_to(game.ship.position):
 				candidate = corner
 	well_position = candidate
 	white_push_direction = (game.ship.position - well_position).normalized()
+
+## Preserve a hull-width reaction gap outside the growing lethal core. The
+## clearance fits even when the player is at the center of the landing region.
+func gravity_spawn_clearance() -> float:
+	return 31.0 * well_scale + game.Ship.HIT_RADIUS + 55.0
 
 ## Check the ship's collision margin against all four screen boundaries for white-hole defeat.
 func touches_screen_edge() -> bool:
@@ -357,6 +355,9 @@ func holds_steering() -> bool:
 
 ## Submit this object's visual geometry in local coordinates. Physics and collision rules are handled separately.
 func _draw() -> void:
+	if collapse_snapshot:
+		draw_armored_body(Color("b9f8ff") if kind == "white" else hole_color)
+		return
 	if lingering and kind in ["asteroid", "swarm"]:
 		draw_tractor_remnant()
 		return

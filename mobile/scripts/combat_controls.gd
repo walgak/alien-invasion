@@ -18,10 +18,12 @@ var haptic_followup := 0.0
 var returns: Dictionary[int, Vector2] = {}
 var gravity_haptic := false
 var gravity_haptic_delay := 0.0
+var gravity_haptic_remaining := 0.0
 var white_pops: Array[float] = []
 var warp_pulses: Array[Dictionary] = []
 var missiles := 30
 ## Special weapons are inventory, independent of the permanent primary gun tier.
+var electron_stock := 0
 var laser_stock := 0
 var laser_active := false
 var gravity_charge := 0.0
@@ -47,6 +49,7 @@ func reset() -> void:
 	warp_pulses.clear()
 	stop_haptics()
 	missiles = 30
+	electron_stock = 0
 	laser_stock = 0
 	laser_active = false
 	previous_weapon = 0
@@ -78,6 +81,11 @@ func release_control() -> void:
 ## complete collected shield additionally negates gravity and allows steering.
 func hazards_protected() -> bool:
 	return shield_time > 0.0 or gravity_blocks_control()
+
+## Match the visible hull at every gun tier, including the widest laser shape.
+## Physics and shader layers share this radius instead of separate magic values.
+func shield_radius() -> float:
+	return 1.2 * maxf(47.0, game.Ship.Artwork.size_for(game.weapons.level).x * 0.5 + 8.0)
 
 ## Equipped weapons fire only while a ship-control gesture is held, outside gravity.
 func firing() -> bool:
@@ -141,7 +149,7 @@ func step(delta: float) -> void:
 ## Movement retains its own finger when a second finger targets an alien,
 ## chooses a gravity destination, or presses a special-weapon button.
 func press(id: int, at: Vector2) -> void:
-	if owns_pointer(id) or at.y <= game.top_inset + 143 or not Rect2(Vector2.ZERO, game.arena).has_point(at):
+	if owns_pointer(id) or at.y <= game.playfield_top() or not Rect2(Vector2.ZERO, game.arena).has_point(at):
 		return
 	if gravity_blocks_control():
 		warp_pulses.append({"at": game.ship.position, "age": 0.0})
@@ -177,7 +185,7 @@ func press(id: int, at: Vector2) -> void:
 func valid_gravity_target(at: Vector2) -> bool:
 	var selected_size := clampf(gravity_charge / GRAVITY_MIN_CHARGE, 1.0, 5.0)
 	var clear_distance := maxf(90.0, 31.0 * 1.8 * sqrt(selected_size) + game.Ship.HIT_RADIUS + 24.0)
-	return Rect2(Vector2(0, game.top_inset + 143), Vector2(game.arena.x, game.arena.y - game.bottom_inset - game.top_inset - 217)).has_point(at) and at.distance_to(game.ship.position) >= clear_distance
+	return Rect2(Vector2(0, game.playfield_top()), Vector2(game.arena.x, game.arena.y - game.bottom_inset - game.playfield_top() - 74.0)).has_point(at) and at.distance_to(game.ship.position) >= clear_distance
 
 func move(id: int, at: Vector2) -> void:
 	if aim_touches.has(id):
@@ -280,6 +288,19 @@ func fire_cannon_volley() -> int:
 		game.sound.play_effect("rocket")
 	return fired
 
+## Only boss rewards add electron charges. Failed/blocked launches never spend
+## stock, and one activation is capped by the game to one chained screen attack.
+func collect_electron() -> void:
+	electron_stock = mini(10, electron_stock + 1)
+
+func activate_electron() -> bool:
+	if game.state != game.State.PLAYING or game.death_time > 0.0 or gravity_blocks_control() or electron_stock <= 0:
+		return false
+	if not game.fire_electron():
+		return false
+	electron_stock -= 1
+	return true
+
 ## Laser pickups are inventory. A paused partial charge survives weapon toggles
 ## and costs no further pickup when selected again; charges never auto-chain.
 func collect_laser() -> void:
@@ -339,18 +360,11 @@ func controls_actor(actor: Node2D) -> bool:
 			return true
 	return false
 
-## Gravity silhouettes come from screen refraction, with soft filled halos and
-## particles for readability. No geometric rings are painted over the lens.
+## The shield layer owns all shield/tap surfaces. This controller only draws
+## the short-lived plasma gathering at the cannon during launch preparation.
 func _draw() -> void:
 	if game.state != game.State.PLAYING:
 		return
-	if hazards_protected():
-		var pulse := 0.75 + sin(game.elapsed * 3.2) * 0.25
-		for layer in range(4, 0, -1):
-			draw_circle(game.ship.position, 34.0 + layer * 7.0, Color(0.28, 0.86, 1.0, (0.006 + 0.004 * pulse) * (5 - layer)))
-	for pulse in warp_pulses:
-		var progress: float = clampf(pulse.age / 0.42, 0.0, 1.0)
-		draw_warp_ring(pulse.at, 42.0 + progress * 44.0, game.elapsed * 1.7, 1.0 - progress)
 	if pending_gravity_time >= 0.0:
 		var at: Vector2 = game.ship.muzzle_position(game.weapons.level, 0, true)
 		var progress := 1.0 - pending_gravity_time / GRAVITY_PREPARATION
@@ -362,12 +376,8 @@ func _draw() -> void:
 			var particle := at + Vector2.from_angle(angle) * (7.0 + (1.0 - phase) * 66.0)
 			draw_circle(particle, 1.3 + phase * 1.1, Color(0.35 + phase * 0.5, 0.75 + phase * 0.2, 1.0, phase * progress))
 
-## Historical API name retained for callers; the effect is a soft volume only.
-func draw_warp_ring(at: Vector2, radius: float, _phase: float, alpha: float) -> void:
-	for layer in range(4, 0, -1):
-		draw_circle(at, radius * (0.68 + layer * 0.08), Color(0.35, 0.82, 1.0, 0.012 * alpha))
-
-## Pick the strongest nearby field that actually controls this ship.
+## Pick the nearest field that actually controls this ship for legacy callers.
+## Orientation uses the resultant vector below, not this single-well helper.
 func gravity_for(actor: Node2D) -> Node2D:
 	if actor == game.ship and shield_time > 0.0:
 		return null
@@ -387,19 +397,21 @@ func update_attitudes(delta: float) -> void:
 	for actor in game.enemies + [game.ship]:
 		if not is_instance_valid(actor) or actor.is_queued_for_deletion():
 			continue
-		var well := gravity_for(actor)
 		var angle: float = game.ship.lean * 0.12 if actor == game.ship else 0.0
 		var engine_load := 0.0
-		if well != null:
-			var nose: Vector2 = actor.position - well.well_position
-			if well.kind == "white":
-				nose = -nose
-			# Player art faces up; alien art faces down. Both noses oppose gravity.
-			angle = nose.angle() + (PI/2.0 if actor == game.ship else -PI/2.0)
-			engine_load = gravity_engine_load(actor.position, well)
+		var force: Vector2 = game.gravity_fields.net_force_for(actor)
+		if force.length_squared() > 0.01:
+			# Opposing the vector sum is the optimum attitude between white holes;
+			# two equal opposing fields leave the normal flight attitude unchanged.
+			angle = (-force).angle() + (PI/2.0 if actor == game.ship else -PI/2.0)
+			for well in game.gravity_fields.active_wells():
+				if actor != game.ship and not well is PlayerWell:
+					continue
+				engine_load = maxf(engine_load, gravity_engine_load(actor.position, well))
 		actor.rotation = lerp_angle(actor.rotation, angle, 1.0 - exp(-delta * 7.0))
 		actor.engine_burn.set_load(engine_load)
 		actor.engine_burn.advance(delta)
+		actor.update_damage_visual(delta)
 
 ## Visual load only: bright/long near a black horizon; the opposite near white.
 ## Measure from the core, so merged/charged wells behave like small ones.
@@ -414,6 +426,7 @@ func stop_haptics() -> void:
 	# contend with touch delivery when its haptic engine is temporarily absent.
 	gravity_haptic = false
 	gravity_haptic_delay = 0.0
+	gravity_haptic_remaining = 0.0
 	white_pops.clear()
 
 ## One long low-amplitude event gives a smooth continuous gravity rumble. Spawn
@@ -428,13 +441,21 @@ func update_haptics(delta: float) -> void:
 			Input.vibrate_handheld(30, 0.6 + 0.15 * i)
 			white_pops.remove_at(i)
 	gravity_haptic_delay = maxf(0.0, gravity_haptic_delay - delta)
+	gravity_haptic_remaining = maxf(0.0, gravity_haptic_remaining - delta)
 	var wells: Array = game.gravity_fields.active_wells()
 	if wells.is_empty():
 		if gravity_haptic:
 			stop_haptics()
-	elif not gravity_haptic and gravity_haptic_delay <= 0.0:
+	elif (not gravity_haptic or gravity_haptic_remaining <= 0.15) and gravity_haptic_delay <= 0.0:
 		var duration := 0.0
 		for well in wells:
 			duration = maxf(duration, game.gravity_fields.seconds_left(well))
+		# A lone field ends naturally at its exact remaining lifetime. Interacting
+		# fields can end early through annihilation, so their renewable segments
+		# are short enough that no long rumble continues after a sudden discharge.
+		if gravity_haptic and duration <= gravity_haptic_remaining + 0.05:
+			return
+		duration = clampf(duration, 0.05, 1.2 if wells.size() > 1 else 30.0)
 		Input.vibrate_handheld(int(duration * 1000), 0.18)
+		gravity_haptic_remaining = duration
 		gravity_haptic = true

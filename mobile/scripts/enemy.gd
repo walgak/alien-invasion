@@ -3,6 +3,12 @@ extends Node2D
 const HIT_RADIUS := 24.0
 const Artwork = preload("res://scripts/alien_artwork.gd")
 const EngineBurn = preload("res://scripts/engine_burn.gd")
+const HullDamage = preload("res://scripts/hull_damage.gd")
+const HullShader = preload("res://shaders/alien_hull.gdshader")
+var hull_surface: ShaderMaterial
+var damage_visual: Node2D
+var damage_clock := 0.0
+var palette := Color("b34cff")
 var engine_burn: Node2D
 var formation_offset := Vector2.ZERO
 var phase := 0.0
@@ -30,11 +36,44 @@ var next_gun_side := -1
 ## Alien noses point down in normal flight. The twin violet engines therefore
 ## exhaust upward; rotating the entire ship keeps their force direction honest.
 func _ready() -> void:
+	hull_surface = ShaderMaterial.new()
+	hull_surface.shader = HullShader
+	material = hull_surface
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	engine_burn = EngineBurn.new()
 	add_child(engine_burn)
 	engine_burn.rotation = PI
-	engine_burn.configure(Artwork.nozzles(), Color("b34cff"), 3.8)
+	engine_burn.configure(Artwork.nozzles(), palette, 3.8)
+	damage_visual = HullDamage.new()
+	add_child(damage_visual)
+	damage_visual.configure(Artwork.size_for(), true)
+	set_palette(palette)
+	update_damage_visual(0.0)
+
+## A whole swarm shares one emission color; only the violet plasma fittings
+## are recolored, preserving the reference ship's graphite armor and reflections.
+func set_palette(color: Color) -> void:
+	palette = color
+	tint = color
+	if hull_surface:
+		hull_surface.set_shader_parameter("emission_color", color)
+	if is_instance_valid(engine_burn):
+		engine_burn.tint = color
+		for jet in engine_burn.jets:
+			jet.material.set_shader_parameter("engine_color", color)
+
+## Called from the shared attitude pass even for stationary boss guards or
+## ships held in gravity. Wobble changes shader vertices, never actual position.
+func update_damage_visual(delta: float) -> void:
+	damage_clock += delta
+	var stage := clampi(3-health,0,2)
+	if hull_surface:
+		hull_surface.set_shader_parameter("hull_damage", float(stage))
+		hull_surface.set_shader_parameter("damage_time", damage_clock)
+		hull_surface.set_shader_parameter("visual_time", damage_clock)
+	if is_instance_valid(damage_visual):
+		damage_visual.advance(delta,stage)
+	queue_redraw()
 
 ## Alternate the two modeled cannons without adding bullets or changing timing.
 func muzzle_position() -> Vector2:

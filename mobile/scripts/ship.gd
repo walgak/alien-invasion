@@ -5,6 +5,10 @@ const SPEED := 640.0
 const HIT_RADIUS := 15.0
 const Artwork = preload("res://scripts/ship_artwork.gd")
 const EngineBurn = preload("res://scripts/engine_burn.gd")
+const HullDamage = preload("res://scripts/hull_damage.gd")
+var damage_visual: Node2D
+var hull_health := 3
+var damage_clock := 0.0
 var target_x := 270.0
 var invulnerable := 0.0
 var animation_time := 0.0
@@ -20,6 +24,26 @@ func _ready() -> void:
 	engine_burn = EngineBurn.new()
 	add_child(engine_burn)
 	engine_burn.configure(Artwork.nozzles(weapon_level), Color("258dff"), 5.6)
+	damage_visual = HullDamage.new()
+	add_child(damage_visual)
+	damage_visual.configure(Artwork.size_for(weapon_level), false)
+	set_hull_health(hull_health)
+
+## Root game owns the three lives. Repairs restore plating and stop smoke;
+## visual damage never changes control speed, hit radius or emitter positions.
+func set_hull_health(lives: int) -> void:
+	hull_health = clampi(lives,0,3)
+	update_damage_visual(0.0)
+
+func update_damage_visual(delta: float) -> void:
+	damage_clock += delta
+	var stage := clampi(3-hull_health,0,2)
+	hull_surface.set_shader_parameter("hull_damage",float(stage))
+	hull_surface.set_shader_parameter("damage_time",damage_clock)
+	if is_instance_valid(damage_visual):
+		damage_visual.configure(Artwork.size_for(weapon_level),false)
+		damage_visual.advance(delta,stage)
+	queue_redraw()
 
 ## Return an arena-space origin even while leaning or resisting gravity.
 func muzzle_position(level: int, lane: int = 0, special: bool = false) -> Vector2:
@@ -47,6 +71,11 @@ func reset_ship(at: Vector2) -> void:
 	rotation = 0.0
 	lean = 0.0
 	weapon_level = 0
+	hull_health = 3
+	damage_clock = 0.0
+	set_hull_health(3)
+	if is_instance_valid(damage_visual):
+		damage_visual.clear()
 	scale = Vector2.ONE
 	visible = true
 	if is_instance_valid(engine_burn):

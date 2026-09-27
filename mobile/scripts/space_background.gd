@@ -1,24 +1,64 @@
 extends Node2D
-## An opaque, textured sky behind the actors and the space-fold refraction pass.
-
+## Stars have their own unwarped layer. A transparent offscreen celestial layer
+## lets gravity bend gas, atmosphere and wind without ever sampling those stars.
 const SKY_SHADER = preload("res://shaders/space_background.gdshader")
-
-var arena_size := Vector2(540.0, 960.0)
+const STAR_SHADER = preload("res://shaders/distant_stars.gdshader")
+const MAX_FIELDS := 4
+var arena_size := Vector2(540.0,960.0)
 var sky_material := ShaderMaterial.new()
+var star_material := ShaderMaterial.new()
+var celestial_viewport: SubViewport
+var celestial_surface: ColorRect
+var wind_strength := 0.45
+var previous_time := 0.0
 
-## Construct defaults before this object enters the scene tree; do not depend on ready child nodes here.
 func _init() -> void:
+	star_material.shader = STAR_SHADER
+	material = star_material
 	sky_material.shader = SKY_SHADER
-	material = sky_material
-	update_background(arena_size, 0.0)
+	celestial_viewport = SubViewport.new()
+	celestial_viewport.transparent_bg = true
+	celestial_viewport.disable_3d = true
+	celestial_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	celestial_viewport.handle_input_locally = false
+	add_child(celestial_viewport)
+	celestial_surface = ColorRect.new()
+	celestial_surface.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	celestial_surface.material = sky_material
+	celestial_viewport.add_child(celestial_surface)
+	update_background(arena_size,0.0)
 
-## Send viewport size and simulation time to the sky shader; paused game time freezes its motion.
-func update_background(arena: Vector2, time: float) -> void:
+## Existing light/jitter callers keep using sky_material. Supplying the game
+## additionally exposes a bounded set of active tides and sector wind strength.
+func update_background(arena: Vector2, time: float, game: Node2D = null) -> void:
 	arena_size = arena
-	sky_material.set_shader_parameter("arena_size", arena_size)
-	sky_material.set_shader_parameter("visual_time", time)
+	var logical_size := Vector2i(ceili(arena.x),ceili(arena.y))
+	if celestial_viewport.size != logical_size:
+		celestial_viewport.size = logical_size
+		celestial_surface.size = arena
+	star_material.set_shader_parameter("arena_size",arena)
+	star_material.set_shader_parameter("visual_time",time)
+	sky_material.set_shader_parameter("arena_size",arena)
+	sky_material.set_shader_parameter("visual_time",time)
+	var fields := PackedVector4Array()
+	if game != null:
+		for well in game.gravity_fields.active_wells():
+			if fields.size() >= MAX_FIELDS:
+				break
+			fields.append(Vector4(well.well_position.x,well.well_position.y,-1.0 if well.kind == "black" else 1.0,well.well_scale))
+		# Four solar-weather levels vary by sector, easing rather than flashing
+		# when a boss dies. Wind never shares the stationary star coordinates.
+		var weather := [0.85,0.34,0.10,0.012]
+		var target: float = weather[(game.bosses_defeated*3)%4]
+		wind_strength = lerpf(wind_strength,target,1.0-exp(-maxf(0.0,time-previous_time)*0.3))
+	sky_material.set_shader_parameter("field_count",fields.size())
+	fields.resize(MAX_FIELDS)
+	sky_material.set_shader_parameter("gravity_fields",fields)
+	previous_time = time
 	queue_redraw()
 
-## Submit this object's visual geometry in local coordinates. Physics and collision rules are handled separately.
+func celestial_texture() -> ViewportTexture:
+	return celestial_viewport.get_texture()
+
 func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, arena_size), Color.WHITE)
+	draw_rect(Rect2(Vector2.ZERO,arena_size),Color.WHITE)

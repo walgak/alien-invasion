@@ -57,7 +57,7 @@ Player wells store pre-pull positions only for surviving non-player actors. Ship
 
 The title and pause menus persist three accessibility presentation controls through `progress.gd`: screen shake on/off, reduced/full laser brightness, and reduced/full gravity distortion. `space_folds.gd` feeds shield volumes, tap pulses, mixed-hole shockwaves, exit waves, boss shields, holes, and tethers into one bounded screen-reading pass. This keeps the effect visually consistent and caps the number of simultaneous lenses.
 
-Characters and combat effects remain 2D. Shield and tapping effects are smooth background refraction plus a faint filled cyan halo, without geometric strokes. Hostile bullets curve around the shield without being absorbed; a deflected doom cannon also emits a harmless visual shockwave. The white-hole boundary shader follows the safe-area corner shape on iPhone and uses square desktop corners. Every white exit discharges this bubble with light. Black cores mask all actors and death fragments. Blue player disks and encounter-colored alien disks have shader particles whose inward/outward motion and spin match the accretion flow.
+Characters and combat effects remain 2D. Shield and tapping effects combine exaggerated refraction with a transparent blue hexagonal shell and flowing iridescent highlights. Hostile bullets curve around the shield without being absorbed. The escaped-alien doom cannon is the deliberate exception: the shield absorbs it and emits a harmless outward ripple. The white-hole boundary shader follows the safe-area corner shape on iPhone and uses square desktop corners. Every white exit discharges this bubble with light. Black cores mask all actors and death fragments. Blue player disks and encounter-colored alien disks have shader particles whose inward/outward motion and spin match the accretion flow.
 
 `accretion_visual.gd` and `accretion.gdshader` animate the committed luminance texture in `assets/effects/`. The image's black backdrop becomes transparent via sampled luminance; colour mapping supplies blue, alien, or white plasma. Two texture samples provide rotation and radial flow on each quad, with the simulation clock freezing animation during pause. `gravity_interactions.gd` reuses at most twelve sprites at layer -5 behind ships, then masks every actual core at layer 32 above ships and death fragments. The outer extent scales more slowly than core size to limit maximum-charge overdraw. Restart hides the pool rather than creating more nodes. Active well refraction has strength 1.4 and takes priority over cosmetic pulses in the eight-lens budget. `tests/accretion_capture.gd` verifies rendered core opacity, animation, actual refraction and lens priority.
 
@@ -73,7 +73,7 @@ Characters and combat effects remain 2D. Shield and tapping effects are smooth b
 | --- | --- |
 | Boss health curve, alien/rock health, wave timing | `game.gd`: spawn/director methods |
 | Shooting frequency and extra drop progression | `difficulty_scale()` and their callers |
-| Guaranteed drops and advanced-tier limit | `guaranteed_drop()`, `maybe_drop_pickup()` |
+| Swarm support drops and exact boss rewards | `guaranteed_drop()`, `maybe_drop_pickup()`, `boss_drops()` |
 | Gravity force, tap duration and attack length | `boss.gd` constants and `step()` |
 | Smooth return speed | `game._physics_process()` |
 | Laser contact duration and boss damage | `game.update_laser()` |
@@ -88,7 +88,7 @@ Characters and combat effects remain 2D. Shield and tapping effects are smooth b
 | Planet travel, colors, stars | `shaders/space_background.gdshader` |
 | Fold distortion | `space_folds.gd` and its matching shader |
 
-Health progression: small aliens start at 3 and gain one hit every two victories, capped at 9. Rocks start at 5/8/12 by size and gain one every two victories. Bosses use `floor(100 - 780 / (12 + victories))`, capped at 99. The underlying curve starts at 35 and approaches 100. Difficulty begins at 1%; the 50% reference is used for firing and extra drops.
+Health progression: small aliens always take 3 normal bullet damage, with wreckage after one hit and smoke after two. Rocks start at 5/8/12 by size and gain one every two victories. Bosses use `floor(100 - 780 / (12 + victories))`, capped at 99. The underlying curve starts at 35 and approaches 100. Difficulty begins at 1%; the 50% reference is used for firing and extra drops.
 
 ## Audio and rendering performance
 
@@ -121,7 +121,7 @@ Godot 4.7’s iOS haptic implementation can log “Could not vibrate using hapti
 
 ## Interacting fields and readable defeat
 
-`gravity_interactions.gd` updates active fields before actor physics. Black fields attract at a bounded rate; touching cores merge using `sqrt(radius_scale_a² + radius_scale_b²)` and the sum of their **remaining** seconds. This keeps the launch charge cap separate from conserved merged area and duration. A player field owns the merged field when present so survivor bookkeeping is retained. White fields repel without changing their clocks. When multiple white fields exist, proximity raises force by up to 3× and shortens the neutralisation window by the same factor. Taps always cancel force completely.
+`gravity_interactions.gd` updates active fields before actor physics. Black fields attract at a bounded rate; touching cores merge using `sqrt(radius_scale_a² + radius_scale_b²)` and the sum of their **remaining** seconds. This keeps the launch charge cap separate from conserved merged area and duration. A player field owns the merged field when present so survivor bookkeeping is retained. All interacting fields pause their lifetime clocks. White centers repel while expanding pressure fronts eventually meet and discharge both fields; the surviving single field resumes its clock. When multiple white fields exist, proximity raises force by up to 3× and shortens the neutralisation window by the same factor. Taps always cancel force completely.
 
 Opposite cores cancel on contact, show a 0.35-second flash, then emit a local shockwave. It destroys nearby exposed aliens, deals five damage to exposed rocks/bosses, and clears nearby shots. It never calls player damage. Existing boss shields still gate boss damage.
 
@@ -151,3 +151,28 @@ Expired wells enqueue finite visual-only exit effects. Black exits contract two 
 There are no foreground suns. One light vector is shared by all celestial bodies, easing toward a new sector direction rather than snapping. Planets are spaced by 3,160 logical pixels at the normal viewport height and vary from 65 to 235 pixels in radius. Ocean, gas, ice and rocky worlds use different surface palettes/patterns. Only some have moons or rings. Ring pixels are composited behind or in front according to their tilted plane coordinate. Colorful nebulae remain distant and slow.
 
 `tests/gravity_polish.gd` covers the new combat and presentation contracts; `tests/polish_capture.gd` captures real GPU frames. `tests/device_gravity_probe.gd` is an isolated on-device harness that renders three maximum-charge fields with swallowed actors and writes progress to its own `user://gravity_probe.txt`. It is excluded from normal exports and uses its own save file. Copy it to a temporary export project as the main scene for device verification, then reinstall the normal playable pack.
+
+
+## Glass controls, electron chains and visible damage
+
+The four circular controls on the right use `interface.route_special_touch()` and ignore Godot's rectangular GUI mouse hit regions. A finger that already owns steering retains it when crossing an icon; only a fresh press inside the circular control can activate it. Releasing a button outside its circle cancels that press. The old top HUD and gravity instruction text are removed. `playfield_top()` defines the same exposed playfield for input, bullets and laser hits.
+
+Bosses drop exactly one special (30% electron, otherwise laser), one gun upgrade and one shield. Ordinary swarms drop support items and primary upgrades only. `electron_stock` caps at 10, laser stock at 99, and cannon stock at 99. `electron_beam.gd` chooses the visible alien nearest the gun's X column, then walks nearest neighbors. Asteroids melt without fragmenting; the boss is visited last and receives one cannon-equivalent hit, subject to its guard gate. Every target ID is checked again before damage. Failed or empty activations do not spend inventory.
+
+`energy_optics.gd` provides analytic swept core intersections and finite tangent/arc detours. Black cores absorb normal shots, white cores redirect them at constant speed. Continuous light splits around cores; damage remains one shared exposure counter per actor. Gravity payloads detonate at existing horizons so merges and annihilation still occur. The optical path has hard iteration and geometry budgets.
+
+After the last field closes, `request_cruise_return(departing_force)` schedules 0.24 seconds of decaying thrust recoil. The kick is clamped inside the playfield and protected from lethal contact; the subsequent cruise return changes only Y. New fields suspend recovery. Resultant gravity vectors determine movement and nose direction when multiple fields overlap.
+
+`boss_collapse.gd` snapshots a defeated gravity hull and deforms it into its larger death well after 0.65 seconds. The original unfinished attack is detached separately with its scale and remaining lifetime preserved. Restart clears all pending transformations.
+
+Shield geometry uses `combat.shield_radius()` so every upgraded wingspan fits inside the requested 20% larger envelope. `shield_visual.gd` owns shell activation, hit ripples and dissipation. Damage helpers change only rendered hulls and smoke; three-hit alien durability and player lives remain in the game controller, while actual movement/collision geometry stays unchanged. A swarm shares one emissive color.
+
+The background now separates stationary, unwarped stars from a transparent celestial layer. `space_folds.gd` can refract this layer and nearby solar wind without moving distant stars. Planet atmosphere, moon tides/fragments and nebula response are subtle and stop with the field. Solar wind varies smoothly between near-zero, light, moderate and intense sectors. The white boundary has one-third its earlier optical width.
+
+Current integration checks:
+
+```sh
+ALIEN_SAVE_PATH=/tmp/next-combat-record.cfg godot --headless --path mobile --script res://tests/next_combat.gd
+ALIEN_SAVE_PATH=/tmp/glass-controls-record.cfg godot --headless --path mobile --script res://tests/glass_controls.gd
+ALIEN_SAVE_PATH=/tmp/gravity-resolution-record.cfg godot --headless --path mobile --script res://tests/gravity_resolution.gd
+```

@@ -37,7 +37,12 @@ func resist() -> void:
 func step(delta: float) -> void:
 	animation_time += delta
 	if phase == "warning":
+		var previous := cannon_position
 		cannon_position = cannon_position.move_toward(well_position, 1225.0 * delta)
+		var collision: Dictionary = game.gravity_fields.intercept_cannon(previous, cannon_position, self)
+		if not collision.is_empty():
+			well_position = collision.at
+			cannon_position = collision.at
 		if cannon_position.distance_to(well_position) < 1.0:
 			phase = "active"
 			remaining = lifetime_for_charge()
@@ -47,57 +52,56 @@ func step(delta: float) -> void:
 		queue_redraw()
 		return
 	active_age += delta
-	var blocked := neutralise_time > 0.0
 	neutralise_time = maxf(0.0, neutralise_time - delta)
 	# Include new arrivals and collectibles, but never bosses. Shots are bent by
 	# game.bend_projectile, preserving their individual constant travel speeds.
-	var actors: Array = [game.ship]
+	var actors: Array = []
 	actors.append_array(game.enemies)
 	actors.append_array(game.pickups)
 	for actor in actors:
 		if not is_instance_valid(actor) or actor.is_queued_for_deletion():
 			continue
 		var id: int = actor.get_instance_id()
-		if actor != game.ship and not origins.has(id):
+		if not origins.has(id):
 			origins[id] = game.combat.returns.get(id, actor.position)
+			# A second field inherits the first field's pre-pull origin, not the
+			# already displaced position observed later in this same frame.
+			for other in game.gravity_fields.active_wells():
+				if other != self and other.get_script() == get_script() and other.origins.has(id):
+					origins[id] = other.origins[id]
+					break
 			game.combat.returns.erase(id)
-		if actor == game.ship and (blocked or game.combat.shield_time > 0.0):
-			continue
 		var before: Vector2 = actor.position
-		actor.position = actor.position.move_toward(well_position, PULL_SPEED * (0.86 + 0.14 * clampf(active_age / 2.0, 0.0, 1.0)) * minf(delta, remaining))
-		if actor == game.ship:
-			actor.target_x = actor.position.x
-		else:
-			actor.previous_position = actor.position
+		if game.gravity_fields.owns_actor_motion(self):
+			actor.position += game.gravity_fields.net_force_for(actor) * delta
+		actor.previous_position = actor.position
 		var nearest := Geometry2D.get_closest_point_to_segment(game.ship.position, before, actor.position)
-		if game.enemies.has(actor) and nearest.distance_to(game.ship.position) <= game.Enemy.HIT_RADIUS + game.Ship.HIT_RADIUS:
+		if game.enemies.has(actor) and nearest.distance_to(game.ship.position) <= game.Enemy.HIT_RADIUS + game.protected_contact_radius():
 			game.handle_alien_collision(actor)
 			if game.state != game.State.PLAYING:
 				return
 			continue
 		if actor.position.distance_to(well_position) < 29.0 * well_scale:
-			if actor == game.ship:
-				game.lose_ship("Caught in your own black hole.")
-			elif game.enemies.has(actor):
+			if game.enemies.has(actor):
 				game.destroy_enemy(actor, false)
-			elif game.asteroids.has(actor):
-				game.hit_asteroid(actor, actor.health, false)
 			elif game.pickups.has(actor):
 				game.pickups.erase(actor)
 				actor.queue_free()
 		if game.state != game.State.PLAYING:
 			return
-	remaining -= delta
+	if not game.gravity_fields.lifetime_frozen(self):
+		remaining -= delta
 	if remaining <= 0.0:
 		finish_well()
 	queue_redraw()
 
 ## Restore living ships and collectibles only. Asteroids retain bent trajectories.
-func finish_well() -> void:
+func finish_well(release_force: Vector2 = Vector2.INF) -> void:
 	if phase == "finished":
 		return
+	var departing_force: Vector2 = game.gravity_fields.net_force_for(game.ship) if release_force == Vector2.INF else release_force
 	game.gravity_fields.add_exit(well_position, kind, well_scale)
-	game.request_cruise_return()
+	game.request_cruise_return(departing_force)
 	for id in origins.keys():
 		var actor = instance_from_id(id)
 		if is_instance_valid(actor) and actor != game.ship and not actor.is_queued_for_deletion() and not game.asteroids.has(actor):
