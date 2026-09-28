@@ -37,7 +37,7 @@ func run() -> void:
 	game.set_process(false)
 	game.sound.enabled = false
 	game.progress.vibration_enabled = false
-	for kind in ["shot","impact","white","black"]:
+	for kind in ["shot","asteroid","ram","white","black"]:
 		game.start_run()
 		game.ship.position = Vector2(270,570)
 		game.death_origin = game.ship.position
@@ -52,7 +52,10 @@ func run() -> void:
 		check(game.death_visual.z_index < game.gravity_fields.z_index,kind+" debris and fire remain behind the opaque horizon")
 		check(game.death_visual.fire.mouse_filter == Control.MOUSE_FILTER_IGNORE,"fire cannot intercept touches")
 		game.death_visual.step(0.0)
-		check(game.death_visual.exploded == (kind == "shot"),kind+" initial ignition timing")
+		check(not game.death_visual.exploded,kind+" starts with inward metal deformation")
+		for sample in [Vector2(20,-25),Vector2(-50,9),Vector2(0,40),Vector2(55,-35)]:
+			var bent: Vector2 = game.death_visual.strained_vertex(sample,game.death_visual.ignition_delay()*0.7)
+			check(bent.length()<sample.length(),kind+" first stage never stretches away from the hull center")
 		game.death_time = game.death_visual.DURATION-0.27
 		game.death_visual.step(0.27)
 		var strained: Vector2 = game.death_visual.strained_vertex(Vector2(20,-25),0.27)
@@ -77,7 +80,7 @@ func run() -> void:
 		check(game.death_visual.warp_state().is_empty(),kind+" has no lingering death distortion")
 	game.start_run()
 	for index in range(30):
-		game.impact_visual.play_collision(Vector2(250,600),Vector2(275,573))
+		game.impact_visual.play_zap(Vector2(220,600),Vector2(315,550))
 	check(game.impact_visual.get_child_count() == 4,"collision swarms reuse four discharge surfaces")
 	check(game.impact_visual.surfaces.all(func(surface: ColorRect) -> bool: return surface.mouse_filter == Control.MOUSE_FILTER_IGNORE),"discharges cannot intercept touch")
 	game.impact_visual.step(0.05)

@@ -596,7 +596,7 @@ func reflected_laser(start: Vector2, pressure_delta: float = 0.0) -> Array[Vecto
 			var core_hit := EnergyOptics.first_core(origin,end,fields)
 			if not core_hit.is_empty():
 				var core: Node2D=core_hit.well
-				var radius: float=31.0*core.well_scale
+				var radius: float=gravity_fields.core_radius(core)
 				if routed or ray.bends<=0 or origin.distance_to(core.well_position)<radius:
 					segments.append_array([origin,core_hit.at])
 					break
@@ -691,6 +691,8 @@ func update_enemies(delta: float) -> void:
 	for enemy in enemies.duplicate():
 		if not enemies.has(enemy):
 			continue
+		if shield_zap_if_close(enemy,enemy.position,enemy.position):
+			continue
 		if combat.controls_actor(enemy):
 			continue
 		if is_instance_valid(boss) and enemy.summoned:
@@ -706,6 +708,8 @@ func update_enemies(delta: float) -> void:
 			enemy.advance(delta, ship.position)
 		if enemy.motion_phase == "flight":
 			enemy.position.x = clampf(enemy.position.x, 32.0, arena.x - 32.0)
+		if shield_zap_if_close(enemy,enemy.previous_position,enemy.position):
+			continue
 		var closest := Geometry2D.get_closest_point_to_segment(ship.position, enemy.previous_position, enemy.position)
 		if closest.distance_to(ship.position) < protected_contact_radius() + Enemy.HIT_RADIUS:
 			handle_alien_collision(enemy)
@@ -819,7 +823,7 @@ func update_projectiles(delta: float) -> void:
 				if shot.hit_ids.has(id):
 					continue
 				shot.hit_ids[id] = true
-				damage_target(target.actor, target.type, shot.damage)
+				damage_target(target.actor, target.type, shot.damage, "primary" if shot.kind in ["bullet", "plasma"] else "special")
 				if shot.blast_radius > 0.0:
 					detonate_rocket(target.at, shot.blast_radius, target.actor)
 				if not shot.piercing:
@@ -893,11 +897,11 @@ func visible_shot_intersects(shot: Node2D, at: Vector2, radius: float) -> bool:
 	return false
 
 ## Route damage by actor type while enforcing exposure and the boss's alien shield gate.
-func damage_target(actor: Node2D, kind: String, amount: int) -> void:
+func damage_target(actor: Node2D, kind: String, amount: int, source: String = "other") -> void:
 	if not target_is_exposed(actor, kind):
 		return
 	if kind == "rock" and asteroids.has(actor):
-		hit_asteroid(actor, amount)
+		hit_asteroid(actor, amount, true, source)
 	elif kind == "boss" and actor == boss:
 		if not boss_is_shielded():
 			boss.take_hit(amount)
@@ -957,12 +961,7 @@ func remove_enemy(enemy: Node2D) -> void:
 func handle_alien_collision(enemy: Node2D) -> void:
 	if not enemies.has(enemy): return
 	if combat.hazards_protected():
-		var radial: Vector2 = (enemy.position-ship.position).normalized()
-		if radial == Vector2.ZERO: radial=Vector2.RIGHT
-		enemy.position=ship.position+radial*(Enemy.HIT_RADIUS+combat.shield_radius())
-		shield_visual.hit_ripple(enemy.position)
-		enemy.previous_position=enemy.position
-		enemy.velocity=radial*maxf(enemy.velocity.length(),140.0)
+		zap_alien(enemy)
 		return
 	# The transient effect is also used during a lethal collision before the menu.
 	impact_visual.play_collision(ship.position,enemy.position)
@@ -979,7 +978,7 @@ func boss_drops(at: Vector2) -> void:
 	spawn_pickup(at+Vector2(46,0), "shield", true)
 
 ## Each swarm supplies at least one useful support drop. Higher primary tiers
-## remain possible, but laser/electron inventory belongs exclusively to bosses.
+## remain possible; laser/electron rewards require a boss or a clean large-rock family.
 func guaranteed_drop(at: Vector2) -> void:
 	if pickups.size() >= 12:
 		var oldest: Node2D = pickups.pop_front()
@@ -1000,8 +999,8 @@ func spawn_pickup(at: Vector2, kind: String, exact: bool = false) -> void:
 	var pickup = Pickup.new()
 	if not exact and kind == "life" and rng.randf() < 0.25:
 		kind = "missiles"
-	# Support drops are 3:1 hull to shield. Rare advanced rolls may grant a
-	# stored laser instead of the final permanent plasma upgrade.
+	# Remaining support drops are 3:1 hull to shield. Special weapons are
+	# awarded explicitly by boss_drops() or finish_asteroid_family().
 	if not exact and kind == "life" and rng.randf() < 0.25:
 		kind = "shield"
 	pickup.kind = kind
@@ -1095,6 +1094,8 @@ func spawn_asteroid(at: Vector2, velocity: Vector2, radius: float, health: int =
 	if health <= 0:
 		health = (5 if radius < 26.0 else (8 if radius < 37.0 else 12)) + floori(bosses_defeated / 2.0)
 	rock.health = health
+	if radius >= 37.0:
+		rock.reward_family = {"remaining": 1, "eligible": true, "rewarded": false}
 	rock.spin = rng.randf_range(-2, 2)
 	if fold_origin != Vector2.INF:
 		rock.begin_pull(fold_origin, aim_offset)
@@ -1131,7 +1132,7 @@ func update_asteroids(delta: float) -> void:
 				if delta > 0.0: rock.player_deflected = true
 		var swallowed := false
 		for well in lingering_wells:
-			if well is PlayerWell and well.holds_steering() and rock.position.distance_to(well.well_position) < 29.0 * well.well_scale:
+			if well is PlayerWell and well.holds_steering() and rock.position.distance_to(well.well_position) < gravity_fields.core_radius(well)*(29.0/31.0):
 				hit_asteroid(rock, rock.health, false)
 				swallowed = true
 				break
@@ -1177,17 +1178,22 @@ func resolve_deflected_rock(rock: Node2D) -> bool:
 
 ## Only weapon/shockwave destruction fractures ore. Absorbed rocks vanish whole.
 ## Removing the parent first prevents same-frame hits from duplicating its reward.
-func hit_asteroid(rock: Node2D, amount: int = 1, allow_split: bool = true) -> void:
+func hit_asteroid(rock: Node2D, amount: int = 1, allow_split: bool = true, source: String = "other") -> void:
 	if not is_instance_valid(rock) or not asteroids.has(rock):
 		return
+	if amount <= 0:
+		return
+	if not rock.reward_family.is_empty() and source != "primary":
+		rock.reward_family.eligible = false
 	rock.health -= amount
 	rock.flash = 0.08
 	if rock.health <= 0:
 		combat.vibrate("enemy")
 		burst(rock.position, Color("76dfff") if rock.visual_kind == "ice" else Color("ffb16b"), 15)
-		remove_asteroid(rock)
+		remove_asteroid(rock, true)
 		if allow_split and rock.radius >= 26.0:
 			fracture_asteroid(rock)
+		finish_asteroid_family(rock.reward_family, rock.position)
 		add_score(25)
 		sound.play_effect("burst")
 
@@ -1205,11 +1211,31 @@ func fracture_asteroid(rock: Node2D) -> void:
 		child.rotation = rock.rotation + direction * 0.3
 		child.spin = rock.spin + direction * 0.65
 		child.player_deflected = rock.player_deflected
+		child.reward_family = rock.reward_family
+		if not child.reward_family.is_empty():
+			child.reward_family.remaining += 1
 
 ## Remove a rock from the update list before scheduling its node for deletion.
-func remove_asteroid(rock: Node2D) -> void:
+func remove_asteroid(rock: Node2D, weapon_destroyed: bool = false) -> void:
+	if not asteroids.has(rock): return
+	if not rock.reward_family.is_empty():
+		rock.reward_family.remaining -= 1
+		if not weapon_destroyed: rock.reward_family.eligible = false
 	asteroids.erase(rock)
 	rock.queue_free()
+
+## A family earns exactly one boss-only special after its last small piece.
+## Losing, swallowing or specially damaging any ancestor disqualifies all heirs.
+func finish_asteroid_family(family: Dictionary, at: Vector2) -> void:
+	if family.is_empty() or family.remaining != 0 or not family.eligible or family.rewarded:
+		return
+	family.rewarded = true
+	if pickups.size() >= 12:
+		var oldest: Node2D = pickups.pop_front()
+		oldest.queue_free()
+	spawn_pickup(at,"electron" if rng.randf()<0.30 else "laser",true)
+	burst(at,Color("a8eaff"),28)
+	sound.play_effect("pickup")
 
 ## Gravity cores and unshielded edges end the run regardless of remaining hull lives.
 func lose_ship(reason: String) -> void:
@@ -1284,7 +1310,7 @@ func start_death_animation() -> void:
 	death_hole_color = Color("a45cff")
 	var reason := loss_reason.to_lower()
 	death_is_gravity = "black" in reason or "collapsed" in reason
-	var cause := "black" if death_is_gravity else ("white" if "white" in reason else ("impact" if "collided" in reason or "asteroid" in reason or "ram" in reason else "shot"))
+	var cause := "black" if death_is_gravity else ("white" if "white" in reason else ("asteroid" if "asteroid" in reason else ("ram" if "collided" in reason or "ram" in reason else "shot")))
 	if death_is_gravity:
 		var nearest := INF
 		for well in gravity_fields.active_wells():
@@ -1292,7 +1318,7 @@ func start_death_animation() -> void:
 			if well.kind == "black" and distance < nearest:
 				nearest = distance
 				death_target = well.well_position
-				death_radius = 31.0*well.well_scale
+				death_radius = gravity_fields.core_radius(well)
 				death_hole_color = well.hole_color
 		# The escape cannon collapses around the ship rather than hiding it whole
 		# on the first frame. Its small horizon grows only after plates crumble.
@@ -1536,7 +1562,7 @@ func resolve_core_projectile(shot: Node2D, hit: Dictionary) -> void:
 	var radial: Vector2 = (hit.at-well.well_position).normalized()
 	if radial == Vector2.ZERO: radial=-shot.velocity.normalized()
 	var side := 1.0 if shot.velocity.cross(radial) >= 0.0 else -1.0
-	shot.position=well.well_position+radial*(31.0*well.well_scale+3.0)
+	shot.position=well.well_position+radial*(gravity_fields.core_radius(well)+3.0)
 	shot.previous_position=shot.position
 	shot.velocity=(radial*0.35+radial.orthogonal()*side).normalized()*shot.velocity.length()
 	shot.homing_target=null
@@ -1556,3 +1582,26 @@ func shot_entry_distance(shot: Node2D,at: Vector2,radius: float) -> float:
 ## Physical deflection follows the visible dome, including enlarged upgrades.
 func protected_contact_radius() -> float:
 	return combat.shield_radius() if combat.hazards_protected() else Ship.HIT_RADIUS
+
+## The silhouette reaches one pixel outside the shield before the discharge.
+## Sweep the path to catch a fast alien crossing the ring between frames.
+func shield_zap_if_close(enemy: Node2D, from: Vector2, to: Vector2) -> bool:
+	if not combat.hazards_protected() or not enemies.has(enemy): return false
+	var contact := Geometry2D.get_closest_point_to_segment(ship.position,from,to)
+	var hull_extent: float = Enemy.Artwork.size_for().x*0.5
+	if contact.distance_to(ship.position) > combat.shield_radius()+hull_extent+1.0:
+		return false
+	zap_alien(enemy,contact)
+	return true
+
+## Shield kills are immediate and happen before an alien can escape and fire.
+## The bolt starts at the dome rather than incorrectly emerging from the gun.
+func zap_alien(enemy: Node2D, contact: Vector2 = Vector2.INF) -> void:
+	if not enemies.has(enemy): return
+	var at: Vector2 = enemy.position if contact == Vector2.INF else contact
+	var radial: Vector2 = (at-ship.position).normalized()
+	if radial == Vector2.ZERO: radial=Vector2.UP
+	var rim: Vector2 = ship.position+radial*combat.shield_radius()
+	impact_visual.play_zap(rim,enemy.position)
+	shield_visual.hit_ripple(rim)
+	destroy_enemy(enemy)

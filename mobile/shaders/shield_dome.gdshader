@@ -39,15 +39,18 @@ void fragment() {
 	float mesh=hex_mesh(folded*7.4);
 	float filaments=pow(max(0.0,1.0-abs(sin((sphere.y+sphere.x*0.38)*9.0+turbulence*9.0-visual_time*0.9))),9.0);
 	float rim=exp(-pow((r-0.993)/max(0.010,aa),2.0));
-	float glow=exp(-pow((r-1.005)/0.065,2.0))*0.18;
+	// Only the soft halo is reduced to 10%; the existing refraction lives in
+	// space_folds and is unchanged. Sharp mesh and flowing color carry contrast.
+	float glow=exp(-pow((r-1.005)/0.065,2.0))*0.018;
 	float ripple=exp(-pow((length(p-hit_position)-hit_age*4.6)/0.075,2.0))*(1.0-smoothstep(0.0,0.55,hit_age));
 	vec3 blue=vec3(0.055,0.30,1.0);
 	vec3 ice=vec3(0.34,0.77,1.0);
-	vec3 iridescent=mix(vec3(0.27,0.14,0.95),vec3(0.07,0.68,1.0),turbulence);
+	float color_phase=0.5+0.5*sin(turbulence*5.0+visual_time*0.75);
+	vec3 iridescent=mix(vec3(0.36,0.14,1.0),vec3(0.07,0.78,1.0),color_phase);
 	// Most of the light hugs the curved limb. The dimmer central mesh still
 	// shows the sphere's shape without painting over the ship or its gunfire.
-	vec3 color=blue*mesh*(0.14+fresnel*0.80)+iridescent*filaments*(0.055+fresnel*0.74);
-	color+=blue*fresnel*0.16+ice*mesh*fresnel*filaments*0.45;
+	vec3 color=blue*mesh*(0.22+fresnel*0.92)+iridescent*filaments*(0.12+fresnel*0.84);
+	color+=blue*fresnel*0.016+ice*mesh*fresnel*filaments*0.64;
 	color+=ice*(rim*0.78+glow+ripple*0.65);
 	color+=vec3(0.72,0.86,1.0)*rim*0.19;
 	float shell=(0.94+tap_pulse*0.40)*strength;

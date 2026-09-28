@@ -92,9 +92,12 @@ func update_effects(game: Node2D) -> void:
 		var gravity_shield: bool = boss.has_player_gravity_threat()
 		lenses.append(Vector4(boss.body_position.x, boss.body_position.y, 185.0, 8.5 if gravity_shield else 2.0 + shield_strength * 4.5))
 		styles.append(Vector4(104.0, 1.0, 3.0, game.visual_time))
-	if game.combat.pending_gravity_time >= 0.0 and lenses.size() < MAX_LENSES:
+	# Manual targeting and the final third-second of automatic targeting share
+	# the same refraction clock, so both launches gather plasma before firing.
+	var gravity_preparation: float = game.combat.gravity_preparation_time()
+	if gravity_preparation >= 0.0 and lenses.size() < MAX_LENSES:
 		var muzzle: Vector2 = game.ship.muzzle_position(game.weapons.level, 0, true)
-		var preparation: float = 1.0 - clampf(game.combat.pending_gravity_time * 3.0, 0.0, 1.0)
+		var preparation: float = 1.0 - clampf(gravity_preparation * 3.0, 0.0, 1.0)
 		lenses.append(Vector4(muzzle.x, muzzle.y, 75.0, 1.5 + preparation * 2.5))
 		styles.append(Vector4(4.0 + (1.0 - preparation) * 20.0, -1.0, 1.0, game.visual_time))
 	if game.death_visual.has_method("warp_state") and lenses.size() < MAX_LENSES:
@@ -200,8 +203,8 @@ func update_effects(game: Node2D) -> void:
 func append_active_well(well: Node2D, lenses: PackedVector4Array, styles: PackedVector4Array, colors: PackedVector4Array) -> void:
 	if lenses.size() >= MAX_LENSES:
 		return
-	lenses.append(Vector4(well.well_position.x, well.well_position.y, 164.0 * well.well_scale, 1.4))
-	styles.append(Vector4(31.0 * well.well_scale, 1.0 if well.kind == "white" else -1.0, 0.0, well.animation_time))
+	lenses.append(Vector4(well.well_position.x, well.well_position.y, (164.0 / 31.0) * well.game.gravity_fields.core_radius(well), 1.4))
+	styles.append(Vector4(well.game.gravity_fields.core_radius(well), 1.0 if well.kind == "white" else -1.0, 0.0, well.animation_time))
 	set_well_color(well, lenses.size() - 1, colors)
 
 ## White holes keep an icy fold tint while black holes inherit their owner's

@@ -13,7 +13,7 @@ static func first_core(from: Vector2, to: Vector2, wells: Array) -> Dictionary:
 	var nearest := length+1.0
 	var found: Dictionary = {}
 	for well in wells:
-		var radius: float = 31.0*well.well_scale
+		var radius: float = core_radius(well)
 		var offset: Vector2 = from-well.well_position
 		var projection := offset.dot(direction)
 		var discriminant := projection*projection-offset.length_squared()+radius*radius
@@ -30,7 +30,7 @@ static func first_core(from: Vector2, to: Vector2, wells: Array) -> Dictionary:
 ## chord, the animated beam width and its halo outside the opaque event horizon.
 static func bypass(from: Vector2, to: Vector2, well: Node2D, side: float) -> Array[Vector2]:
 	var center: Vector2 = well.well_position
-	var radius: float = 31.0*well.well_scale+14.0
+	var radius: float = core_radius(well)+14.0
 	var a := from-center
 	var b := to-center
 	var result: Array[Vector2] = []
@@ -71,7 +71,7 @@ static func route(from: Vector2, to: Vector2, wells: Array, side: float = 1.0) -
 				rebuilt.append_array([route[i],route[i+1]])
 				continue
 			var well: Node2D=hit.well
-			var radius: float=31.0*well.well_scale
+			var radius: float=core_radius(well)
 			if route[i].distance_to(well.well_position) < radius or route[i+1].distance_to(well.well_position) < radius:
 				rebuilt.append_array([route[i],hit.at])
 				break
@@ -92,3 +92,8 @@ static func route(from: Vector2, to: Vector2, wells: Array, side: float = 1.0) -
 			break
 		safe.append_array([route[i],route[i+1]])
 	return safe
+
+## During droplet coalescence the visible lobe and collision radius grow
+## together; original well_scale still records mass for the eventual union.
+static func core_radius(well: Node2D) -> float:
+	return well.game.gravity_fields.core_radius(well)

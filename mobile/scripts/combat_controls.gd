@@ -28,6 +28,10 @@ var laser_stock := 0
 var laser_active := false
 var gravity_charge := 0.0
 var gravity_armed := false
+## Selection uses gameplay time, so backgrounding/pausing cancels without spending.
+var gravity_selection_time := 0.0
+## A single signal accompanies each enabled device pulse for input verification.
+signal weapon_feedback_requested(action: String)
 var pending_gravity_time := -1.0
 var pending_gravity_target := Vector2.ZERO
 var pending_gravity_charge := 0.0
@@ -36,6 +40,7 @@ var aim_touches: Dictionary = {}
 const GRAVITY_MIN_CHARGE := 10.0
 const GRAVITY_MAX_CHARGE := 50.0
 const GRAVITY_PREPARATION := 1.0 / 3.0
+const GRAVITY_SELECTION_WINDOW := 3.0
 
 ## Forget run-owned state without changing saved sound/vibration preferences.
 func reset() -> void:
@@ -61,6 +66,7 @@ func cancel() -> void:
 	release_control()
 	aim_touches.clear()
 	gravity_armed = false
+	gravity_selection_time = 0.0
 	pending_gravity_time = -1.0
 	pending_gravity_charge = 0.0
 	pending_gravity_units = 0.0
@@ -125,6 +131,15 @@ func step(delta: float) -> void:
 		pending_gravity_time = maxf(0.0, pending_gravity_time - delta)
 		if pending_gravity_time == 0.0:
 			launch_gravity()
+	if gravity_armed:
+		gravity_selection_time = maxf(0.0, gravity_selection_time - delta)
+		if gravity_selection_time <= 0.000001:
+			gravity_selection_time = 0.0
+			queue_gravity(automatic_gravity_target())
+			# Automatic precharge already played during the final third-second
+			# of selection. Launch on this deadline, without a second delay.
+			if pending_gravity_time >= 0.0:
+				launch_gravity()
 	for id in returns.keys():
 		var actor = instance_from_id(id)
 		if not is_instance_valid(actor) or actor.is_queued_for_deletion():
@@ -160,9 +175,14 @@ func press(id: int, at: Vector2) -> void:
 		for well in game.lingering_wells:
 			well.resist()
 		return
-	if gravity_armed:
+	if gravity_armed and at.y < game.arena.y * 0.5:
 		if valid_gravity_target(at):
 			aim_touches[id] = {"at": at, "age": 0.0, "gravity": true, "target": null}
+		return
+	# The armed lower half belongs to steering, even when an alien is under the
+	# finger. A target selector must never take away the ability to evade it.
+	if gravity_armed and finger == -1:
+		begin_control(id, at)
 		return
 	var tapped: Node2D
 	for enemy in game.enemies:
@@ -174,18 +194,22 @@ func press(id: int, at: Vector2) -> void:
 		aim_touches[id] = {"at": at, "age": 0.0, "gravity": false, "target": tapped}
 		return
 	if finger == -1 and (at.y >= game.arena.y * 0.72 or at.distance_to(game.ship.position) < 75.0):
-		finger = id
-		held = 0.0
-		gesture = "control"
-		game.pointer_id = id
-		game.previous_pointer_x = at.x
+		begin_control(id, at)
 
-## The target may be anywhere visible beyond the player's hull and HUD. Keeping
-## the minimum core away from the muzzle prevents an unavoidable self-hit.
+## The steering finger remains the same across buttons and both screen halves.
+func begin_control(id: int, at: Vector2) -> void:
+	finger = id
+	held = 0.0
+	gesture = "control"
+	game.pointer_id = id
+	game.previous_pointer_x = at.x
+
+## Only the upper half accepts a gravity destination. Keeping the minimum core
+## away from the hull prevents a self-hit when a shield permits high-altitude flight.
 func valid_gravity_target(at: Vector2) -> bool:
 	var selected_size := clampf(gravity_charge / GRAVITY_MIN_CHARGE, 1.0, 5.0)
 	var clear_distance := maxf(90.0, 31.0 * 1.8 * sqrt(selected_size) + game.Ship.HIT_RADIUS + 24.0)
-	return Rect2(Vector2(0, game.playfield_top()), Vector2(game.arena.x, game.arena.y - game.bottom_inset - game.playfield_top() - 74.0)).has_point(at) and at.distance_to(game.ship.position) >= clear_distance
+	return Rect2(Vector2(0, game.playfield_top()), Vector2(game.arena.x, game.arena.y * 0.5 - game.playfield_top())).has_point(at) and at.distance_to(game.ship.position) >= clear_distance
 
 func move(id: int, at: Vector2) -> void:
 	if aim_touches.has(id):
@@ -193,7 +217,7 @@ func move(id: int, at: Vector2) -> void:
 		if at.distance_to(aim_touches[id].at) > 32.0 or not Rect2(Vector2.ZERO, game.arena).has_point(at):
 			aim_touches.erase(id)
 		return
-	if finger == -1 and not gravity_blocks_control() and not gravity_armed and at.y >= game.arena.y * 0.72:
+	if finger == -1 and not gravity_blocks_control() and at.y >= game.arena.y * (0.5 if gravity_armed else 0.72):
 		press(id, at)
 	if id != finger:
 		return
@@ -212,11 +236,7 @@ func release(id: int, at: Vector2, canceled: bool = false) -> void:
 			return
 		if tap.gravity:
 			if gravity_armed and valid_gravity_target(at) and gravity_charge >= GRAVITY_MIN_CHARGE:
-				gravity_armed = false
-				pending_gravity_units = gravity_charge
-				pending_gravity_charge = clampf(gravity_charge / GRAVITY_MIN_CHARGE, 1.0, 5.0)
-				pending_gravity_target = tap.at
-				pending_gravity_time = GRAVITY_PREPARATION
+				queue_gravity(at)
 		elif tap.age < 1.0 and is_instance_valid(tap.target) and not tap.target.is_queued_for_deletion() and rocket_cooldown <= 0.0 and missiles > 0:
 			launch_cannon(tap.target)
 			rocket_cooldown = 0.25
@@ -228,14 +248,49 @@ func release(id: int, at: Vector2, canceled: bool = false) -> void:
 func add_gravity_charge(amount: float = 1.0) -> void:
 	gravity_charge = clampf(gravity_charge + amount, 0.0, GRAVITY_MAX_CHARGE)
 
-func arm_gravity() -> void:
+func arm_gravity() -> bool:
 	if gravity_blocks_control() or pending_gravity_time >= 0.0 or gravity_charge < GRAVITY_MIN_CHARGE:
-		return
+		return false
 	gravity_armed = not gravity_armed
+	gravity_selection_time = GRAVITY_SELECTION_WINDOW if gravity_armed else 0.0
 	if not gravity_armed:
-		for id in aim_touches.keys():
-			if aim_touches[id].gravity:
-				aim_touches.erase(id)
+		clear_gravity_touches()
+	return true
+
+## Center of the upper half is the automatic aim. A rare shielded ship already
+## occupying that position uses a safe upper-half point instead.
+func automatic_gravity_target() -> Vector2:
+	var center: Vector2 = game.arena * Vector2(0.5, 0.25)
+	if valid_gravity_target(center):
+		return center
+	var safest := center
+	var clearance := -1.0
+	for y in [maxf(game.playfield_top() + 36.0, game.arena.y * 0.15), game.arena.y * 0.42]:
+		for x in [game.arena.x * 0.2, game.arena.x * 0.5, game.arena.x * 0.8]:
+			var candidate := Vector2(x, y)
+			var distance: float = candidate.distance_squared_to(game.ship.position)
+			if valid_gravity_target(candidate) and distance > clearance:
+				safest = candidate
+				clearance = distance
+	return safest
+
+## Queue once, then forget all selection fingers so releasing after an automatic
+## launch cannot accidentally fire a cannon or start another gravity shot.
+func queue_gravity(at: Vector2) -> void:
+	if not gravity_armed or gravity_blocks_control() or gravity_charge < GRAVITY_MIN_CHARGE:
+		return
+	gravity_armed = false
+	gravity_selection_time = 0.0
+	clear_gravity_touches()
+	pending_gravity_units = gravity_charge
+	pending_gravity_charge = clampf(gravity_charge / GRAVITY_MIN_CHARGE, 1.0, 5.0)
+	pending_gravity_target = at
+	pending_gravity_time = GRAVITY_PREPARATION
+
+func clear_gravity_touches() -> void:
+	for id in aim_touches.keys():
+		if aim_touches[id].gravity:
+			aim_touches.erase(id)
 
 ## The reservation fixes the chosen size. Kills during the preparation remain
 ## banked for the next hole; canceling preparation does not spend any charge.
@@ -306,21 +361,50 @@ func activate_electron() -> bool:
 func collect_laser() -> void:
 	laser_stock = mini(99, laser_stock + 1)
 
-func activate_laser() -> void:
+func activate_laser() -> bool:
 	if gravity_blocks_control():
-		return
+		return false
 	if laser_active:
 		laser_active = false
 		game.weapons.level = previous_weapon
-		return
+		return true
 	if laser_time <= 0.0:
 		if laser_stock <= 0:
-			return
+			return false
 		laser_stock -= 1
 		laser_time = 10.0
 	previous_weapon = game.weapons.level
 	laser_active = true
 	game.weapons.level = 3
+	return true
+
+## Short tactile confirmation belongs to accepted button actions, not frames or
+## held fingers. Disabled controls and muted vibration produce no device call.
+func weapon_button_feedback(action: String) -> void:
+	if not game.progress.vibration_enabled:
+		return
+	var duration := 25
+	var strength := 0.45
+	match action:
+		"gravity":
+			duration = 38
+			strength = 0.6
+		"laser":
+			duration = 22
+			strength = 0.4
+		"cannon":
+			duration = 45
+			strength = 0.7
+		"electron":
+			duration = 30
+			strength = 0.85
+	Input.vibrate_handheld(duration, strength)
+	weapon_feedback_requested.emit(action)
+	# A finite click replaces iOS's rumble event. Resume an active field softly
+	# after the click instead of leaving gravity silent until the old clock ends.
+	gravity_haptic = false
+	gravity_haptic_remaining = 0.0
+	gravity_haptic_delay = maxf(gravity_haptic_delay, float(duration) / 1000.0 + 0.04)
 
 ## Kept as an explicit development/test shortcut; collection uses collect_laser.
 func equip_laser() -> void:
@@ -360,14 +444,25 @@ func controls_actor(actor: Node2D) -> bool:
 			return true
 	return false
 
+## Shared visual clock for the muzzle particles and space-warp renderer. Auto
+## fire precharges inside its three-second window but keeps manual aim available
+## until the deadline; choosing a spot starts the usual fresh preparation.
+func gravity_preparation_time() -> float:
+	if pending_gravity_time >= 0.0:
+		return pending_gravity_time
+	if gravity_armed and gravity_selection_time <= GRAVITY_PREPARATION:
+		return gravity_selection_time
+	return -1.0
+
 ## The shield layer owns all shield/tap surfaces. This controller only draws
 ## the short-lived plasma gathering at the cannon during launch preparation.
 func _draw() -> void:
 	if game.state != game.State.PLAYING:
 		return
-	if pending_gravity_time >= 0.0:
+	var preparation_time := gravity_preparation_time()
+	if preparation_time >= 0.0:
 		var at: Vector2 = game.ship.muzzle_position(game.weapons.level, 0, true)
-		var progress := 1.0 - pending_gravity_time / GRAVITY_PREPARATION
+		var progress := 1.0 - preparation_time / GRAVITY_PREPARATION
 		for layer in range(4, 0, -1):
 			draw_circle(at, 4.0 + layer * 5.0 * progress, Color(0.22, 0.62, 1.0, 0.04 * (5 - layer) * progress))
 		for index in range(26):
@@ -416,7 +511,7 @@ func update_attitudes(delta: float) -> void:
 ## Visual load only: bright/long near a black horizon; the opposite near white.
 ## Measure from the core, so merged/charged wells behave like small ones.
 func gravity_engine_load(at: Vector2, well: Node2D) -> float:
-	var rim_distance := maxf(0.0, at.distance_to(well.well_position)-31.0*well.well_scale)
+	var rim_distance := maxf(0.0, at.distance_to(well.well_position)-game.gravity_fields.core_radius(well))
 	var proximity := 1.0-clampf(rim_distance/320.0, 0.0, 1.0)
 	return lerpf(0.22, 1.0, 1.0 - proximity) if well.kind == "white" else lerpf(0.08, 1.0, pow(proximity, 1.35))
 

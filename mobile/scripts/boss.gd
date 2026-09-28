@@ -48,6 +48,12 @@ var well_scale := 1.0
 var proximity_multiplier := 1.0
 var guard_total := 0
 var dodge_offset := Vector2.ZERO
+## Keep one escape side for an entire encounter. Recomputing a nearest safe grid
+## point every frame made patrol motion flip between cells and visibly stutter.
+var dodge_heading := Vector2.ZERO
+var dodge_velocity := Vector2.ZERO
+var dodge_tracking := false
+var dodge_position := Vector2.ZERO
 var hole_color := Color("a45cff")
 var pressure_front_radius := 0.0
 var collapse_snapshot := false
@@ -127,18 +133,96 @@ func step(delta: float) -> void:
 			return_to_firefight()
 			return
 		neutralise_time = maxf(0.0, neutralise_time - delta)
-	if not lingering:
-		body_position = safe_player_well_position(body_position, false)
 	queue_redraw()
 
-## Boss hulls are immune to player gravity, but no longer sit visually behind a
-## well. They read its destination and burn sideways before the core opens.
+## Continuous velocity steering keeps the boss on one side of a moving field.
+## The escape target is deliberately not clipped to the viewport: a large hole
+## can send the boss above or beside the screen until a safe route opens again.
 func update_player_well_dodge(delta: float, patrol: Vector2) -> void:
-	var desired := safe_player_well_position(patrol) - patrol
-	dodge_offset = dodge_offset.move_toward(desired, (420.0 if desired != Vector2.ZERO else 190.0) * delta)
-	# A merged/moving well can sweep across a previously safe path. Project that
-	# intermediate point too, so easing cannot carry the hull through a core.
-	dodge_offset = safe_player_well_position(patrol + dodge_offset, false) - patrol
+	var threats := player_well_threats()
+	if not dodge_tracking:
+		dodge_position = body_position if body_position != Vector2.ZERO else patrol
+		if phase == "arrival":
+			dodge_position = patrol + dodge_offset
+		dodge_tracking = true
+	var endangered := player_well_clearance(patrol) < 65.0
+	if dodge_heading == Vector2.ZERO and endangered:
+		var nearest: Dictionary = threats[0]
+		for threat in threats:
+			if dodge_position.distance_to(threat.at) - threat.radius < dodge_position.distance_to(nearest.at) - nearest.radius:
+				nearest = threat
+		dodge_heading = (dodge_position - nearest.at).normalized()
+		if dodge_heading.length_squared() < 0.5:
+			dodge_heading = Vector2.UP
+	var target := patrol
+	if dodge_heading != Vector2.ZERO and not threats.is_empty():
+		# Support of all threat discs along the chosen direction gives one stable
+		# safe point, even for overlapping/merging fields. It can leave the screen.
+		var centre := Vector2.ZERO
+		for threat in threats:
+			centre += threat.at
+		centre /= float(threats.size())
+		var reach := 0.0
+		for threat in threats:
+			reach = maxf(reach, (threat.at - centre).dot(dodge_heading) + threat.radius + 74.0)
+		target = centre + dodge_heading * reach
+		if not endangered and safe_dodge_segment(dodge_position, patrol, threats, 30.0):
+			dodge_heading = Vector2.ZERO
+			target = patrol
+	elif threats.is_empty():
+		dodge_heading = Vector2.ZERO
+	var maximum_speed := 780.0 if dodge_heading != Vector2.ZERO else 210.0
+	var desired_velocity := ((target - dodge_position) * 4.8).limit_length(maximum_speed)
+	dodge_velocity = dodge_velocity.lerp(desired_velocity, 1.0 - exp(-delta * 11.0))
+	var proposed := dodge_position + dodge_velocity * delta
+	# A swept constraint prevents cutting through the core when a patrol return
+	# crosses a moving hole. Project only the small penetration, never a grid cell.
+	proposed = continuous_dodge_clearance(proposed, player_well_threats(false))
+	if delta > 0.0:
+		dodge_velocity = (proposed - dodge_position) / delta
+	dodge_position = proposed
+	dodge_offset = dodge_position - patrol
+
+## The extra hull radius gives the visible ship room around the lethal core.
+func player_well_threats(anticipate: bool = true) -> Array[Dictionary]:
+	var threats: Array[Dictionary] = []
+	if anticipate and game.combat.pending_gravity_time >= 0.0:
+		var size: float = 1.8 * sqrt(clampf(game.combat.pending_gravity_charge, 1.0, 5.0))
+		threats.append({"at": game.combat.pending_gravity_target, "radius": 31.0 * size + GRAVITY_HULL_RADIUS + 12.0})
+	for well in game.lingering_wells:
+		if well.get_script() != game.PlayerWell or well.phase == "finished" or well.is_queued_for_deletion():
+			continue
+		if not anticipate and well.phase != "active":
+			continue
+		var size: float = 1.8 * sqrt(clampf(well.charge, 1.0, 5.0)) if well.phase == "warning" else well.well_scale
+		threats.append({"at": well.well_position, "radius": (31.0 * size if well.phase == "warning" else game.gravity_fields.core_radius(well)) + GRAVITY_HULL_RADIUS + 12.0})
+	return threats
+
+## Swept visibility prevents a smooth return from taking a shortcut through a
+## core just because its destination happens to be clear.
+func safe_dodge_segment(from: Vector2, to: Vector2, threats: Array[Dictionary], padding: float = 0.0) -> bool:
+	for threat in threats:
+		if Geometry2D.get_closest_point_to_segment(threat.at, from, to).distance_to(threat.at) < threat.radius + padding:
+			return false
+	return true
+
+## Continuous radial projection is a last-resort safety constraint for a field
+## moving or growing across the hull; anticipation normally keeps it inactive.
+func continuous_dodge_clearance(at: Vector2, threats: Array[Dictionary]) -> Vector2:
+	var result := at
+	for iteration in range(4):
+		var moved := false
+		for threat in threats:
+			var offset: Vector2 = result - threat.at
+			if offset.length() < threat.radius:
+				var normal := offset.normalized() if offset.length_squared() > 0.01 else dodge_heading
+				if normal == Vector2.ZERO:
+					normal = Vector2.UP
+				result = threat.at + normal * threat.radius
+				moved = true
+		if not moved:
+			break
+	return result
 
 ## The shield explains gravity immunity only; damage still follows guard health.
 func has_player_gravity_threat() -> bool:
@@ -149,46 +233,12 @@ func has_player_gravity_threat() -> bool:
 			return true
 	return false
 
-## Evaluate every live player horizon, including growth after a merge. Warning
-## rockets use their future size so the boss begins its dodge before impact.
+## Clearance is continuous in world coordinates; no screen-bound grid remains.
 func player_well_clearance(at: Vector2, anticipate: bool = true) -> float:
 	var clearance := INF
-	if anticipate and game.combat.pending_gravity_time >= 0.0:
-		var scale: float = 1.8 * sqrt(clampf(game.combat.pending_gravity_charge, 1.0, 5.0))
-		clearance = at.distance_to(game.combat.pending_gravity_target) - 31.0 * scale - GRAVITY_HULL_RADIUS - 12.0
-	for well in game.lingering_wells:
-		if well.get_script() != game.PlayerWell or well.phase == "finished" or well.is_queued_for_deletion():
-			continue
-		if not anticipate and well.phase != "active":
-			continue
-		var size: float = 1.8 * sqrt(clampf(well.charge, 1.0, 5.0)) if well.phase == "warning" else well.well_scale
-		clearance = minf(clearance, at.distance_to(well.well_position) - 31.0 * size - GRAVITY_HULL_RADIUS - 12.0)
+	for threat in player_well_threats(anticipate):
+		clearance = minf(clearance, at.distance_to(threat.at) - threat.radius)
 	return clearance
-
-## A fixed candidate grid avoids iterative collision oscillation between two
-## adjacent wells. Nearest safe point wins; if the arena is fully covered, move
-## above the screen until room opens instead of hiding behind a horizon.
-func safe_player_well_position(at: Vector2, anticipate: bool = true) -> Vector2:
-	if player_well_clearance(at, anticipate) >= 0.0:
-		return at
-	var best := Vector2(at.x, -GRAVITY_HULL_RADIUS - 180.0)
-	# Even a large merged horizon can cover the usual offscreen fallback. Place
-	# the escape point above every actual radius rather than trusting a fixed Y.
-	for well in game.lingering_wells:
-		if well.get_script() == game.PlayerWell and well.phase != "finished" and not well.is_queued_for_deletion():
-			var size: float = 1.8 * sqrt(clampf(well.charge, 1.0, 5.0)) if well.phase == "warning" else well.well_scale
-			best.y = minf(best.y, well.well_position.y - size * 31.0 - GRAVITY_HULL_RADIUS * 2.0)
-	if anticipate and game.combat.pending_gravity_time >= 0.0:
-		best.y = minf(best.y, game.combat.pending_gravity_target.y - 31.0 * 1.8 * sqrt(clampf(game.combat.pending_gravity_charge, 1.0, 5.0)) - GRAVITY_HULL_RADIUS * 2.0)
-	var best_distance := INF
-	for y in range(10):
-		for x in range(9):
-			var candidate := Vector2(lerpf(GRAVITY_HULL_RADIUS, game.arena.x - GRAVITY_HULL_RADIUS, float(x) / 8.0), lerpf(game.top_inset + GRAVITY_HULL_RADIUS, game.arena.y - GRAVITY_HULL_RADIUS, float(y) / 9.0))
-			var distance := at.distance_squared_to(candidate)
-			if distance < best_distance and player_well_clearance(candidate, anticipate) >= 0.0:
-				best = candidate
-				best_distance = distance
-	return best
 
 ## Aim three enemy projectiles at the ship's current position; their trajectories remain dodgeable after firing.
 func fire_volley() -> void:

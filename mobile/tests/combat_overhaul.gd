@@ -108,7 +108,7 @@ func run() -> void:
 	check(game.state == game.State.PLAYING and rock.player_deflected and rock.position.distance_to(game.ship.position) > 35.0, "forced tapping deflects a colliding asteroid")
 	victim = alien(game.ship.position)
 	game.handle_alien_collision(victim)
-	check(game.lives == 3 and game.enemies.has(victim) and victim.position.distance_to(game.ship.position) > 39.0, "gravity hazard protection deflects alien contact without a life loss")
+	check(game.lives == 3 and not game.enemies.has(victim), "gravity hazard protection zaps alien contact without a life loss")
 	game.spawn_hostile_shot(game.ship.position,Vector2(0,180))
 	shot = game.projectiles.back()
 	game.update_projectiles(0.0)

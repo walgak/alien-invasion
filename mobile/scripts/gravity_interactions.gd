@@ -4,12 +4,16 @@ extends Node2D
 const PlayerWell = preload("res://scripts/player_well.gd")
 const AccretionVisual = preload("res://scripts/accretion_visual.gd")
 const BossCollapse = preload("res://scripts/boss_collapse.gd")
+const CoalescenceVisual = preload("res://scripts/blackhole_coalescence.gd")
 const MAX_ACCRETION_VISUALS := 12
 var game: Node2D
 var shockwaves: Array[Dictionary] = []
 var exits: Array[Dictionary] = []
 var accretion_pool: Array[Node2D] = []
 var collapses: Array[Node2D] = []
+var coalescence_pool: Array[Node2D] = []
+var coalescence_pairs: Array[Dictionary] = []
+var coalescence_radii: Dictionary = {}
 
 ## A second field freezes all participating lifetimes until a merge/discharge
 ## resolves the encounter. Animation, resistance windows and movement continue.
@@ -53,7 +57,7 @@ func apply_player_force(delta: float) -> void:
 		game.ship.position += net_force_for(game.ship) * delta
 	game.ship.target_x = game.ship.position.x
 	for well in wells:
-		if well.kind == "black" and Geometry2D.get_closest_point_to_segment(well.well_position, previous, game.ship.position).distance_to(well.well_position) < 29.0 * well.well_scale:
+		if well.kind == "black" and Geometry2D.get_closest_point_to_segment(well.well_position, previous, game.ship.position).distance_to(well.well_position) < core_radius(well) - 2.0:
 			game.lose_ship("Caught in the black hole.")
 			return
 		if well.kind == "white" and well.touches_screen_edge():
@@ -79,7 +83,7 @@ func intercept_cannon(from: Vector2, to: Vector2, exclude: Node2D) -> Dictionary
 	for well in active_wells():
 		if well == exclude:
 			continue
-		var radius: float = 31.0 * well.well_scale
+		var radius: float = core_radius(well)
 		var offset: Vector2 = from - well.well_position
 		var projection := offset.dot(velocity)
 		var discriminant := projection * projection - length_squared * (offset.length_squared() - radius * radius)
@@ -119,13 +123,14 @@ func update_visuals() -> void:
 		# The death view below replaces this field rather than doubling its glow.
 		if game.death_time > 0.0 and game.death_is_gravity and well.kind == "black" and well.well_position.distance_to(game.death_target) < 1.0:
 			continue
-		show_accretion(used, well.well_position, 31.0 * well.well_scale, well.kind == "white", well.hole_color)
+		show_accretion(used, well.well_position, core_radius(well), well.kind == "white", well.hole_color)
 		used += 1
 	if game.death_time > 0.0 and game.death_is_gravity and used < MAX_ACCRETION_VISUALS:
 		show_accretion(used, game.death_target, game.death_radius, false, game.death_hole_color)
 		used += 1
 	for i in range(used, accretion_pool.size()):
 		accretion_pool[i].visible = false
+	update_coalescence_visuals()
 
 func show_accretion(index: int, at: Vector2, radius: float, white: bool, tint: Color) -> void:
 	if index == accretion_pool.size():
@@ -182,8 +187,15 @@ func step(delta: float) -> void:
 			var motion := direction * minf(45.0 * delta, distance * 0.25 + 0.1)
 			if a.kind == "white" and b.kind == "white":
 				motion = -motion
-			a.well_position += motion
-			b.well_position -= motion
+			if a.kind == "black" and b.kind == "black":
+				# Preserve the centre of mass while unequal droplets draw together.
+				var mass_a: float = a.well_scale * a.well_scale
+				var mass_b: float = b.well_scale * b.well_scale
+				a.well_position += motion * 2.0 * mass_b / (mass_a + mass_b)
+				b.well_position -= motion * 2.0 * mass_a / (mass_a + mass_b)
+			else:
+				a.well_position += motion
+				b.well_position -= motion
 			if a.kind == "white" and b.kind == "white":
 				for well in [a, b]:
 					well.well_position = well.well_position.clamp(Vector2(35, game.top_inset + 170), game.arena - Vector2(35, 35))
@@ -205,8 +217,13 @@ func step(delta: float) -> void:
 				game.sound.play_effect("rift")
 				game.combat.vibrate("gravity")
 				break
+			# Contact begins coalescence; the neck relaxes as the two centres
+			# continue together. Only then transfer identity/lifetime atomically.
+			if a.well_position.distance_to(b.well_position) > 3.0:
+				continue
 			merge(a, b)
 			break # Recollect identities next frame, avoiding stale merged entries.
+	update_coalescence_shapes()
 	for wave in shockwaves.duplicate():
 		wave.age += delta
 		if wave.age >= 0.35 and not wave.fired and not wave.get("visual_only", false):
@@ -246,9 +263,91 @@ func merge(first: Node2D, second: Node2D) -> void:
 			b.origins.clear()
 	else:
 		a.well_duration = a.phase_time + duration
-	close_well(b)
+	# Coalescence is not an expiry: do not emit a second collapsing core/exiting
+	# field at the consumed lobe, or kick the player as if the gravity had ended.
+	if b is PlayerWell:
+		b.phase = "finished"
+		game.lingering_wells.erase(b)
+		b.queue_free()
+	else:
+		b.phase = "firefight"
+		b.return_to_firefight(Vector2.ZERO)
 	game.sound.play_effect("rift")
 	game.combat.vibrate("gravity")
+
+## Preserve the sum of both original disc areas as their silhouettes overlap.
+## Original well_scale remains the mass, so merging cannot create extra mass.
+func disc_union_area(first: float, second: float, distance: float) -> float:
+	if distance >= first + second:
+		return PI * (first * first + second * second)
+	if distance <= absf(first - second) + 0.001:
+		return PI * maxf(first * first, second * second)
+	var angle_a := acos(clampf((distance * distance + first * first - second * second) / (2.0 * distance * first), -1.0, 1.0))
+	var angle_b := acos(clampf((distance * distance + second * second - first * first) / (2.0 * distance * second), -1.0, 1.0))
+	var triangle := 0.5 * sqrt(maxf(0.0, (-distance + first + second) * (distance + first - second) * (distance - first + second) * (distance + first + second)))
+	return PI * (first * first + second * second) - first * first * angle_a - second * second * angle_b + triangle
+
+## A bounded eight-step bisection conserves visible volume without per-pixel
+## simulation. These radii also drive swallowing/projectile/core collision tests.
+func droplet_radii(first: float, second: float, distance: float) -> Vector2:
+	var area := PI * (first * first + second * second)
+	var low := 1.0
+	var high := sqrt(2.0)
+	for iteration in range(8):
+		var scale := (low + high) * 0.5
+		if disc_union_area(first * scale, second * scale, distance) < area:
+			low = scale
+		else:
+			high = scale
+	return Vector2(first, second) * ((low + high) * 0.5)
+
+## One well can join one liquid neck at a time. Nearest surfaces pair first,
+## keeping the total number of shader quads bounded by half the active wells.
+func update_coalescence_shapes() -> void:
+	coalescence_pairs.clear()
+	coalescence_radii.clear()
+	var candidates: Array[Dictionary] = []
+	var wells := active_wells()
+	for i in range(wells.size()):
+		for j in range(i + 1, wells.size()):
+			var a: Node2D = wells[i]
+			var b: Node2D = wells[j]
+			if a.kind != "black" or b.kind != "black":
+				continue
+			var radius_a: float = 31.0 * a.well_scale
+			var radius_b: float = 31.0 * b.well_scale
+			var distance: float = a.well_position.distance_to(b.well_position)
+			var gap: float = distance - radius_a - radius_b
+			if gap < 22.0:
+				candidates.append({"first": a, "second": b, "gap": gap, "radii": droplet_radii(radius_a, radius_b, distance)})
+	candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.gap < b.gap)
+	for pair in candidates:
+		var first_id: int = pair.first.get_instance_id()
+		var second_id: int = pair.second.get_instance_id()
+		if coalescence_radii.has(first_id) or coalescence_radii.has(second_id):
+			continue
+		coalescence_radii[first_id] = pair.radii.x
+		coalescence_radii[second_id] = pair.radii.y
+		coalescence_pairs.append(pair)
+
+## Every consumer should use this physical radius during coalescence instead of
+## deriving it from mass alone. Outside merging, it is exactly the original size.
+func core_radius(well: Node2D) -> float:
+	return coalescence_radii.get(well.get_instance_id(), 31.0 * well.well_scale)
+
+func update_coalescence_visuals() -> void:
+	var used := 0
+	for pair in coalescence_pairs:
+		if not is_instance_valid(pair.first) or not is_instance_valid(pair.second) or not pair.first.holds_steering() or not pair.second.holds_steering():
+			continue
+		if used == coalescence_pool.size():
+			var visual := CoalescenceVisual.new()
+			add_child(visual)
+			coalescence_pool.append(visual)
+		coalescence_pool[used].configure(pair.first.well_position, pair.second.well_position, pair.radii.x, pair.radii.y, pair.first.hole_color.lerp(pair.second.hole_color, 0.5), game.visual_time)
+		used += 1
+	for i in range(used, coalescence_pool.size()):
+		coalescence_pool[i].visible = false
 
 ## A compact warning flash expands into a readable, player-safe shock ring.
 func _draw() -> void:
@@ -265,7 +364,7 @@ func _draw() -> void:
 	# must never show through the event horizon regardless of scene insertion order.
 	for well in active_wells():
 		if well.kind == "black":
-			draw_horizon(well.well_position, 31.0 * well.well_scale, well.hole_color)
+			draw_horizon(well.well_position, core_radius(well), well.hole_color)
 		elif well.kind == "white":
 			draw_white_core(well.well_position, 31.0 * well.well_scale)
 	if game.death_time > 0.0 and game.death_is_gravity:
@@ -300,6 +399,10 @@ func clear_collapses() -> void:
 	for collapse in collapses:
 		collapse.queue_free()
 	collapses.clear()
+	coalescence_pairs.clear()
+	coalescence_radii.clear()
+	for visual in coalescence_pool:
+		visual.visible = false
 
 ## Fine plasma is drawn by the reusable textured sprites behind actors. This
 ## final opaque mask makes the event horizon absolute even during ship crumble.

@@ -68,6 +68,10 @@ func run() -> void:
 	check(a.well_position.distance_to(b.well_position) < 340.0, "paused black fields continue converging")
 	b.well_position = a.well_position + Vector2(30, 0)
 	game.gravity_fields.step(0.0)
+	check(game.lingering_wells.size() == 2, "touching black fields first form a liquid neck")
+	for tick in range(100):
+		if game.lingering_wells.size() == 1: break
+		game.gravity_fields.step(0.05)
 	check(game.lingering_wells.size() == 1 and is_equal_approx(game.gravity_fields.seconds_left(a), 5.0), "merger preserves the sum of frozen remaining seconds")
 	a.step(0.25)
 	check(is_equal_approx(game.gravity_fields.seconds_left(a), 4.75), "lone merged survivor resumes its lifetime")

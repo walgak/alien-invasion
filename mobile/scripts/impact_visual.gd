@@ -26,6 +26,11 @@ func _ready() -> void:
 ## Coordinates are arena-local. The surface rotates with the contact vector,
 ## so its two bright roots stay attached to the ships instead of the screen.
 func play_collision(from: Vector2, to: Vector2) -> void:
+	play_zap(from,to)
+
+## The same energy discharge reaches out from the shield boundary before a ship
+## can touch it. No gameplay decisions happen here: callers own target damage.
+func play_zap(from: Vector2, to: Vector2) -> void:
 	if surfaces.is_empty():
 		return
 	var index := next_slot
@@ -36,6 +41,7 @@ func play_collision(from: Vector2, to: Vector2) -> void:
 	surface.rotation = (to-from).angle()
 	surface.position = from+Vector2(-28.0,-48.0).rotated(surface.rotation)
 	surface.material.set_shader_parameter("aspect",surface.size.x/surface.size.y)
+	surface.material.set_shader_parameter("end_padding",28.0/surface.size.x)
 	surface.material.set_shader_parameter("seed",float(index)*7.3)
 	surface.material.set_shader_parameter("age",0.0)
 	surface.visible = true

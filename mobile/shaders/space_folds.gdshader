@@ -21,20 +21,24 @@ uniform float visual_time = 0.0;
 uniform float solar_activity = 0.45;
 
 float wind_hash(vec2 p) { return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
-// Solar particles are the nearby tracer for strong gravity distortion. The
-// independent unwarped star layer is not reused here, even at low wind density.
+// Smooth low-opacity gas replaces nearby particle tracers. It is sampled in
+// the same displaced coordinates, so all the existing gravity bends remain.
+// Opacity is one tenth of the former particle brightness at matching activity.
+float wind_noise(vec2 p) {
+	vec2 i=floor(p),f=fract(p); f=f*f*(3.0-2.0*f);
+	return mix(mix(wind_hash(i),wind_hash(i+vec2(1,0)),f.x),mix(wind_hash(i+vec2(0,1)),wind_hash(i+vec2(1,1)),f.x),f.y);
+}
 vec4 solar_wind(vec2 pixel) {
 	vec2 flow=pixel+vec2(sin(pixel.y*0.003+visual_time*0.11)*26.0,-visual_time*72.0);
 	flow.x-=flow.y*0.18;
-	vec2 cell=floor(flow/vec2(22.0,58.0));
-	float seed=wind_hash(cell);
-	vec2 offset=vec2(wind_hash(cell+19.3),wind_hash(cell+57.9));
-	vec2 delta=(fract(flow/vec2(22.0,58.0))-mix(vec2(0.18),vec2(0.82),offset))*vec2(22.0,58.0);
-	float core=exp(-dot(delta/vec2(0.72,2.3),delta/vec2(0.72,2.3)));
-	float halo=exp(-dot(delta/vec2(2.6,5.0),delta/vec2(2.6,5.0)))*0.13;
-	float present=step(1.0-solar_activity*0.60,seed);
-	float brightness=(core+halo)*present*(0.36+solar_activity*0.38);
-	return vec4(mix(vec3(0.13,0.40,0.63),vec3(0.64,0.85,0.94),offset.x)*brightness,brightness);
+	vec2 p=flow/vec2(115.0,275.0);
+	float broad=wind_noise(p);
+	float curls=wind_noise(p*2.4+vec2(broad*1.7,visual_time*0.04));
+	float billow=broad*0.62+curls*0.28+wind_noise(p*5.1+curls)*0.10;
+	float cloud=smoothstep(0.30,0.78,billow);
+	float brightness=cloud*solar_activity*(0.36+solar_activity*0.38)*0.10;
+	vec3 tint=mix(vec3(0.13,0.40,0.63),vec3(0.64,0.85,0.94),curls);
+	return vec4(tint*brightness,brightness);
 }
 
 void fragment() {

@@ -28,6 +28,9 @@ var plates: Array[PackedVector2Array] = []
 ## Set only when the player actually changes this rock's momentum. Ambient and
 ## boss-thrown asteroids cannot damage their own fleet without that intervention.
 var player_deflected := false
+## Shared by every descendant of one large rock. It counts living fragments and
+## remembers any non-primary damage or escaped piece until the family ends.
+var reward_family: Dictionary = {}
 
 ## Godot calls this once after the node joins the scene; initialize child nodes and cached resources here.
 func _ready() -> void:

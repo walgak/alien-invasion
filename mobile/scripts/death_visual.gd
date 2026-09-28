@@ -72,15 +72,22 @@ func add_textured_panels(level: int) -> void:
 func animation_age() -> float:
 	return clampf(DURATION-game.death_time, 0.0, DURATION)
 
-## Gunfire ignites immediately; impacts and horizons visibly stress the metal
-## first. A black-hole fireball is still masked by its opaque horizon.
+## A short inward buckle precedes ignition for every cause. Gunfire has the
+## quickest compression; impacts and horizons give the stressed hull more time.
+## Fire and outward debris retain their original post-ignition presentation.
+func ignition_delay() -> float:
+	match cause:
+		"shot": return 0.14
+		"asteroid": return 0.34
+		_: return 0.40
+
 func step(_delta: float) -> void:
 	if game.death_time <= 0.0:
 		if is_instance_valid(fire):
 			fire.visible = false
 		queue_redraw()
 		return
-	var delay := 0.0 if cause == "shot" else 0.40
+	var delay := ignition_delay()
 	if not exploded and animation_age() >= delay:
 		exploded = true
 		explosion_age = 0.0
@@ -116,20 +123,46 @@ func warp_state() -> Dictionary:
 	return {"at": explosion_at, "radius": 20.0 + pow(progress,0.8)*farthest*1.45,
 		"strength": 24.0*(1.0-smoothstep(0.70,1.0,progress)), "fade": 1.0-progress}
 
-## A continuous mapping bends the whole hull before any triangle separates.
-## Black holes stretch the nose and bow the metal toward the core; ramming
-## folds the impacted hull across its width before the explosion pulls it apart.
+## The connected metal buckles towards its own center before tearing. Different
+## compression axes convey the cause, but none can stretch armor outwards during
+## the initial collapse. The radius clamp also bounds folded wing-tip motion.
 func strained_vertex(point: Vector2, age: float) -> Vector2:
-	var stress := smoothstep(0.0,0.46,age)
-	var axis: Vector2 = (game.death_target-game.death_origin).normalized() if cause == "black" else Vector2.UP.rotated(game.ship.rotation)
+	var stress := smoothstep(0.0, ignition_delay(), age)
+	var axis := Vector2.UP.rotated(game.ship.rotation)
+	if cause == "black":
+		axis = (game.death_target-game.death_origin).normalized()
+	elif cause == "white":
+		axis = (explosion_at-game.death_origin).normalized()
 	if axis.length_squared() < 0.1:
 		axis = Vector2.UP.rotated(game.ship.rotation)
-	var side: Vector2 = axis.orthogonal()
+	var side := axis.orthogonal()
 	var along := point.dot(axis)
 	var across := point.dot(side)
-	if cause == "black":
-		return axis*(along*(1.0+stress*1.3)+across*across*stress*0.022)+side*across*(1.0-stress*0.5)
-	return axis*(along*(1.0-stress*0.32)+sin(across*0.07)*stress*8.0)+side*across*(1.0+stress*0.18)
+	var axial_crush := 0.53
+	var lateral_crush := 0.43
+	var pleat := 0.07
+	match cause:
+		"black":
+			axial_crush = 0.48
+			lateral_crush = 0.78
+			pleat = 0.10
+		"white":
+			axial_crush = 0.83
+			lateral_crush = 0.32
+			pleat = 0.085
+		"asteroid":
+			axial_crush = 0.72
+			lateral_crush = 0.66
+			pleat = 0.12
+		"ram", "impact":
+			axial_crush = 0.76
+			lateral_crush = 0.40
+			pleat = 0.09
+	# Multiplying pleats by distance makes the center remain fixed. Continuous
+	# shared vertices give bent plates rather than prematurely detached tiles.
+	var bent := axis*(along*(1.0-stress*axial_crush)+sin(across*0.11)*point.length()*pleat*stress)
+	bent += side*across*(1.0-stress*lateral_crush)
+	return bent.limit_length(point.length()*(1.0-stress*0.34))
 
 func _draw() -> void:
 	if game == null or game.death_time <= 0.0:
@@ -142,7 +175,7 @@ func _draw() -> void:
 			continue
 		var piece: Dictionary = pieces[i]
 		var offset: Vector2 = piece.offset
-		var snap := maxf(0.0,age-0.30-float(i%7)*0.018)
+		var snap := maxf(0.0,age-ignition_delay()-float(i%7)*0.018)
 		var bent_center := strained_vertex(offset,age)
 		var transformed := PackedVector2Array()
 		var alpha := 1.0
@@ -156,7 +189,7 @@ func _draw() -> void:
 				var relative: Vector2 = game.death_origin+vertex-game.death_target
 				vertex = game.death_target+relative.rotated(swallow*0.42)*(1.0-swallow*swallow)
 			else:
-				var crush := clampf(age/0.40,0.0,1.0)
+				var crush := clampf(age/ignition_delay(),0.0,1.0)
 				var direction := (offset+Vector2(0.001,0)).normalized()
 				vertex += game.death_origin.lerp(explosion_at,crush)+direction*snap*snap*(75.0+float(i%7)*24.0)
 				alpha = 1.0-smoothstep(0.75,1.75,age)

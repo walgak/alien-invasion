@@ -81,7 +81,7 @@ func step(delta: float) -> void:
 			if game.state != game.State.PLAYING:
 				return
 			continue
-		if actor.position.distance_to(well_position) < 29.0 * well_scale:
+		if actor.position.distance_to(well_position) < game.gravity_fields.core_radius(self) * (29.0 / 31.0):
 			if game.enemies.has(actor):
 				game.destroy_enemy(actor, false)
 			elif game.pickups.has(actor):

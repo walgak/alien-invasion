@@ -79,11 +79,14 @@ func activate_special(action: String) -> void:
 		# Unavailable weapon buttons still count as resistance taps.
 		game.combat.press(-99, game.ship.position)
 		return
+	var accepted := false
 	match action:
-		"gravity": game.combat.arm_gravity()
-		"laser": game.combat.activate_laser()
-		"cannon": game.combat.fire_cannon_volley()
-		"electron": game.combat.activate_electron()
+		"gravity": accepted = game.combat.arm_gravity()
+		"laser": accepted = game.combat.activate_laser()
+		"cannon": accepted = game.combat.fire_cannon_volley() > 0
+		"electron": accepted = game.combat.activate_electron()
+	if accepted:
+		game.combat.weapon_button_feedback(action)
 	refresh_special_buttons()
 
 func special_buttons() -> Array:
@@ -161,7 +164,9 @@ func refresh_special_buttons() -> void:
 	var blocked: bool = combat.gravity_blocks_control()
 	var charge: float = combat.gravity_charge
 	var gravity_progress: float = charge / combat.GRAVITY_MAX_CHARGE
-	if combat.pending_gravity_time >= 0.0:
+	if combat.gravity_armed:
+		gravity_progress = combat.gravity_selection_time / combat.GRAVITY_SELECTION_WINDOW
+	elif combat.pending_gravity_time >= 0.0:
 		gravity_progress = 1.0 - combat.pending_gravity_time / combat.GRAVITY_PREPARATION
 	gravity_button.present("%d" % floori(charge), not blocked and charge >= combat.GRAVITY_MIN_CHARGE and combat.pending_gravity_time < 0.0, combat.gravity_armed or combat.pending_gravity_time >= 0.0, gravity_progress, game.visual_time)
 	laser_use_button.present("%.0fs" % ceilf(combat.laser_time) if combat.laser_time > 0.0 else "%d" % combat.laser_stock, not blocked and (combat.laser_stock > 0 or combat.laser_time > 0.0), combat.laser_active, combat.laser_time / 10.0, game.visual_time)
