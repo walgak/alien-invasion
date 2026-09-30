@@ -14,6 +14,11 @@ var collapses: Array[Node2D] = []
 var coalescence_pool: Array[Node2D] = []
 var coalescence_pairs: Array[Dictionary] = []
 var coalescence_radii: Dictionary = {}
+# Store travel in logical pixels, not elapsed time: accelerating fields must
+# accelerate their ripples too. Instance IDs avoid retaining a closed well.
+const RIPPLE_SPEED_MULTIPLIER := 3.0
+const RIPPLE_WAVELENGTH := 112.0
+var ripple_travel: Dictionary = {}
 
 ## A second field freezes all participating lifetimes until a merge/discharge
 ## resolves the encounter. Animation, resistance windows and movement continue.
@@ -29,16 +34,40 @@ func net_force_for(actor: Node2D) -> Vector2:
 	for well in active_wells():
 		if actor != game.ship and not well is PlayerWell:
 			continue
-		var offset: Vector2 = well.well_position - actor.position
-		var weight := clampf(220.0 / maxf(offset.length(), 80.0), 0.35, 1.8)
-		var strength: float
-		if well is PlayerWell:
-			strength = well.PULL_SPEED * (0.86 + 0.14 * clampf(well.active_age / 2.0, 0.0, 1.0))
-		else:
-			var progress := clampf(well.phase_time / well.well_duration, 0.0, 1.0)
-			strength = (lerpf(66.0, 86.0, progress) if well.kind == "black" else -lerpf(118.0, 94.0, progress)) * well.proximity_multiplier
-		force += offset.normalized() * strength * weight
+		force += force_from_well(well, actor.position)
 	return force.limit_length(180.0)
+
+## The shared physical force before tap/shield cancellation. Ripples use this
+## same speed, including distance, acceleration and white-field interaction.
+## With multiple fields each wave represents its own field, not the resultant
+## vector (opposing forces may cancel, but their waves should remain visible).
+func force_from_well(well: Node2D, at: Vector2) -> Vector2:
+	var offset: Vector2 = well.well_position - at
+	var weight := clampf(220.0 / maxf(offset.length(), 80.0), 0.35, 1.8)
+	var strength: float
+	if well is PlayerWell:
+		strength = well.PULL_SPEED * (0.86 + 0.14 * clampf(well.active_age / 2.0, 0.0, 1.0))
+	else:
+		var progress := clampf(well.phase_time / maxf(well.well_duration, 0.001), 0.0, 1.0)
+		strength = (lerpf(66.0, 86.0, progress) if well.kind == "black" else -lerpf(118.0, 94.0, progress)) * well.proximity_multiplier
+	return offset.normalized() * strength * weight
+
+## Integrate distance once per simulation frame. Phase wraps after one complete
+## wavelength with no visual seam, preventing precision loss in endless play.
+## No real-time shader clock: paused games also pause every ripple exactly.
+func advance_ripples(delta: float) -> void:
+	var live_ids: Dictionary = {}
+	for well in active_wells():
+		var id := well.get_instance_id()
+		live_ids[id] = true
+		var speed := force_from_well(well, game.ship.position).limit_length(180.0).length()
+		ripple_travel[id] = fposmod(float(ripple_travel.get(id, 0.0)) + speed * RIPPLE_SPEED_MULTIPLIER * delta, RIPPLE_WAVELENGTH)
+	for id in ripple_travel.keys():
+		if not live_ids.has(id):
+			ripple_travel.erase(id)
+
+func ripple_distance(well: Node2D) -> float:
+	return float(ripple_travel.get(well.get_instance_id(), 0.0))
 
 ## The controller calls this once each physics frame. A neutralising tap is an
 ## exact zero displacement, including in overlapping opposed fields.
@@ -198,7 +227,7 @@ func step(delta: float) -> void:
 				b.well_position -= motion
 			if a.kind == "white" and b.kind == "white":
 				for well in [a, b]:
-					well.well_position = well.well_position.clamp(Vector2(35, game.top_inset + 170), game.arena - Vector2(35, 35))
+					well.well_position = well.well_position.clamp(Vector2(35, 35), game.arena - Vector2(35, 35))
 				if a.pressure_front_radius + b.pressure_front_radius >= a.well_position.distance_to(b.well_position):
 					visual_shockwave((a.well_position + b.well_position) * 0.5)
 					var departing_force := net_force_for(game.ship)
@@ -224,6 +253,7 @@ func step(delta: float) -> void:
 			merge(a, b)
 			break # Recollect identities next frame, avoiding stale merged entries.
 	update_coalescence_shapes()
+	advance_ripples(delta)
 	for wave in shockwaves.duplicate():
 		wave.age += delta
 		if wave.age >= 0.35 and not wave.fired and not wave.get("visual_only", false):
@@ -396,6 +426,7 @@ func visual_step(delta: float) -> void:
 
 ## Restart/title transitions must not leave a delayed boss death field queued.
 func clear_collapses() -> void:
+	ripple_travel.clear()
 	for collapse in collapses:
 		collapse.queue_free()
 	collapses.clear()

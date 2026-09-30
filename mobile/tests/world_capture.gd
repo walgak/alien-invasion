@@ -77,10 +77,11 @@ func run() -> void:
 	await capture("03-impact-ripple")
 	game.combat.shield_time = 0.0
 	add_well("black",Vector2(225,500))
-	game.combat.warp_pulses.append({"at":game.ship.position,"age":0.10})
+	game.combat.press(91,game.ship.position)
 	var black := await capture("04-black-hole-tap")
 	check(black.get_pixel(225,500).r < 0.02 and black.get_pixel(225,500).b < 0.02,"black event horizon remains opaque over background and stars")
-	check(game.shield_visual.player_surface.visible,"tap and gravity ward share the shield language")
+	check(not game.shield_visual.player_surface.visible and game.combat.gravity_touch_active(),"tap uses only the held warp, separate from the collected hex shield")
+	game.combat.release(91,game.ship.position)
 	game.start_run()
 	game.visual_time = 22.0
 	add_well("white",Vector2(275,570))

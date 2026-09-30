@@ -3,7 +3,6 @@ render_mode unshaded, blend_add;
 uniform float logical_radius = 56.4;
 uniform float visual_time = 0.0;
 uniform float strength = 1.0;
-uniform float tap_pulse = 0.0;
 uniform float hit_age = 10.0;
 uniform vec2 hit_position = vec2(0.0);
 
@@ -38,7 +37,6 @@ void fragment() {
 	vec2 folded=sphere+vec2(sin(sphere.y*8.0+visual_time*0.5),cos(sphere.x*7.0-visual_time*0.4))*0.019;
 	float mesh=hex_mesh(folded*7.4);
 	float filaments=pow(max(0.0,1.0-abs(sin((sphere.y+sphere.x*0.38)*9.0+turbulence*9.0-visual_time*0.9))),9.0);
-	float rim=exp(-pow((r-0.993)/max(0.010,aa),2.0));
 	// Only the soft halo is reduced to 10%; the existing refraction lives in
 	// space_folds and is unchanged. Sharp mesh and flowing color carry contrast.
 	float glow=exp(-pow((r-1.005)/0.065,2.0))*0.018;
@@ -51,8 +49,9 @@ void fragment() {
 	// shows the sphere's shape without painting over the ship or its gunfire.
 	vec3 color=blue*mesh*(0.22+fresnel*0.92)+iridescent*filaments*(0.12+fresnel*0.84);
 	color+=blue*fresnel*0.016+ice*mesh*fresnel*filaments*0.64;
-	color+=ice*(rim*0.78+glow+ripple*0.65);
-	color+=vec3(0.72,0.86,1.0)*rim*0.19;
-	float shell=(0.94+tap_pulse*0.40)*strength;
+	// There is no separately painted circular border. The curved hex mesh and
+	// shifting electric flow define the limb; the background supplies the warp.
+	color+=ice*(glow+ripple*0.65);
+	float shell=0.94*strength;
 	COLOR=vec4(color*shell,clamp(interior+glow,0.0,1.0));
 }

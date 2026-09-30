@@ -187,14 +187,14 @@ func update_player_well_dodge(delta: float, patrol: Vector2) -> void:
 func player_well_threats(anticipate: bool = true) -> Array[Dictionary]:
 	var threats: Array[Dictionary] = []
 	if anticipate and game.combat.pending_gravity_time >= 0.0:
-		var size: float = 1.8 * sqrt(clampf(game.combat.pending_gravity_charge, 1.0, 5.0))
+		var size: float = game.PlayerWell.scale_for_charge(game.combat.pending_gravity_charge)
 		threats.append({"at": game.combat.pending_gravity_target, "radius": 31.0 * size + GRAVITY_HULL_RADIUS + 12.0})
 	for well in game.lingering_wells:
 		if well.get_script() != game.PlayerWell or well.phase == "finished" or well.is_queued_for_deletion():
 			continue
 		if not anticipate and well.phase != "active":
 			continue
-		var size: float = 1.8 * sqrt(clampf(well.charge, 1.0, 5.0)) if well.phase == "warning" else well.well_scale
+		var size: float = game.PlayerWell.scale_for_charge(well.charge) if well.phase == "warning" else well.well_scale
 		threats.append({"at": well.well_position, "radius": (31.0 * size if well.phase == "warning" else game.gravity_fields.core_radius(well)) + GRAVITY_HULL_RADIUS + 12.0})
 	return threats
 
@@ -335,7 +335,7 @@ func summon_asteroid() -> void:
 	game.spawn_asteroid(start, velocity, radius, 0, body_position + Vector2(0, 42), aim_offset)
 	game.sound.play_effect("fold")
 
-## Create a tethered alien and attach the barrage's shared reward token so the swarm guarantees one drop.
+## Create a tethered alien with the barrage's group metadata. Support loot counts defeats across every group.
 func summon_alien() -> void:
 	var side: int = game.rng.randi_range(0, 2)
 	var start := Vector2.ZERO

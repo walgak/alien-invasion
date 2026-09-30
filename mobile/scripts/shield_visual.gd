@@ -1,6 +1,7 @@
 extends Node2D
 ## Two reusable, touch-transparent optical domes. Their surfaces are cosmetic;
-## combat owns immunity, collision radius and the weaker automatic gravity ward.
+## Combat owns immunity and collision radius. Only a collected, live shield
+## draws this mesh; physical resistance taps use the separate warp pass alone.
 const Dome = preload("res://shaders/shield_dome.gdshader")
 var game: Node2D
 var player_surface: ColorRect
@@ -48,15 +49,10 @@ func step(delta: float) -> void:
 	if game == null or not is_instance_valid(player_surface):
 		return
 	hit_age += delta
-	var tap := 0.0
-	for pulse in game.combat.warp_pulses:
-		tap = maxf(tap,1.0-clampf(pulse.age/0.42,0.0,1.0))
-	player_surface.visible = game.death_time <= 0.0 and game.ship.visible and (game.combat.hazards_protected() or tap>0.0)
+	player_surface.visible = game.death_time <= 0.0 and game.ship.visible and game.combat.shield_time > 0.0
 	if player_surface.visible:
 		var radius: float = game.combat.shield_radius()
-		var full: bool = game.combat.shield_time > 0.0
-		place(player_surface,game.ship.position,radius,1.0 if full else 0.78,game.visual_time)
-		player_surface.material.set_shader_parameter("tap_pulse",tap)
+		place(player_surface,game.ship.position,radius,1.0,game.visual_time)
 		player_surface.material.set_shader_parameter("hit_age",hit_age)
 		player_surface.material.set_shader_parameter("hit_position",(hit_position-game.ship.position)/radius)
 	var boss: Node2D = game.boss

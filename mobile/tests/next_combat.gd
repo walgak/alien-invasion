@@ -67,7 +67,7 @@ func run() -> void:
 		enemy.shield_guard=true
 	game.spawn_asteroid(Vector2(160,270),Vector2.ZERO,43,90)
 	check(game.fire_electron(),"electron activates on a valid visible chain")
-	for i in range(15): game.electron_beam.step(0.06)
+	for i in range(180): game.electron_beam.step(0.06)
 	check(game.enemies.is_empty() and game.asteroids.is_empty(),"electron clears small aliens and melts asteroids without fragments")
 	check(is_equal_approx(game.boss.health,health-3),"electron hits boss once for cannon damage after guards")
 	fresh()
@@ -78,15 +78,10 @@ func run() -> void:
 	check(not game.projectiles.has(shot),"fast projectile is swallowed before crossing black core")
 	var segments: Array[Vector2]=game.reflected_laser(Vector2(270,650))
 	var safe:=true
-	var left:=false
-	var right:=false
 	for i in range(0,segments.size()-1,2):
 		var closest:=Geometry2D.get_closest_point_to_segment(well.well_position,segments[i],segments[i+1])
 		if closest.distance_to(well.well_position)<30.99: safe=false
-		if absf(segments[i].y-420)<31:
-			left=left or segments[i].x<270
-			right=right or segments[i].x>270
-	check(safe and left and right,"laser splits around both sides without entering event horizon")
+	check(safe and segments.back().y>420 and is_equal_approx(segments.back().distance_to(well.well_position),31.0),"laser is absorbed at the near horizon without splitting through the core")
 	fresh()
 	well=field("white",Vector2(270,420))
 	shot=game.weapons.spawn_shot(game,Vector2(270,470),Vector2(0,-850))
@@ -123,6 +118,38 @@ func run() -> void:
 	check(game.recoil_time>0 and game.ship.position.y>260,"gravity release briefly preserves resistance thrust")
 	for i in range(300): game._physics_process(1.0/60.0)
 	check(absf(game.ship.position.y-game.cruise_position().y)<0.1 and absf(game.ship.position.x-180)<0.1,"recoil settles to cruise Y while preserving X")
+	fresh()
+	var regular_drop_count := true
+	for index in range(25):
+		enemy = game.spawn_enemy(Vector2(200,350),Vector2.ZERO)
+		enemy.drop_group = {"awarded": false}
+		game.destroy_enemy(enemy)
+		regular_drop_count = regular_drop_count and game.pickups.size()==int((index+1)/10)
+	check(regular_drop_count,"one drop per ten defeats across independent swarms, with no first-kill bonus")
+	fresh()
+	game.begin_boss("asteroid")
+	game.boss.phase = "firefight"
+	game.boss.body_position = Vector2(270,180)
+	game.combat.missiles = 2
+	var boss_health: float = game.boss.health
+	check(game.combat.can_fire_cannon_button() and game.combat.fire_cannon_volley()==1 and game.combat.missiles==1,"cannon button can fire one at a visible boss with fewer than five in stock")
+	game.combat.press(41,game.boss.body_position)
+	game.combat.release(41,game.boss.body_position)
+	check(not game.combat.can_fire_cannon_button() and game.combat.fire_cannon_volley()==0 and game.combat.missiles==1,"tap and button share the one-cannon-in-flight boss limit")
+	for frame in range(100): game.update_projectiles(1.0/60.0)
+	check(game.boss.health==boss_health-3 and not game.combat.boss_cannon_in_flight(),"boss-targeted cannon actually damages the boss and releases its flight limit")
+	game.combat.press(42,game.boss.body_position)
+	game.combat.release(42,game.boss.body_position)
+	check(game.combat.missiles==0 and game.combat.boss_cannon_in_flight(),"next boss tap may fire only after the previous cannon resolves")
+	fresh()
+	game.combat.gravity_charge = 50.0
+	game.combat.arm_gravity()
+	check(game.interface.gravity_target_position().is_equal_approx(game.arena*Vector2(0.5,0.25)),"armed target marker indicates the automatic upper-half destination")
+	game.combat.press(53,Vector2(100,20))
+	check(game.interface.gravity_target_position()==Vector2(100,20),"target preview accepts visible upper-edge space with no old top-bar cutoff")
+	game.combat.release(53,Vector2(100,20))
+	check(not game.combat.gravity_armed and game.combat.pending_gravity_time>0.0,"target selection hides the guide and starts preparation")
+	check(is_equal_approx(game.PlayerWell.scale_for_charge(1),0.9) and is_equal_approx(game.PlayerWell.scale_for_charge(5),1.35),"player charge uses the smaller core range without changing lifetime or force")
 	print("NEXT_COMBAT: %d checks, %d failures"%[checks,failures])
 	game.queue_free()
 	await process_frame

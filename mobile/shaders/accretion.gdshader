@@ -26,8 +26,12 @@ void fragment() {
 	// masked separately, so cosmetic turbulence never changes the lethal radius.
 	vec2 texture_center = vec2(0.496, 0.4825);
 	float texture_radius = 0.106 + max(shell, 0.0) * 0.355 + radial_warp;
-	vec2 uv_a = texture_center + vec2(cos(turn), sin(turn)) * texture_radius;
-	vec2 uv_b = texture_center + vec2(cos(turn + 0.12), sin(turn + 0.12)) * (texture_radius + sin(flow + 1.3) * 0.0025);
+	// A negative rotation must also mirror the baked spiral's handedness. Merely
+	// playing the same image backwards makes its filaments swim against the disk.
+	float handedness = direction < 0.0 ? -1.0 : 1.0;
+	float texture_turn = turn * handedness;
+	vec2 uv_a = texture_center + vec2(cos(texture_turn), sin(texture_turn)) * texture_radius;
+	vec2 uv_b = texture_center + vec2(cos(texture_turn + 0.12 * handedness), sin(texture_turn + 0.12 * handedness)) * (texture_radius + sin(flow + 1.3) * 0.0025);
 	float a = texture(TEXTURE, uv_a).r;
 	float b = texture(TEXTURE, uv_b).r;
 	float intensity = mix(a, b, 0.20);
@@ -46,7 +50,7 @@ void fragment() {
 	// Four nearest hashed candidates form a sparse irregular point field. Each
 	// radial generation receives new positions and birth phases: no repeating
 	// spoke/grid flecks. Width is measured in logical pixels, never well scale.
-	float particle_angle = angle - direction * visual_time * 0.23 - shell * 1.9;
+	float particle_angle = angle - direction * visual_time * 0.23 - direction * shell * 1.9;
 	vec2 grid=vec2(particle_angle*40.0/TAU,shell*6.0-direction*visual_time*0.75);
 	vec2 base=floor(grid), local=fract(grid);
 	vec2 neighbour=mix(vec2(-1.0),vec2(1.0),step(vec2(0.5),local));

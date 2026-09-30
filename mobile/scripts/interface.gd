@@ -78,6 +78,7 @@ func activate_special(action: String) -> void:
 	if game.combat.gravity_blocks_control():
 		# Unavailable weapon buttons still count as resistance taps.
 		game.combat.press(-99, game.ship.position)
+		game.combat.release(-99, game.ship.position)
 		return
 	var accepted := false
 	match action:
@@ -126,6 +127,10 @@ func route_special_touch(event: InputEvent) -> bool:
 		for index in range(actions.size()):
 			var button = flight_buttons[index]
 			if button.visible and button.contains_point(at):
+				# Resistance belongs to the actual held pointer, even over an
+				# unavailable weapon icon; release must remove its warp immediately.
+				if actions[index] != "pause" and game.combat.gravity_blocks_control():
+					return false
 				special_touches[pointer] = index
 				special_touch_msec = Time.get_ticks_msec()
 				return true
@@ -170,7 +175,7 @@ func refresh_special_buttons() -> void:
 		gravity_progress = 1.0 - combat.pending_gravity_time / combat.GRAVITY_PREPARATION
 	gravity_button.present("%d" % floori(charge), not blocked and charge >= combat.GRAVITY_MIN_CHARGE and combat.pending_gravity_time < 0.0, combat.gravity_armed or combat.pending_gravity_time >= 0.0, gravity_progress, game.visual_time)
 	laser_use_button.present("%.0fs" % ceilf(combat.laser_time) if combat.laser_time > 0.0 else "%d" % combat.laser_stock, not blocked and (combat.laser_stock > 0 or combat.laser_time > 0.0), combat.laser_active, combat.laser_time / 10.0, game.visual_time)
-	cannon_button.present("%d" % combat.missiles, not blocked and combat.missiles >= 5, false, minf(combat.missiles / 5.0, 1.0), game.visual_time)
+	cannon_button.present("%d" % combat.missiles, combat.can_fire_cannon_button(), false, minf(combat.missiles / 5.0, 1.0), game.visual_time)
 	electron_button.present("%d" % combat.electron_stock, not blocked and combat.electron_stock > 0, false, 1.0 if combat.electron_stock > 0 else 0.0, game.visual_time)
 
 ## Create a real GUI button with shared colors and focus styling so touch and keyboard navigation work.
@@ -304,6 +309,8 @@ func _draw() -> void:
 		var tint := Color("75cfff") if game.boss_is_shielded() else Color("ffbb85")
 		draw_style_box(panel(tint, Color(0, 0, 0, 0)), Rect2(boss_at, Vector2(96.0 * float(game.boss.health) / game.boss.max_health, 4)))
 	if game.state == game.State.PLAYING:
+		if game.combat.gravity_armed:
+			draw_gravity_target()
 		if game.boss_warning > 0.0:
 			centered("BOSS APPROACHING", top + 202, 25, Color("ffb86a"))
 			centered(BOSS_NAMES.get(game.pending_boss, "UNKNOWN SIGNAL"), top + 231, 13, INK)
@@ -330,3 +337,24 @@ func _draw() -> void:
 ## shield, engine and button states, never an instruction panel over the action.
 func draw_boss_notice() -> void:
 	pass
+
+## A pulsing target in the selectable half makes the armed state explicit.
+## The same point is used by the automatic shot; a held target previews its
+## destination. Filled luminous chevrons avoid an opaque panel over the battle.
+func gravity_target_position() -> Vector2:
+	for touch in game.combat.aim_touches.values():
+		if touch.gravity: return touch.at
+	return game.combat.automatic_gravity_target()
+
+func draw_gravity_target() -> void:
+	var at := gravity_target_position()
+	var pulse := 0.5 + 0.5 * sin(game.visual_time * 4.0)
+	for layer in range(3, 0, -1):
+		draw_circle(at, 10.0 + layer * (8.0 + pulse * 3.0), Color(0.25, 0.67, 1.0, 0.016 * (4-layer)))
+	for index in range(4):
+		var outward := Vector2.from_angle(float(index) * PI * 0.5)
+		var side := outward.orthogonal()
+		var center := at + outward * (32.0 + pulse * 5.0)
+		draw_colored_polygon(PackedVector2Array([center-outward*7.0, center+side*7.0+outward*3.0, center+outward, center-side*7.0+outward*3.0]), Color(0.5, 0.85, 1.0, 0.7 + pulse*0.2))
+	draw_circle(at, 2.5, Color("d9f6ff"))
+	text_at("PICK A TARGET", at + Vector2(-46, 60), 11, Color(0.64, 0.84, 1.0, 0.85))

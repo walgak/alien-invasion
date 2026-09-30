@@ -1,5 +1,6 @@
 extends ColorRect
-## One background-only refraction pass; actors and HUD draw above this layer.
+## One refraction pass for the complete sky, including its distant stars.
+## Actors and controls remain crisp above the optically distorted background.
 
 const MAX_LENSES := 8
 const MAX_STRANDS := 6
@@ -28,6 +29,11 @@ func update_effects(game: Node2D) -> void:
 	# own palette so the refracted sky agrees with the visible accretion flow.
 	var lens_colors := PackedVector4Array()
 	lens_colors.resize(MAX_LENSES)
+	# Only active fields carry a travelled wave phase. Other optical effects
+	# retain their own clocks; -1 identifies them to the fragment shader.
+	var wave_distances := PackedFloat32Array()
+	wave_distances.resize(MAX_LENSES)
+	wave_distances.fill(-1.0)
 	var strands := PackedVector4Array()
 	var strand_styles := PackedVector4Array()
 	var boss: Node2D = game.boss
@@ -46,14 +52,17 @@ func update_effects(game: Node2D) -> void:
 	material.set_shader_parameter("edge_strength", white_edge_strength)
 	material.set_shader_parameter("edge_release", white_edge_release)
 	material.set_shader_parameter("visual_time", game.visual_time)
-	# Reserve one slot for the shield, then pack active wells before short tap
-	# pulses and exit waves. Rapid tapping must never evict an active gravity lens.
-	if game.combat.hazards_protected() and lenses.size() < MAX_LENSES:
-		# Solar wind gives the shield strong optical motion. Distant stars are
-		# deliberately absent from this shader's input texture.
-		var shield_radius: float = game.combat.shield_radius()
-		lenses.append(Vector4(game.ship.position.x, game.ship.position.y, shield_radius+105.0, 13.5))
-		styles.append(Vector4(shield_radius, 1.0, 3.0, game.visual_time))
+	# Reserve one slot for the player before any transient ripples. A collected
+	# dome stays visible for its exact immunity lifetime; resistance has only a
+	# held-finger warp and vanishes immediately on release, never a false shield.
+	var full_shield: bool = game.combat.shield_time > 0.0
+	var resistance_touch: bool = game.combat.gravity_touch_active()
+	if game.ship.visible and game.death_time <= 0.0 and (full_shield or resistance_touch):
+		# Restore the earlier concentrated warp radius inside the new, larger
+		# protective dome. Hull coverage/physics still use the full shield radius.
+		var warp_radius: float = game.combat.shield_radius() / 1.2
+		lenses.append(Vector4(game.ship.position.x, game.ship.position.y, warp_radius+90.0, 13.5))
+		styles.append(Vector4(warp_radius, 1.0, 3.0, game.visual_time))
 	# The escaped-alien cannon creates a synthetic horizon during the death
 	# animation. Give that visible hole the same live lens as ordinary fields.
 	if game.death_time > 0.0 and game.death_is_gravity and game.death_synthetic:
@@ -63,10 +72,10 @@ func update_effects(game: Node2D) -> void:
 		var tint: Color = game.death_hole_color
 		lens_colors[lenses.size()-1] = Vector4(tint.r, tint.g, tint.b, 1.0)
 	if is_instance_valid(boss) and boss.visible and boss.holds_steering():
-		append_active_well(boss, lenses, styles, lens_colors)
+		append_active_well(boss, lenses, styles, lens_colors, wave_distances)
 	for well in game.lingering_wells:
 		if well.kind in ["black", "white"] and well.holds_steering():
-			append_active_well(well, lenses, styles, lens_colors)
+			append_active_well(well, lenses, styles, lens_colors, wave_distances)
 	# Colliding white pressure fronts have their own outward-moving optical
 	# surface before both fields release. Fronts never alter lethal core size.
 	for well in game.gravity_fields.active_wells():
@@ -107,13 +116,8 @@ func update_effects(game: Node2D) -> void:
 			var radius: float = death_warp.radius
 			lenses.append(Vector4(at.x, at.y, radius + 100.0, death_warp.strength))
 			styles.append(Vector4(radius, 1.0, 4.0, game.visual_time))
-	for pulse in game.combat.warp_pulses:
-		if lenses.size() >= MAX_LENSES:
-			break
-		var progress: float = clampf(pulse.age / 0.42, 0.0, 1.0)
-		var radius: float = 42.0 + progress * 44.0
-		lenses.append(Vector4(pulse.at.x, pulse.at.y, radius + 55.0, 1.65 * (1.0 - progress)))
-		styles.append(Vector4(radius, -1.0, 2.0, game.visual_time * 1.7))
+	# Resistance ripples are generated inside the live held-finger shield lens.
+	# Do not keep detached tap rings alive after the finger leaves the screen.
 	for wave in game.gravity_fields.shockwaves:
 		if lenses.size() >= MAX_LENSES:
 			break
@@ -190,21 +194,29 @@ func update_effects(game: Node2D) -> void:
 	material.set_shader_parameter("lenses", lenses)
 	material.set_shader_parameter("lens_styles", styles)
 	material.set_shader_parameter("lens_colors", lens_colors)
+	material.set_shader_parameter("wave_distances", wave_distances)
+	material.set_shader_parameter("wave_length", game.gravity_fields.RIPPLE_WAVELENGTH)
 	material.set_shader_parameter("strand_count", strand_count)
 	material.set_shader_parameter("strands", strands)
 	material.set_shader_parameter("strand_styles", strand_styles)
 	material.set_shader_parameter("refraction_strength", game.progress.distortion_strength)
-	# This pass also composites the transparent celestial scene on the stars,
-	# so it remains visible even when there are no gravity lenses.
+	# This pass presents the complete sky, so it remains visible without lenses.
 	visible = true
 
 ## Amplify only active gravity throats; all shield, pulse and tether values stay
 ## independent. The shared eight-lens budget bounds fragment work on the phone.
-func append_active_well(well: Node2D, lenses: PackedVector4Array, styles: PackedVector4Array, colors: PackedVector4Array) -> void:
+func append_active_well(well: Node2D, lenses: PackedVector4Array, styles: PackedVector4Array, colors: PackedVector4Array, waves: PackedFloat32Array) -> void:
 	if lenses.size() >= MAX_LENSES:
 		return
-	lenses.append(Vector4(well.well_position.x, well.well_position.y, (164.0 / 31.0) * well.game.gravity_fields.core_radius(well), 1.4))
+	# Reach every corner even if a merging field moves beyond the screen. The
+	# ellipse safety margin preserves the existing local throat shape while the
+	# new circular lake waves extend across the complete background.
+	var reach := 0.0
+	for corner in [Vector2.ZERO, Vector2(size.x, 0), size, Vector2(0, size.y)]:
+		reach = maxf(reach, well.well_position.distance_to(corner))
+	lenses.append(Vector4(well.well_position.x, well.well_position.y, reach / 0.83 + 112.0, 1.4))
 	styles.append(Vector4(well.game.gravity_fields.core_radius(well), 1.0 if well.kind == "white" else -1.0, 0.0, well.animation_time))
+	waves[lenses.size()-1] = well.game.gravity_fields.ripple_distance(well)
 	set_well_color(well, lenses.size() - 1, colors)
 
 ## White holes keep an icy fold tint while black holes inherit their owner's

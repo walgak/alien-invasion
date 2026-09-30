@@ -1,6 +1,7 @@
 extends Node2D
-## Stars have their own unwarped layer. A transparent offscreen celestial layer
-## lets gravity bend gas, atmosphere and wind without ever sampling those stars.
+## Render stars behind gas and worlds in one reusable offscreen sky texture.
+## SpaceFolds refracts that composite, so even the distant stars lens correctly.
+## Physical tides remain subtle and independent from this optical displacement.
 const SKY_SHADER = preload("res://shaders/space_background.gdshader")
 const STAR_SHADER = preload("res://shaders/distant_stars.gdshader")
 const MAX_FIELDS := 4
@@ -9,19 +10,23 @@ var sky_material := ShaderMaterial.new()
 var star_material := ShaderMaterial.new()
 var celestial_viewport: SubViewport
 var celestial_surface: ColorRect
+var star_surface: ColorRect
 var wind_strength := 0.45
 var previous_time := 0.0
 
 func _init() -> void:
 	star_material.shader = STAR_SHADER
-	material = star_material
 	sky_material.shader = SKY_SHADER
 	celestial_viewport = SubViewport.new()
-	celestial_viewport.transparent_bg = true
+	celestial_viewport.transparent_bg = false
 	celestial_viewport.disable_3d = true
 	celestial_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	celestial_viewport.handle_input_locally = false
 	add_child(celestial_viewport)
+	star_surface = ColorRect.new()
+	star_surface.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	star_surface.material = star_material
+	celestial_viewport.add_child(star_surface)
 	celestial_surface = ColorRect.new()
 	celestial_surface.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	celestial_surface.material = sky_material
@@ -36,6 +41,7 @@ func update_background(arena: Vector2, time: float, game: Node2D = null) -> void
 	if celestial_viewport.size != logical_size:
 		celestial_viewport.size = logical_size
 		celestial_surface.size = arena
+		star_surface.size = arena
 	star_material.set_shader_parameter("arena_size",arena)
 	star_material.set_shader_parameter("visual_time",time)
 	sky_material.set_shader_parameter("arena_size",arena)
@@ -59,6 +65,3 @@ func update_background(arena: Vector2, time: float, game: Node2D = null) -> void
 
 func celestial_texture() -> ViewportTexture:
 	return celestial_viewport.get_texture()
-
-func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO,arena_size),Color.WHITE)

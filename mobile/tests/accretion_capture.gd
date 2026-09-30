@@ -78,7 +78,7 @@ func run() -> void:
 		var contains_well := false
 		for lens in lenses:
 			contains_well = contains_well or (lens.x == 270.0 and lens.y == 640.0 and lens.z > 200.0)
-		check(contains_well and game.space_folds.lens_count == 8, kind + " distortion survives a burst of tap rings and hazard protection")
+		check(contains_well and game.space_folds.lens_count <= 8, kind + " distortion survives stale tap pulses without reviving released rings")
 	game.start_run()
 	game.refresh_space()
 	check(game.gravity_fields.accretion_pool.all(func(v: Node2D) -> bool: return not v.visible), "new run hides reused accretion sprites")

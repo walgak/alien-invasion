@@ -1,7 +1,7 @@
 shader_type canvas_item;
 render_mode unshaded;
-// This shader never samples refracted coordinates. Stars remain behind the gas
-// and planets, with only extremely slow parallax and a restrained twinkle.
+// Base stars remain behind gas and planets, with extremely slow parallax and
+// restrained twinkle. The completed sky texture is then optically refracted.
 uniform vec2 arena_size = vec2(540.0,960.0);
 uniform float visual_time = 0.0;
 float hash21(vec2 p) {

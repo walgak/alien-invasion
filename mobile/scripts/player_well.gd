@@ -8,7 +8,7 @@ var phase := "warning"
 var well_position := Vector2.ZERO
 var cannon_position := Vector2.ZERO
 var charge := 1.0
-var well_scale := 1.8
+var well_scale := 0.9
 var animation_time := 0.0
 var remaining := 0.0
 var neutralise_time := 0.0
@@ -19,6 +19,11 @@ var hole_color := Color("358cff")
 const PULL_SPEED := 90.0
 const MIN_LIFETIME := 3.0
 const MAX_LIFETIME := 7.5
+
+## Player charge grows a compact core, rather than dwarfing a boss's field.
+## Lifetime and force keep their own rules; mergers still conserve actual area.
+static func scale_for_charge(value: float) -> float:
+	return lerpf(0.9, 1.35, (clampf(value, 1.0, 5.0) - 1.0) / 4.0)
 
 ## Charge determines presentation and duration; it never raises pulling force.
 func lifetime_for_charge() -> float:
@@ -46,7 +51,7 @@ func step(delta: float) -> void:
 		if cannon_position.distance_to(well_position) < 1.0:
 			phase = "active"
 			remaining = lifetime_for_charge()
-			well_scale = 1.8 * sqrt(clampf(charge, 1.0, 5.0))
+			well_scale = scale_for_charge(charge)
 			game.sound.play_effect("rift")
 			game.combat.vibrate("black_spawn")
 		queue_redraw()

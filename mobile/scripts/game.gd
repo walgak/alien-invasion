@@ -386,7 +386,7 @@ func next_boss_kind() -> String:
 			boss_deck[j] = swap
 	return boss_deck.pop_back()
 
-## Spawn a bounded random group with one shared reward token; its first destroyed ship guarantees a pickup.
+## Spawn a bounded random group; pickup cadence counts defeats across all groups.
 func spawn_enemy_group() -> void:
 	var count := mini(rng.randi_range(1, 5), MAX_ENEMIES - enemies.size())
 	if count <= 0:
@@ -550,86 +550,67 @@ func update_laser(delta: float) -> void:
 		contacts[id] = exposure
 	laser_exposure = contacts
 
-## Trace bounded short rays through gravity. Asteroids reflect at the surface;
-## boss hulls/shields absorb at first contact, so beams cannot cross the boss.
+## A single continuous ray bends through gravity. Black horizons absorb it;
+## white cores curve it around their exterior. Bounded short segments prevent
+## either light or its collision path from tunnelling through an opaque center.
 func reflected_laser(start: Vector2, pressure_delta: float = 0.0) -> Array[Vector2]:
 	var segments: Array[Vector2] = []
 	var fields := gravity_fields.active_wells()
-	var work: Array[Dictionary] = [{"origin":start,"direction":Vector2.UP,"visited":[],"bends":2,"path":[]}]
-	var budget := 384
-	# A short work queue handles split rays without recursion. Both branches use
-	# the same target exposure dictionary in update_laser, never additive damage.
-	while not work.is_empty() and budget > 0:
-		var ray: Dictionary = work.pop_front()
-		var origin: Vector2 = ray.origin
-		var direction: Vector2 = ray.direction
-		var route: Array = ray.path
-		for step in range(96):
-			budget -= 1
-			if budget < 0: break
-			var routed := not route.is_empty()
-			var distance := 24.0
-			if routed:
-				origin=route.pop_front()
-				var next: Vector2=route.pop_front()
-				distance=origin.distance_to(next)
-				if distance < 0.0001: continue
-				direction=(next-origin)/distance
-			else:
-				direction=curved_velocity(origin,direction*1800.0,24.0/1800.0,fields).normalized()
-				if not ray.visited.is_empty() and direction.y>0.0: direction.y=-direction.y
-			var reflector: Node2D
-			var absorbed := false
-			for rock in asteroids:
-				if ray.visited.has(rock) or not target_is_exposed(rock,"rock"): continue
-				var hit := ray_circle(origin,direction,rock.position,rock.radius)
-				if hit >= 0.0 and hit < distance:
-					distance=hit
-					reflector=rock
-			if is_instance_valid(boss) and target_is_exposed(boss,"boss"):
-				var hit := ray_circle(origin,direction,boss.body_position,76.0 if boss_is_shielded() else Boss.HIT_RADIUS)
-				if hit >= 0.0 and hit <= distance:
-					distance=hit
-					reflector=null
-					absorbed=true
-			var end := origin+direction*distance
-			var core_hit := EnergyOptics.first_core(origin,end,fields)
-			if not core_hit.is_empty():
-				var core: Node2D=core_hit.well
-				var radius: float=gravity_fields.core_radius(core)
-				if routed or ray.bends<=0 or origin.distance_to(core.well_position)<radius:
-					segments.append_array([origin,core_hit.at])
-					break
-				var exit_point: Vector2=core.well_position+direction*(radius+24.0)
-				for side in [-1.0,1.0]:
-					var branch:=EnergyOptics.route(origin,exit_point,fields,side)
-					work.append({"origin":origin,"direction":direction,"visited":ray.visited.duplicate(),"bends":ray.bends-1,"path":branch})
-				break
-			segments.append_array([origin,end])
-			if absorbed:
-				if is_instance_valid(laser):
-					laser.absorbed=true
-					laser.contact_point=end
-				break
-			if reflector != null:
-				if ray.visited.size() >= 3: break
-				ray.visited.append(reflector)
-				route.clear()
-				var normal: Vector2=(end-reflector.position).normalized()
-				if pressure_delta>0.0:
-					var push := (direction-normal*0.7).normalized()
-					# A split beam shares its force as well as its damage budget.
-					var fraction := 1.0/pow(2.0,2-ray.bends)
-					reflector.velocity += push*180.0*pow(20.0/reflector.radius,2.0)*pressure_delta*fraction
-					reflector.velocity=reflector.velocity.limit_length(550.0)
-					reflector.player_deflected=true
-				direction=direction-2.0*direction.dot(normal)*normal
-				if direction.y>0.0:
-					direction=Vector2(normal.y,-normal.x)
-					if direction.y>0.0: direction=-direction
-				direction=direction.normalized()
-			origin=end+direction*(1.0 if reflector!=null else 0.0)
-			if origin.y<playfield_top() or origin.x < -30 or origin.x>arena.x+30: break
+	var origin := start
+	var direction := Vector2.UP
+	var visited: Array[Node2D] = []
+	for step in range(384):
+		direction=curved_velocity(origin,direction*1800.0,8.0/1800.0,fields).normalized()
+		var guarded := EnergyOptics.white_safe_step(origin,origin+direction*8.0,direction*1800.0,fields,14.0)
+		var next: Vector2=guarded.point
+		var distance := origin.distance_to(next)
+		if distance < 0.0001: break
+		direction=(next-origin)/distance
+		var reflector: Node2D
+		var absorbed := false
+		for rock in asteroids:
+			if visited.has(rock) or not target_is_exposed(rock,"rock"): continue
+			var hit := ray_circle(origin,direction,rock.position,rock.radius)
+			if hit >= 0.0 and hit < distance:
+				distance=hit
+				reflector=rock
+		if is_instance_valid(boss) and target_is_exposed(boss,"boss"):
+			var hit := ray_circle(origin,direction,boss.body_position,76.0 if boss_is_shielded() else Boss.HIT_RADIUS)
+			if hit >= 0.0 and hit <= distance:
+				distance=hit
+				reflector=null
+				absorbed=true
+		var end := origin+direction*distance
+		var core_hit := EnergyOptics.first_core(origin,end,fields)
+		if not core_hit.is_empty():
+			segments.append_array([origin,core_hit.at])
+			break
+		segments.append_array([origin,end])
+		if absorbed:
+			if is_instance_valid(laser):
+				laser.absorbed=true
+				laser.contact_point=end
+			break
+		if reflector != null:
+			if visited.size() >= 3: break
+			visited.append(reflector)
+			var normal: Vector2=(end-reflector.position).normalized()
+			if pressure_delta>0.0:
+				var push := (direction-normal*0.7).normalized()
+				reflector.velocity += push*180.0*pow(20.0/reflector.radius,2.0)*pressure_delta
+				reflector.velocity=reflector.velocity.limit_length(550.0)
+				reflector.player_deflected=true
+			direction=direction-2.0*direction.dot(normal)*normal
+			if direction.y>0.0:
+				direction=Vector2(normal.y,-normal.x)
+				if direction.y>0.0: direction=-direction
+			direction=direction.normalized()
+		else:
+			direction=Vector2(guarded.velocity).normalized()
+		origin=end
+		# The old safe-area HUD band is not a physical wall. Light continues
+		# beyond the viewport and is clipped only by the actual screen edge.
+		if origin.y < -24.0 or origin.y > arena.y+24.0 or origin.x < -30.0 or origin.x > arena.x+30.0: break
 	return segments
 
 ## Positive distance to the entry surface, or -1 if the ray misses the circle.
@@ -764,9 +745,11 @@ func update_projectiles(delta: float) -> void:
 		shot.advance(delta)
 		# Stop the physical sweep at the first core. Targets before it can still
 		# take the hit; nothing on the far side can be damaged through a horizon.
-		var core_hit := EnergyOptics.first_core(shot.previous_position,shot.position,gravity_fields.active_wells())
+		var core_hit := EnergyOptics.first_path_core(shot.motion_segments,gravity_fields.active_wells())
 		if not core_hit.is_empty():
 			shot.position=core_hit.at
+			shot.motion_segments.resize(int(core_hit.segment)+2)
+			shot.motion_segments[-1]=shot.position
 		if shot.hostile and shot.kind == "doom" and combat.hazards_protected() and shot.intersects(ship.position,combat.shield_radius()):
 			shield_visual.hit_ripple(shot.position)
 			gravity_fields.visual_shockwave(shot.position)
@@ -888,6 +871,8 @@ func visible_shot_intersects(shot: Node2D, at: Vector2, radius: float) -> bool:
 	var segments: Array[Vector2] = []
 	if shot.kind == "laser" and not shot.beam_segments.is_empty():
 		segments.assign(shot.beam_segments)
+	elif not shot.motion_segments.is_empty():
+		segments.assign(shot.motion_segments)
 	else:
 		segments.assign([shot.previous_position,shot.position])
 	for i in range(0,segments.size()-1,2):
@@ -928,7 +913,7 @@ func remove_projectile(shot: Node2D) -> void:
 	projectiles.erase(shot)
 	shot.queue_free()
 
-## Award score and the group's guaranteed/random pickup before removing the defeated alien.
+## Each tenth defeated small alien grants one drop, independent of swarm size.
 func destroy_enemy(enemy: Node2D, award_gravity_charge: bool = true) -> void:
 	if not enemies.has(enemy):
 		return
@@ -936,11 +921,7 @@ func destroy_enemy(enemy: Node2D, award_gravity_charge: bool = true) -> void:
 	if award_gravity_charge:
 		combat.add_gravity_charge()
 	combat.vibrate("enemy")
-	if not enemy.drop_group.is_empty() and not enemy.drop_group.dropped:
-		enemy.drop_group.dropped = true
-		guaranteed_drop(enemy.position)
-	else:
-		maybe_drop_pickup(enemy.position)
+	maybe_drop_pickup(enemy.position)
 	var broke_last_guard: bool = enemy.shield_guard and enemies.filter(func(candidate: Node2D) -> bool: return candidate.shield_guard).size() == 1
 	remove_enemy(enemy)
 	if broke_last_guard and is_instance_valid(boss):
@@ -977,20 +958,21 @@ func boss_drops(at: Vector2) -> void:
 	spawn_pickup(at, "weapon", true)
 	spawn_pickup(at+Vector2(46,0), "shield", true)
 
-## Each swarm supplies at least one useful support drop. Higher primary tiers
-## remain possible; laser/electron rewards require a boss or a clean large-rock family.
+## Each tenth alien supplies one support drop. Higher primary tiers remain
+## possible; laser/electron rewards require a boss or a clean large-rock family.
 func guaranteed_drop(at: Vector2) -> void:
 	if pickups.size() >= 12:
 		var oldest: Node2D = pickups.pop_front()
 		oldest.queue_free()
 	spawn_pickup(at, "weapon" if rng.randf() < 0.50 else "life")
 
-## Difficulty scales only optional support rewards; it cannot unlock OP drops.
+## Count across swarms so small groups cannot repeatedly trigger bonus drops.
+## Boss and complete asteroid-family rewards have their own unchanged rules.
 func maybe_drop_pickup(at: Vector2) -> void:
 	kills_since_drop += 1
-	if rng.randf() < minf(0.12, 0.04 * difficulty_scale()):
-		spawn_pickup(at, "weapon" if rng.randf() < 0.5 else "life")
+	if kills_since_drop >= 10:
 		kills_since_drop = 0
+		guaranteed_drop(at)
 
 ## Create a bounded collectible inside the horizontal playfield; collection is handled separately.
 func spawn_pickup(at: Vector2, kind: String, exact: bool = false) -> void:
@@ -1424,25 +1406,35 @@ func spawn_escape_cannon(at: Vector2) -> void:
 	sound.play_effect("rift")
 	combat.vibrate("gravity")
 
-## Every projectile uses the same lens field. Speed is preserved, so fast
-## rockets and light bend less per travelled pixel than slower enemy bullets.
+## Build a curved sweep before collision. Matter locks into a black-hole
+## spiral; homing and the weapon's original direction cannot let it escape.
 func bend_projectile(shot: Node2D, delta: float) -> void:
-	shot.velocity = curved_velocity(shot.position, shot.velocity, delta, gravity_fields.active_wells())
+	shot.gravity_wells=gravity_fields.active_wells()
+	var motion := EnergyOptics.projectile_motion(shot.position,shot.velocity,delta,shot.gravity_wells,shot.gravity_capture_id,shot.gravity_capture_spin)
+	shot.motion_segments=motion.path
+	shot.velocity=motion.velocity
+	shot.planned_velocity=shot.velocity
+	shot.gravity_capture_id=motion.capture
+	shot.gravity_capture_spin=motion.spin
+	if shot.gravity_capture_id != 0:
+		shot.homing_target=null
 	shot.queue_redraw()
 
-## Curvature is bounded and additive; fields never accelerate weapon cadence.
+## Light keeps its constant travel speed while its direction bends strongly.
+## Only near passes curve; an actual horizon crossing is absorbed by the trace.
 func curved_velocity(at: Vector2, velocity: Vector2, delta: float, wells: Array) -> Vector2:
 	var speed := velocity.length()
-	if speed < 0.01:
-		return velocity
+	if speed < 0.01: return velocity
 	var acceleration := Vector2.ZERO
 	for well in wells:
-		var offset: Vector2 = well.well_position-at
+		if well.kind != "black": continue
+		var offset: Vector2=well.well_position-at
 		var distance := offset.length()
-		if distance < 1.0 or distance > 460.0:
-			continue
-		acceleration += offset.normalized() * (1.0 if well.kind == "black" else -1.0) * 1100.0 * (1.0-distance/460.0)
-	return (velocity+acceleration.limit_length(1800.0)*delta).normalized()*speed
+		var reach := maxf(460.0,gravity_fields.core_radius(well)+180.0)
+		if distance < 1.0 or distance > reach: continue
+		acceleration += offset.normalized()*9200.0*pow(1.0-distance/reach,2.0)
+	var bent := (velocity+acceleration.limit_length(14000.0)*delta).normalized()*speed
+	return EnergyOptics.white_velocity(at,bent,delta,wells)
 
 ## Append bounded short-lived particles; the cap prevents explosion-heavy weapons from growing work without limit.
 func burst(at: Vector2, tint: Color, count: int) -> void:
@@ -1459,6 +1451,10 @@ func burst(at: Vector2, tint: Color, count: int) -> void:
 ## firing latched. Presses still pass through the GUI before gameplay sees them.
 func _input(event: InputEvent) -> void:
 	if state != State.PLAYING:
+		return
+	if event is InputEventKey and event.keycode == KEY_SPACE and not event.pressed and combat.owns_pointer(-3):
+		combat.release(-3, ship.position)
+		get_viewport().set_input_as_handled()
 		return
 	if interface.route_special_touch(event):
 		get_viewport().set_input_as_handled()
@@ -1522,7 +1518,7 @@ func _draw() -> void:
 	for shot in projectiles:
 		if shot.kind != "doom" or Rect2(Vector2.ZERO, arena).has_point(shot.position):
 			continue
-		var edge := shot.position.clamp(Vector2(28, top_inset + 170), arena - Vector2(28, 32))
+		var edge := shot.position.clamp(Vector2(28, 28), arena - Vector2(28, 32))
 		var direction: Vector2 = (ship.position - edge).normalized()
 		var side := direction.orthogonal()
 		draw_colored_polygon(PackedVector2Array([edge + direction * 16, edge - direction * 8 + side * 8, edge - direction * 8 - side * 8]), Color("c7a0ff"))
@@ -1542,7 +1538,8 @@ func _draw() -> void:
 
 ## No invisible HUD band: targets under the safe-area score are still playable.
 func playfield_top() -> float:
-	return top_inset + 12.0
+	# Safe-area padding belongs to controls, never to light, hits or world bounds.
+	return 0.0
 
 ## The inventory controller spends a charge only when there is a valid chain.
 func fire_electron() -> bool:
@@ -1552,19 +1549,18 @@ func fire_electron() -> bool:
 func route_energy_link(from: Vector2,to: Vector2) -> Array[Vector2]:
 	return EnergyOptics.route(from,to,gravity_fields.active_wells())
 
-## Black absorbs energy; white redirects it tangentially without changing speed.
-## The new origin starts outside the core to avoid frame-after-frame recollision.
+## White paths are already smoothly excluded before collision; this is only
+## the safety case for a core appearing exactly over a live projectile.
 func resolve_core_projectile(shot: Node2D, hit: Dictionary) -> void:
 	var well: Node2D = hit.well
 	if well.kind == "black":
 		remove_projectile(shot)
 		return
-	var radial: Vector2 = (hit.at-well.well_position).normalized()
-	if radial == Vector2.ZERO: radial=-shot.velocity.normalized()
-	var side := 1.0 if shot.velocity.cross(radial) >= 0.0 else -1.0
-	shot.position=well.well_position+radial*(gravity_fields.core_radius(well)+3.0)
+	var safe := EnergyOptics.white_safe_step(shot.previous_position,shot.position,shot.velocity,[well])
+	shot.position=safe.point
 	shot.previous_position=shot.position
-	shot.velocity=(radial*0.35+radial.orthogonal()*side).normalized()*shot.velocity.length()
+	shot.motion_segments.clear()
+	shot.velocity=safe.velocity
 	shot.homing_target=null
 	shot.queue_redraw()
 
@@ -1574,10 +1570,18 @@ func target_radius(actor: Node2D,kind: String) -> float:
 	return Boss.HIT_RADIUS if kind == "boss" else (actor.radius if kind == "rock" else Enemy.HIT_RADIUS)
 
 func shot_entry_distance(shot: Node2D,at: Vector2,radius: float) -> float:
-	var clipped := clipped_shot_segment(shot.previous_position,shot.position)
-	if clipped.size() != 2: return INF
-	var direction := (clipped[1]-clipped[0]).normalized()
-	return ray_circle(clipped[0],direction,at,radius)
+	var segments: Array[Vector2]=shot.motion_segments
+	if segments.is_empty(): segments=[shot.previous_position,shot.position]
+	var traveled := 0.0
+	for index in range(0,segments.size()-1,2):
+		var clipped := clipped_shot_segment(segments[index],segments[index+1])
+		if clipped.size() == 2:
+			var length := clipped[0].distance_to(clipped[1])
+			var direction := (clipped[1]-clipped[0]).normalized()
+			var hit := ray_circle(clipped[0],direction,at,radius)
+			if hit >= 0.0 and hit <= length: return traveled+segments[index].distance_to(clipped[0])+hit
+		traveled+=segments[index].distance_to(segments[index+1])
+	return INF
 
 ## Physical deflection follows the visible dome, including enlarged upgrades.
 func protected_contact_radius() -> float:

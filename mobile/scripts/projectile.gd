@@ -18,6 +18,13 @@ var beam_segments: Array[Vector2] = []
 var absorbed := false
 var contact_point := Vector2.ZERO
 var visual_brightness := 1.0
+## Curved travel is retained for collision, so the visible path and hits agree.
+var motion_segments: Array[Vector2] = []
+var gravity_capture_id := 0
+var gravity_capture_spin := 0.0
+var planned_velocity := Vector2.ZERO
+var gravity_wells: Array = []
+const EnergyOptics = preload("res://scripts/energy_optics.gd")
 
 ## Set the beam endpoints for rendering and segment collision; game.gd owns continuous exposure timing.
 func setup_laser(from: Vector2, to: Vector2) -> void:
@@ -39,7 +46,18 @@ func advance(delta: float) -> void:
 		previous_position = beam_start
 	else:
 		previous_position = position
-		position += velocity * delta
+		# A shield can redirect a hostile shot after its path was prepared.
+		# Rebuild from that direction instead of using a now-stale trajectory.
+		if not motion_segments.is_empty() and not velocity.is_equal_approx(planned_velocity):
+			var motion := EnergyOptics.projectile_motion(position,velocity,delta,gravity_wells,gravity_capture_id,gravity_capture_spin)
+			motion_segments=motion.path
+			velocity=motion.velocity
+			gravity_capture_id=motion.capture
+			gravity_capture_spin=motion.spin
+		if motion_segments.is_empty():
+			position += velocity * delta
+		else:
+			position=motion_segments.back()
 	# Ordinary plasma also breathes and must point along a gravity-bent velocity.
 	queue_redraw()
 
@@ -48,6 +66,11 @@ func intersects(center: Vector2, radius: float) -> bool:
 	if kind == "laser" and not beam_segments.is_empty():
 		for i in range(0, beam_segments.size(), 2):
 			if Geometry2D.get_closest_point_to_segment(center, beam_segments[i], beam_segments[i + 1]).distance_to(center) <= radius + 5.0:
+				return true
+		return false
+	if not motion_segments.is_empty():
+		for index in range(0,motion_segments.size()-1,2):
+			if Geometry2D.get_closest_point_to_segment(center,motion_segments[index],motion_segments[index+1]).distance_squared_to(center) <= radius*radius:
 				return true
 		return false
 	# Swept collision catches targets even when a shot crosses them in one frame.

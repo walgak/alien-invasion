@@ -1,6 +1,6 @@
 shader_type canvas_item;
-// Refract the transparent celestial layer only. Distant stars are a separate
-// canvas underneath this pass and can never enter these displaced samples.
+// Refract one complete sky texture: distant stars, nebulae, planets and moons.
+// Optical lensing affects every layer; physical celestial tides stay separate.
 // The matching controller in space_folds.gd must keep array capacities synchronized.
 render_mode unshaded;
 
@@ -10,6 +10,8 @@ uniform int lens_count = 0;
 uniform vec4 lenses[8]; // center, influence radius, strength
 uniform vec4 lens_styles[8]; // core radius, direction, object flag, simulation time
 uniform vec4 lens_colors[8]; // active well tint; zero alpha keeps the default fold palette
+uniform float wave_distances[8]; // integrated 3x gravity travel, -1 for non-field effects
+uniform float wave_length = 112.0;
 uniform int strand_count = 0;
 uniform vec4 strands[6]; // boss/tail endpoint, rock/cannon endpoint
 uniform vec4 strand_styles[6]; // width, strength, simulation time, travel direction
@@ -46,7 +48,6 @@ void fragment() {
 	// Final red/blue offset samples add subtle dispersion along the same displacement.
 	vec2 pixel = UV * arena_size;
 	vec2 displacement = vec2(0.0);
-	vec2 local_refraction = vec2(0.0);
 	vec3 gleam = vec3(0.0);
 	float shade = 0.0;
 	float dispersion = 0.0;
@@ -72,10 +73,32 @@ void fragment() {
 		float ring_envelope = exp(-ring_distance * ring_distance / (ring_width * ring_width));
 		float envelope = ring_mode ? ring_envelope : (1.0 - smoothstep(lens.z * 0.66, lens.z, radius)) * smoothstep(style.x * 0.65, style.x + 9.0, radius);
 		float phase = shell * 0.255 - style.w * style.y * 5.5;
+		bool lake_wave = wave_distances[i] >= 0.0 && !ring_mode && !object_mode;
+		// True circular crests cross the full screen. Their measured phase comes
+		// from the same force calculation as ship movement, including acceleration.
+		// White crests move to larger radii; black crests converge on the horizon.
+		float circular_radius = length(delta);
+		float lake_fade = pow(1.0 + max(circular_radius - style.x, 0.0) / 155.0, -1.15);
+		lake_fade *= smoothstep(style.x * 0.85, style.x + 16.0, circular_radius);
+		if (lake_wave) {
+			phase = (circular_radius - style.x - style.y * wave_distances[i]) * TAU / wave_length;
+			envelope = lake_fade;
+		}
 		float wave = sin(phase);
 		float ripple = wave * envelope;
 		float throat = ring_mode ? ring_envelope : exp(-shell * shell / (object_mode ? 620.0 : 1750.0));
 		float bend = ring_mode ? (ring_envelope * clamp((radius - style.x) / ring_width, -1.0, 1.0) * (shield_mode ? 5.0 : 10.0) * lens.w * (1.0 + 0.12 * sin(style.w * 3.0))) : (ripple * (object_mode ? 3.0 : 9.0) + throat * (object_mode ? 15.0 : 27.0) * -style.y) * lens.w;
+		// Retain the deep elliptical throat locally, then add the circular wave
+		// separately so its shape and speed do not inherit the spiral's rotation.
+		if (lake_wave) { bend = throat * 27.0 * -style.y * lens.w; }
+		// Living shields retain moving pressure ripples inside and beyond their
+		// glass shell. These are displaced samples, never opaque circular lines.
+		if (shield_mode && !death_mode) {
+			float soft_mask = (1.0 - smoothstep(lens.z * 0.62, lens.z, radius)) * smoothstep(8.0, 24.0, radius);
+			float wave_phase = (radius - style.x) * 0.16 - style.w * 5.2;
+			float moving_waves = sin(wave_phase) * 0.70 + sin(wave_phase * 0.53 + 1.4) * 0.30;
+			bend = (ring_envelope * clamp((radius - style.x) / ring_width, -1.0, 1.0) * 2.1 + moving_waves * soft_mask * 1.75) * lens.w;
+		}
 		// One broad pressure front avoids tightly aliased concentric creases at
 		// death-wave strength. It stretches and compresses a wide band of sky.
 		if (death_mode) { bend = -ring_envelope * clamp((radius - style.x) / 60.0, -1.0, 1.0) * 4.0 * lens.w; }
@@ -88,14 +111,16 @@ void fragment() {
 			swirl = style.y * (1.0 + 0.16 * sin(angle * 2.0 + shell * 0.06 - style.w * 0.7));
 		}
 		vec2 lens_displacement = (normal * bend + tangent * throat * (death_mode ? 0.0 : (ring_mode ? 2.0 : (object_mode ? 0.0 : 6.0))) * swirl * lens.w) * vec2(1.0, flatten);
+		if (lake_wave) {
+			// A smooth ridge and a shallower trough read as displaced water instead
+			// of drawn rings. No particles or geometry scale with screen coverage.
+			float lake_profile = sin(phase) + 0.22 * sin(phase * 2.0);
+			lens_displacement += delta / max(circular_radius, 0.5) * lake_profile * lake_fade * 13.0 * lens.w;
+		}
 		displacement += lens_displacement;
-		// The nearby shield is an optical bubble, so its glass may visibly bend
-		// a planet behind it. This is separate from that planet's subtle physical
-		// tide under a distant well; neither pass ever samples the star canvas.
-		if (shield_mode && !death_mode) { local_refraction += lens_displacement * 0.36; }
 		// Opposing light and shadow on each fold give its refracted ridge thickness.
-		float crest = pow(max(0.0, cos(phase)), 12.0) * envelope;
-		float trough = pow(max(0.0, -cos(phase + 0.55)), 6.0) * envelope;
+		float crest = pow(max(0.0, cos(phase)), lake_wave ? 3.0 : 12.0) * envelope;
+		float trough = pow(max(0.0, -cos(phase + 0.55)), lake_wave ? 3.0 : 6.0) * envelope;
 		float rim_distance = (radius - style.x - 6.0) / 5.0;
 		float rim = exp(-rim_distance * rim_distance);
 		float lighting = 0.4 + 0.6 * max(dot(normal, normalize(vec2(-0.5, -0.8))), 0.0);
@@ -103,7 +128,7 @@ void fragment() {
 		tint = mix(tint, lens_colors[i].rgb, lens_colors[i].a);
 		gleam += shield_mode ? vec3(0.0) : tint * (ring_mode ? ring_envelope * 0.06 : (crest * 0.105 * lighting + rim * 0.2)) * lens.w;
 		shade += (ring_mode ? throat * 0.008 : (trough * 0.2 + throat * 0.15)) * lens.w;
-		dispersion += (ring_mode ? ring_envelope * (shield_mode ? 0.0 : 0.1) : (crest + rim) * 0.65) * lens.w;
+		dispersion += (ring_mode ? ring_envelope * (shield_mode ? 0.012 : 0.1) : (crest + rim) * 0.20) * lens.w;
 	}
 	for (int i = 0; i < 6; i++) {
 		if (i >= strand_count) { break; }
@@ -152,18 +177,19 @@ void fragment() {
 		gleam += vec3(0.45, 0.85, 1.0) * (envelope * 0.07 * edge_strength + release_envelope * pow(edge_release, 3.0) * 0.65);
 		dispersion += envelope * edge_strength + release_envelope * edge_release;
 	}
-	// Keep sampling inside the copied viewport, including folds beside an edge.
+	// All sky layers share the same optical mapping. The previous tiny distant
+	// multiplier and separate star canvas suppressed the very ripples we need
+	// for readable gravity. Logical coordinates keep the effect phone-independent.
 	vec2 half_pixel = vec2(0.5)/arena_size;
 	vec2 warp=displacement/arena_size*refraction_strength;
-	vec2 warped_uv=UV+warp;
-	// Wind bends strongly, but vast background worlds barely move. Their own
-	// atmosphere/moon tides supply the subtle, localized physical response.
-	float body=texture(celestial_texture,UV).a;
-	float distant_scale=mix(0.025,0.002,smoothstep(0.90,0.99,body));
-	vec2 celestial_uv=clamp(UV+warp*distant_scale+local_refraction/arena_size*refraction_strength,half_pixel,vec2(1.0)-half_pixel);
-	vec4 sky=texture(celestial_texture,celestial_uv);
+	vec2 warped_uv=clamp(UV+warp,half_pixel,vec2(1.0)-half_pixel);
+	vec4 sky=texture(celestial_texture,warped_uv);
+	// Subpixel chromatic separation gives the refracted ridges a liquid edge
+	// without blur. Its fixed two extra samples cost the same for every lens.
+	vec2 fringe=normalize(displacement+vec2(0.0001))*min(dispersion,0.65)*refraction_strength/arena_size;
+	sky.r=texture(celestial_texture,clamp(warped_uv+fringe,half_pixel,vec2(1.0)-half_pixel)).r;
+	sky.b=texture(celestial_texture,clamp(warped_uv-fringe,half_pixel,vec2(1.0)-half_pixel)).b;
 	vec4 wind=solar_wind(warped_uv*arena_size);
-	vec3 premultiplied=sky.rgb*sky.a*(1.0-min(shade*0.08,0.12))+wind.rgb+gleam;
-	float alpha=max(sky.a,clamp(wind.a+length(gleam)*0.45,0.0,0.96));
-	COLOR=vec4(premultiplied/max(alpha,0.001),alpha);
+	vec3 color=sky.rgb*(1.0-min(shade*0.08,0.12))+wind.rgb+gleam;
+	COLOR=vec4(color,1.0);
 }

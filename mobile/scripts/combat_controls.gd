@@ -37,6 +37,10 @@ var pending_gravity_target := Vector2.ZERO
 var pending_gravity_charge := 0.0
 var pending_gravity_units := 0.0
 var aim_touches: Dictionary = {}
+## Real resistance pointers live separately from steering and weapon targeting.
+## This lets the optical tap shield blink exactly with touch, without making a
+## long hold repeatedly cancel gravity or granting collected-shield immunity.
+var gravity_touches: Dictionary = {}
 const GRAVITY_MIN_CHARGE := 10.0
 const GRAVITY_MAX_CHARGE := 50.0
 const GRAVITY_PREPARATION := 1.0 / 3.0
@@ -62,9 +66,11 @@ func reset() -> void:
 
 ## Cancel a run-level action on pause, death or restart. Releasing a steering
 ## finger uses release_control instead, so it never cancels a queued special shot.
-func cancel() -> void:
+func cancel(keep_gravity_touches: bool = false) -> void:
 	release_control()
 	aim_touches.clear()
+	if not keep_gravity_touches:
+		gravity_touches.clear()
 	gravity_armed = false
 	gravity_selection_time = 0.0
 	pending_gravity_time = -1.0
@@ -73,7 +79,11 @@ func cancel() -> void:
 
 ## A pointer can own movement or an independent targeting tap, never both.
 func owns_pointer(id: int) -> bool:
-	return finger == id or aim_touches.has(id)
+	return finger == id or aim_touches.has(id) or gravity_touches.has(id)
+
+## A collected shield is timed equipment; the tap effect is only touch-held warp.
+func gravity_touch_active() -> bool:
+	return gravity_blocks_control() and not gravity_touches.is_empty()
 
 func release_control() -> void:
 	gesture = ""
@@ -122,9 +132,11 @@ func step(delta: float) -> void:
 	if gravity_blocks_control():
 		# If a boss opens a field during preparation, preserve the bank but
 		# cancel this shot: tapping and firing must never overlap unshielded.
-		cancel()
+		cancel(true)
 	elif finger != -1:
 		held += delta
+	if not gravity_blocks_control():
+		gravity_touches.clear()
 	for touch in aim_touches.values():
 		touch.age += delta
 	if pending_gravity_time >= 0.0:
@@ -167,6 +179,7 @@ func press(id: int, at: Vector2) -> void:
 	if owns_pointer(id) or at.y <= game.playfield_top() or not Rect2(Vector2.ZERO, game.arena).has_point(at):
 		return
 	if gravity_blocks_control():
+		gravity_touches[id] = true
 		warp_pulses.append({"at": game.ship.position, "age": 0.0})
 		if warp_pulses.size() > 4:
 			warp_pulses.pop_front()
@@ -208,10 +221,14 @@ func begin_control(id: int, at: Vector2) -> void:
 ## away from the hull prevents a self-hit when a shield permits high-altitude flight.
 func valid_gravity_target(at: Vector2) -> bool:
 	var selected_size := clampf(gravity_charge / GRAVITY_MIN_CHARGE, 1.0, 5.0)
-	var clear_distance := maxf(90.0, 31.0 * 1.8 * sqrt(selected_size) + game.Ship.HIT_RADIUS + 24.0)
+	var clear_distance := maxf(90.0, 31.0 * PlayerWell.scale_for_charge(selected_size) + game.Ship.HIT_RADIUS + 24.0)
 	return Rect2(Vector2(0, game.playfield_top()), Vector2(game.arena.x, game.arena.y * 0.5 - game.playfield_top())).has_point(at) and at.distance_to(game.ship.position) >= clear_distance
 
 func move(id: int, at: Vector2) -> void:
+	if gravity_touches.has(id):
+		if not Rect2(Vector2.ZERO, game.arena).has_point(at):
+			gravity_touches.erase(id)
+		return
 	if aim_touches.has(id):
 		# Sliding away cancels a tap, never takes over a finger already steering.
 		if at.distance_to(aim_touches[id].at) > 32.0 or not Rect2(Vector2.ZERO, game.arena).has_point(at):
@@ -229,6 +246,9 @@ func move(id: int, at: Vector2) -> void:
 ## A selected destination queues the charge animation only after the target
 ## finger lifts. Releasing either finger never cancels the other's action.
 func release(id: int, at: Vector2, canceled: bool = false) -> void:
+	if gravity_touches.has(id):
+		gravity_touches.erase(id)
+		return
 	if aim_touches.has(id):
 		var tap: Dictionary = aim_touches[id]
 		aim_touches.erase(id)
@@ -238,8 +258,8 @@ func release(id: int, at: Vector2, canceled: bool = false) -> void:
 			if gravity_armed and valid_gravity_target(at) and gravity_charge >= GRAVITY_MIN_CHARGE:
 				queue_gravity(at)
 		elif tap.age < 1.0 and is_instance_valid(tap.target) and not tap.target.is_queued_for_deletion() and rocket_cooldown <= 0.0 and missiles > 0:
-			launch_cannon(tap.target)
-			rocket_cooldown = 0.25
+			if launch_cannon(tap.target):
+				rocket_cooldown = 0.25
 		return
 	if id == finger:
 		release_control()
@@ -307,7 +327,25 @@ func launch_gravity() -> void:
 	pending_gravity_units = 0.0
 	game.sound.play_effect("rocket")
 
-func launch_cannon(enemy: Node2D, play_sound: bool = true) -> void:
+## A boss can have only one targeted cannon in flight, shared by tap and button.
+func boss_cannon_in_flight() -> bool:
+	if not is_instance_valid(game.boss): return false
+	for shot in game.projectiles:
+		if not shot.hostile and shot.kind == "rocket" and is_instance_valid(shot.homing_target) and shot.homing_target == game.boss:
+			return true
+	return false
+
+func can_target_boss() -> bool:
+	return is_instance_valid(game.boss) and game.target_is_exposed(game.boss, "boss") and not boss_cannon_in_flight()
+
+func can_fire_cannon_button() -> bool:
+	if gravity_blocks_control(): return false
+	var has_aliens: bool = game.enemies.any(func(enemy: Node2D) -> bool: return game.target_is_exposed(enemy, "enemy"))
+	return missiles >= 5 if has_aliens else missiles > 0 and can_target_boss()
+
+func launch_cannon(enemy: Node2D, play_sound: bool = true) -> bool:
+	if missiles <= 0 or not is_instance_valid(enemy) or enemy.is_queued_for_deletion(): return false
+	if enemy == game.boss and not can_target_boss(): return false
 	var shot = game.weapons.spawn_shot(game, game.ship.muzzle_position(game.weapons.level, 0, true), Vector2(0, -660))
 	shot.kind = "rocket"
 	shot.homing_target = enemy
@@ -316,16 +354,22 @@ func launch_cannon(enemy: Node2D, play_sound: bool = true) -> void:
 	missiles -= 1
 	if play_sound:
 		game.sound.play_effect("rocket")
+	return true
 
 ## Five cannons enable the volley; only the necessary available ammunition is
 ## spent. Existing homing shots reserve their target's health to avoid overkill.
 func fire_cannon_volley() -> int:
-	if gravity_blocks_control() or missiles < 5:
+	if gravity_blocks_control() or missiles <= 0:
 		return 0
 	var candidates: Array = []
 	for enemy in game.enemies:
 		if game.target_is_exposed(enemy, "enemy"):
 			candidates.append(enemy)
+	# Keep the multi-alien volley, then let the same control fire one at a
+	# lone boss. Boss damage still respects the existing alien guard shield.
+	if candidates.is_empty():
+		return 1 if can_target_boss() and launch_cannon(game.boss) else 0
+	if missiles < 5: return 0
 	candidates.sort_custom(func(a, b): return a.position.y > b.position.y)
 	var fired := 0
 	for enemy in candidates:

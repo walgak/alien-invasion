@@ -1,5 +1,5 @@
 shader_type canvas_item;
-// Transparent gas/planet layer. Stars live in a different, unwarped canvas.
+// Transparent gas/planet layer composited above the stars before refraction.
 // Coordinates are logical viewport pixels; visual_time is frozen by the pause menu.
 render_mode unshaded;
 
