@@ -276,6 +276,40 @@ func tracked(value: String, y: float, font_size: int, tracking: float, tint: Col
 		text_at(letter, Vector2(x, y), font_size, tint)
 		x += font.get_string_size(letter, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x + tracking
 
+## Compare with the record captured at the START of the run. The persistent
+## record updates with every scored point, so comparing against it would never
+## detect a new best. Equality still shows both until the player beats it.
+func hud_score_lines() -> PackedStringArray:
+	var lines := PackedStringArray(["%06d" % game.score])
+	if game.score <= game.best_at_start:
+		lines.append("BEST  %06d" % game.best_at_start)
+	return lines
+
+## Floating text and three life silhouettes keep the playfield open; neither
+## drawing creates a Control, input hitbox or invisible top boundary.
+func draw_score_and_lives(top: float) -> void:
+	var lines := hud_score_lines()
+	var font_size := 22
+	var available: float = game.arena.x - 24.0 - 86.0 - 82.0
+	while font_size > 12 and font.get_string_size(lines[0],HORIZONTAL_ALIGNMENT_LEFT,-1,font_size).x > available:
+		font_size -= 1
+	var record_beaten: bool = game.score > game.best_at_start
+	text_at(lines[0],Vector2(24,top+27),font_size,MINT if record_beaten else Color(0.9,0.96,1.0,0.94))
+	if lines.size() > 1:
+		text_at(lines[1],Vector2(24,top+45),11,Color(0.62,0.76,0.86,0.92))
+	var life_x: float = 24.0 + font.get_string_size(lines[0],HORIZONTAL_ALIGNMENT_LEFT,-1,font_size).x + 23.0
+	for index in range(game.MAX_LIVES):
+		draw_hull_life(Vector2(life_x+index*23.0,top+19),index<game.lives)
+
+## A filled heart makes remaining lives readable at a glance. Lost slots stay
+## dim so the strict three-life maximum is visible without another number.
+func draw_hull_life(at: Vector2, alive: bool) -> void:
+	var shape := PackedVector2Array([Vector2(0,-3),Vector2(-3,-6),Vector2(-6,-6),Vector2(-8,-3),Vector2(-8,0),Vector2(-6,3),Vector2(0,9),Vector2(6,3),Vector2(8,0),Vector2(8,-3),Vector2(6,-6),Vector2(3,-6)])
+	for index in range(shape.size()): shape[index] += at
+	draw_colored_polygon(shape,Color("89eaff") if alive else Color(0.28,0.40,0.52,0.36))
+	if alive:
+		draw_circle(at+Vector2(-4,-2),1.5,Color(0.86,0.99,1.0,0.9))
+
 ## Submit this object's visual geometry in local coordinates. Physics and collision rules are handled separately.
 func _draw() -> void:
 	if not font:
@@ -300,7 +334,7 @@ func _draw() -> void:
 		return
 	# Floating essentials leave the upper playfield open. The boss indicator
 	# follows its hull until final boss damage artwork replaces health bars.
-	text_at("%06d" % game.score, Vector2(24, top + 27), 22, Color(0.9, 0.96, 1.0, 0.88))
+	draw_score_and_lives(top)
 	if is_instance_valid(game.boss):
 		var boss_at: Vector2 = game.boss.body_position + Vector2(-48, 82)
 		boss_at.x = clampf(boss_at.x, 10.0, w - 106.0)

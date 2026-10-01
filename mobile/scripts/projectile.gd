@@ -20,8 +20,6 @@ var contact_point := Vector2.ZERO
 var visual_brightness := 1.0
 ## Curved travel is retained for collision, so the visible path and hits agree.
 var motion_segments: Array[Vector2] = []
-var gravity_capture_id := 0
-var gravity_capture_spin := 0.0
 var planned_velocity := Vector2.ZERO
 var gravity_wells: Array = []
 const EnergyOptics = preload("res://scripts/energy_optics.gd")
@@ -49,11 +47,9 @@ func advance(delta: float) -> void:
 		# A shield can redirect a hostile shot after its path was prepared.
 		# Rebuild from that direction instead of using a now-stale trajectory.
 		if not motion_segments.is_empty() and not velocity.is_equal_approx(planned_velocity):
-			var motion := EnergyOptics.projectile_motion(position,velocity,delta,gravity_wells,gravity_capture_id,gravity_capture_spin)
+			var motion := EnergyOptics.projectile_motion(position,velocity,delta,gravity_wells)
 			motion_segments=motion.path
 			velocity=motion.velocity
-			gravity_capture_id=motion.capture
-			gravity_capture_spin=motion.spin
 		if motion_segments.is_empty():
 			position += velocity * delta
 		else:

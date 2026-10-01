@@ -41,31 +41,39 @@ func run() -> void:
 	for kind in ["bullet","plasma","rocket","doom"]:
 		fresh()
 		var well:=field("black",Vector2(270,410))
-		var shot: Node2D=game.weapons.spawn_shot(game,Vector2(270,630),Vector2.DOWN*(660.0 if kind=="rocket" else 850.0))
+		var shot: Node2D=game.weapons.spawn_shot(game,Vector2(360,630),Vector2.UP*(660.0 if kind=="rocket" else 850.0))
 		shot.kind=kind
 		var speed: float=shot.velocity.length()
-		var previous_distance: float=shot.position.distance_to(well.well_position)
-		var inward:=true
+		var previous_velocity: Vector2=shot.velocity
+		var smooth:=true
 		var constant_speed:=true
-		for frame in range(600):
-			game.update_projectiles(1.0/60.0)
+		for frame in range(12):
+			game.update_projectiles(1.0/120.0)
 			if not game.projectiles.has(shot): break
-			var distance: float=shot.position.distance_to(well.well_position)
-			inward=inward and distance<=previous_distance+0.01
+			smooth=smooth and absf(previous_velocity.angle_to(shot.velocity))<0.08
 			constant_speed=constant_speed and is_equal_approx(shot.velocity.length(),speed)
-			previous_distance=distance
-		check(inward and constant_speed and not game.projectiles.has(shot),kind+" cannot escape capture and spirals into the horizon at its fixed speed")
+			previous_velocity=shot.velocity
+		check(game.projectiles.has(shot) and shot.position.x<360.0 and smooth and constant_speed,kind+" follows smooth natural gravity curvature at its fixed speed")
 	fresh()
 	var well:=field("black",Vector2(270,420))
+	check(game.EnergyOptics.matter_acceleration(Vector2(270,650),[well]).is_equal_approx(Vector2(0,-1650)),"black pull is three times the former 550 force at half field range")
+	well.kind="white"
+	check(game.EnergyOptics.matter_acceleration(Vector2(270,650),[well]).is_equal_approx(Vector2(0,1650)),"white push uses the same triple-strength original field")
+	well.kind="black"
+	var outgoing: Node2D=game.weapons.spawn_shot(game,Vector2(270,650),Vector2.DOWN*850)
+	game.update_projectiles(1.0/60.0)
+	check(outgoing.position.y>650 and outgoing.velocity.y>0,"an outgoing bullet retains momentum instead of snapping into an inward spiral")
 	var target: Node2D=game.spawn_enemy(Vector2(270,170),Vector2.ZERO)
 	var rocket: Node2D=game.weapons.spawn_shot(game,Vector2(400,560),Vector2.UP*660.0)
 	rocket.kind="rocket"
 	rocket.homing_target=target
 	game.update_projectiles(1.0/60.0)
-	check(rocket.gravity_capture_id==well.get_instance_id() and rocket.homing_target==null,"capture cancels homing so targeted cannons cannot pull themselves free")
+	check(rocket.homing_target==target,"natural gravity curvature retains cannon guidance instead of locking capture")
 	well.phase="finished"
+	rocket.homing_target=null
+	var predicted: Vector2=rocket.position+rocket.velocity/60.0
 	game.update_projectiles(1.0/60.0)
-	check(rocket.gravity_capture_id==0,"capture safely releases when its field ends")
+	check(rocket.position.is_equal_approx(predicted),"expired fields leave no stored orbit or forced pull")
 	fresh()
 	well=field("white",Vector2(270,420))
 	var shot: Node2D=game.weapons.spawn_shot(game,Vector2(270,680),Vector2.UP*850)

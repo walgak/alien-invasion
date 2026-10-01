@@ -52,7 +52,7 @@ func run() -> void:
 	fresh()
 	var center := Vector2(270, 320)
 	var velocity := Vector2(45, 170)
-	var large: Node2D = game.spawn_asteroid(center, velocity, 43.0)
+	var large: Node2D = game.spawn_asteroid(center, velocity, 43.0, 0, Vector2.INF, Vector2.ZERO, "ice")
 	check(large.health == 12, "large asteroid starts with its normal twelve-hit durability")
 	game.hit_asteroid(large, large.health - 1)
 	check(game.asteroids == [large] and large.health == 1 and game.score == 0,
@@ -111,7 +111,7 @@ func run() -> void:
 		"all descendants retain their material and each destroyed piece awards exactly twenty-five points")
 
 	# Size determines durability, but explicit ore identity survives every tier.
-	for material in ["ash", "magma", "ice"]:
+	for material in ["ash", "magma", "ice", "fractured", "cinder"]:
 		fresh()
 		game.bosses_defeated = 6
 		large = game.spawn_asteroid(center, velocity, 43.0, 0, Vector2.INF, Vector2.ZERO, material)

@@ -1406,18 +1406,14 @@ func spawn_escape_cannon(at: Vector2) -> void:
 	sound.play_effect("rift")
 	combat.vibrate("gravity")
 
-## Build a curved sweep before collision. Matter locks into a black-hole
-## spiral; homing and the weapon's original direction cannot let it escape.
+## Prepare natural gravity curvature before collision, with triple-strength
+## matter attraction/repulsion and no forced orbital capture or homing reset.
 func bend_projectile(shot: Node2D, delta: float) -> void:
 	shot.gravity_wells=gravity_fields.active_wells()
-	var motion := EnergyOptics.projectile_motion(shot.position,shot.velocity,delta,shot.gravity_wells,shot.gravity_capture_id,shot.gravity_capture_spin)
+	var motion := EnergyOptics.projectile_motion(shot.position,shot.velocity,delta,shot.gravity_wells)
 	shot.motion_segments=motion.path
 	shot.velocity=motion.velocity
 	shot.planned_velocity=shot.velocity
-	shot.gravity_capture_id=motion.capture
-	shot.gravity_capture_spin=motion.spin
-	if shot.gravity_capture_id != 0:
-		shot.homing_target=null
 	shot.queue_redraw()
 
 ## Light keeps its constant travel speed while its direction bends strongly.

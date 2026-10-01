@@ -98,20 +98,6 @@ static func route(from: Vector2, to: Vector2, wells: Array, side: float = 1.0) -
 static func core_radius(well: Node2D) -> float:
 	return well.game.gravity_fields.core_radius(well)
 
-## Projectile fields capture matter permanently until that field ends. The ID,
-## rather than a Node reference, remains safe if two fields merge mid-flight.
-static func capture_well(at: Vector2, wells: Array, capture_id: int) -> Node2D:
-	var nearest: Node2D
-	var nearest_distance := INF
-	for well in wells:
-		if well.kind != "black": continue
-		if well.get_instance_id() == capture_id: return well
-		var distance: float = at.distance_to(well.well_position)
-		if distance <= maxf(460.0,core_radius(well)+180.0) and distance < nearest_distance:
-			nearest=well
-			nearest_distance=distance
-	return nearest
-
 ## Keep white-hole paths on a smooth exterior arc. Steering normally starts far
 ## outside this guard; it also handles a newly spawned core and a long frame.
 ## The visual-width margin keeps the entire plasma tip outside the white center.
@@ -161,51 +147,47 @@ static func white_velocity(at: Vector2, velocity: Vector2, delta: float, wells: 
 		direction=direction.lerp(desired,turn*sqrt(approach)).normalized()
 	return direction*speed
 
-## Advance a shot along small curved segments, never a chord through a core.
-## Work is capped at 96 steps (normally 1–3); capture preserves weapon speed.
-static func projectile_motion(from: Vector2, velocity: Vector2, delta: float, wells: Array, capture_id: int = 0, capture_spin: float = 0.0) -> Dictionary:
-	var path: Array[Vector2]=[]
+## Restore the original additive field law at three times its former strength.
+## Keep each weapon's speed constant: gravity bends its momentum rather than
+## snapping it into a prescribed orbit or forcing it to move inward immediately.
+const MATTER_GRAVITY_STRENGTH := 3300.0 # Original 1100 × 3.
+const MATTER_GRAVITY_CAP := 5400.0 # Original combined-field cap 1800 × 3.
+const MATTER_GRAVITY_REACH := 460.0
+
+static func matter_acceleration(at: Vector2, wells: Array) -> Vector2:
+	var acceleration := Vector2.ZERO
+	for well in wells:
+		var offset: Vector2 = well.well_position-at
+		var distance := offset.length()
+		if distance < 1.0 or distance > MATTER_GRAVITY_REACH: continue
+		var direction := 1.0 if well.kind == "black" else -1.0
+		acceleration += offset.normalized()*direction*MATTER_GRAVITY_STRENGTH*(1.0-distance/MATTER_GRAVITY_REACH)
+	return acceleration.limit_length(MATTER_GRAVITY_CAP)
+
+## Retain short swept segments for edge hits and horizon safety. The previous
+## forced-capture/spin state is deliberately gone; homing cannons keep guidance.
+## The white exclusion arc is only a final safety guard, never a core bounce.
+static func projectile_motion(from: Vector2, velocity: Vector2, delta: float, wells: Array) -> Dictionary:
+	var path: Array[Vector2] = []
 	if wells.is_empty():
 		path.assign([from,from+velocity*delta])
-		return {"path":path,"velocity":velocity,"capture":0,"spin":0.0}
+		return {"path":path,"velocity":velocity}
 	var point := from
 	var speed := velocity.length()
 	var count := clampi(ceili(speed*delta/8.0),1,96)
 	var dt := delta/float(count)
-	var capture := capture_id
-	var spin := capture_spin
 	for step in range(count):
-		var well := capture_well(point,wells,capture)
-		if well != null:
-			var radial: Vector2=(point-well.well_position).normalized()
-			if radial == Vector2.ZERO: radial=-velocity.normalized()
-			if capture != well.get_instance_id() or spin == 0.0:
-				spin=1.0 if velocity.cross(radial)>=0.0 else -1.0
-			capture=well.get_instance_id()
-			var distance: float=point.distance_to(well.well_position)
-			var sink := lerpf(0.58,0.8,clampf(core_radius(well)/maxf(distance,1.0),0.0,1.0))
-			var desired := (-radial*sink+radial.orthogonal()*spin*sqrt(1.0-sink*sink)).normalized()
-			var direction := velocity.normalized().lerp(desired,1.0-exp(-dt*12.0)).normalized()
-			# An outward or homing shot cannot break its capture. Preserve its
-			# tangent momentum, but guarantee inward motion throughout the spiral.
-			var inward := direction.dot(-radial)
-			if inward < 0.35:
-				direction=(direction+radial*(inward-0.35)).normalized()
-			velocity=direction*speed
-		else:
-			capture=0
-			spin=0.0
-		velocity=white_velocity(point,velocity,dt,wells)
-		var next := point+velocity*dt
-		var safe := white_safe_step(point,next,velocity,wells)
-		next=safe.point
-		velocity=safe.velocity
+		velocity = (velocity+matter_acceleration(point,wells)*dt).normalized()*speed
+		# White fields need a smooth near-core tangent turn as well as the
+		# restored broad repulsion, to keep visible plasma clear of the core.
+		velocity = white_velocity(point,velocity,dt,wells)
+		var safe := white_safe_step(point,point+velocity*dt,velocity,wells)
+		var next: Vector2 = safe.point
+		velocity = safe.velocity
 		path.append_array([point,next])
-		point=next
-		# A swallowed shot stops here. The caller handles targets earlier on
-		# its visible path before actually deleting it at the event horizon.
+		point = next
 		if not first_core(path[-2],path[-1],wells).is_empty(): break
-	return {"path":path,"velocity":velocity,"capture":capture,"spin":spin}
+	return {"path":path,"velocity":velocity}
 
 ## Find the first core in travel order, not the straight chord between endpoints.
 static func first_path_core(path: Array[Vector2], wells: Array) -> Dictionary:
