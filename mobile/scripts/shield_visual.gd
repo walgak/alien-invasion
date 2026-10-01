@@ -60,4 +60,4 @@ func step(delta: float) -> void:
 	if boss_surface.visible:
 		var guards: Array = game.enemies.filter(func(enemy: Node2D) -> bool: return enemy.shield_guard)
 		var strength := 1.0 if boss.has_player_gravity_threat() else 0.3+0.7*float(guards.size())/maxf(1.0,boss.guard_total)
-		place(boss_surface,boss.body_position,104.0,strength,game.visual_time)
+		place(boss_surface,boss.body_position,boss.shield_radius(),strength,game.visual_time)

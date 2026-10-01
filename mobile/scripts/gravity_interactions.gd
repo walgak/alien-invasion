@@ -460,7 +460,7 @@ func draw_guard_shield() -> void:
 		return
 	var strength := float(guards.size()) / maxf(1.0, game.boss.guard_total)
 	var center: Vector2 = game.boss.body_position
-	draw_soft_light(center, 112.0, Color("8f95ff") if gravity_shield else Color("69d9ff"), 0.008 + strength * 0.014)
+	draw_soft_light(center, game.boss.shield_radius() + 8.0, Color("8f95ff") if gravity_shield else Color("69d9ff"), 0.008 + strength * 0.014)
 
 ## Nested filled discs form a soft light volume without a painted outline.
 func draw_soft_light(at: Vector2, radius: float, tint: Color, alpha: float) -> void:

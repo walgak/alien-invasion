@@ -47,10 +47,6 @@ func run() -> void:
 	game.boss.step(1.5)
 	game.update_enemies(0.6)
 	await shot("alien-guards")
-	game.start_run("swarm")
-	game.boss.step(1.5)
-	game.spawn_enemy(Vector2(380,470),Vector2.ZERO,true,game.boss.body_position+Vector2(0,42))
-	await shot("alien-tractor")
 	game.start_run()
 	var well = game.PlayerWell.new()
 	well.game = game

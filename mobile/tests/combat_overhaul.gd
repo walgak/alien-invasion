@@ -76,7 +76,7 @@ func run() -> void:
 	fresh()
 	var upper := alien(Vector2(150,300))
 	var lower := alien(Vector2(300,600))
-	game.begin_boss("swarm")
+	game.begin_boss("asteroid")
 	check(upper.shield_guard and not lower.shield_guard and game.boss.guard_total == 1, "only upper-half aliens join a new boss shield")
 	var old_y: float = lower.position.y
 	lower.velocity = Vector2(0,100)

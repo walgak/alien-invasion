@@ -201,7 +201,7 @@ func press(id: int, at: Vector2) -> void:
 	for enemy in game.enemies:
 		if game.target_is_exposed(enemy, "enemy") and at.distance_to(enemy.position) < 35.0:
 			tapped = enemy
-	if is_instance_valid(game.boss) and game.target_is_exposed(game.boss, "boss") and at.distance_to(game.boss.body_position) < game.Boss.HIT_RADIUS:
+	if is_instance_valid(game.boss) and game.target_is_exposed(game.boss, "boss") and at.distance_to(game.boss.body_position) < game.boss.hit_radius():
 		tapped = game.boss
 	if tapped != null:
 		aim_touches[id] = {"at": at, "age": 0.0, "gravity": false, "target": tapped}

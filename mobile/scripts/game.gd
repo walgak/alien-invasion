@@ -18,7 +18,7 @@ const EnergyOptics = preload("res://scripts/energy_optics.gd")
 const POINTS_PER_ENEMY := 100
 const MAX_LIVES := 3
 const MAX_ENEMIES := 14
-const BOSS_KINDS := ["black", "white", "asteroid", "swarm"]
+const BOSS_KINDS := ["black", "white", "asteroid"]
 const ALIEN_HOLE_COLORS := [Color("a45cff"),Color("ff3f9a"),Color("ff4d35"),Color("ff9b32"),Color("50d895")]
 enum State { MENU, PLAYING, PAUSED, WON, LOST }
 
@@ -375,7 +375,7 @@ func update_director(delta: float) -> void:
 			Vector2(rng.randf_range(-25.0, 25.0), rng.randf_range(145.0, 205.0)), radius)
 		asteroid_timer = rng.randf_range(4.0, 7.0)
 
-## Draw from a shuffled four-boss deck so each type appears once before the deck refills.
+## Draw from a shuffled three-boss deck so each type appears once before the deck refills.
 func next_boss_kind() -> String:
 	if boss_deck.is_empty():
 		boss_deck.assign(BOSS_KINDS)
@@ -445,15 +445,14 @@ func defeat_boss(defeated: Node2D) -> void:
 		return
 	var was_gravity: bool = defeated.kind in ["black", "white"]
 	combat.vibrate("gravity" if was_gravity else "enemy")
-	var at: Vector2 = defeated.body_position
-	burst(at, Color("ffca8d"), 60)
 	add_score(1500 + bosses_defeated * 250)
 	bosses_defeated += 1
 	choose_sector_light()
 	if defeated.phase in ["warning", "active", "clearing"]:
 		create_lingering_well(defeated, false)
-	if was_gravity:
-		gravity_fields.add_boss_collapse(defeated)
+	# Each final design has its own authored destruction; only gravity bosses
+	# open a death well. A detached in-progress attack remains independent.
+	gravity_fields.add_boss_collapse(defeated)
 	defeated.queue_free()
 	boss = null
 	request_cruise_return()
@@ -499,8 +498,6 @@ func create_lingering_well(source: Node2D, death_well: bool) -> void:
 	well.cannon_velocity = source.cannon_velocity
 	well.neutralise_time = source.neutralise_time
 	well.asteroid_timer = source.asteroid_timer
-	well.swarm_count = source.swarm_count
-	well.swarm_reward = source.swarm_reward
 	add_child(well)
 	lingering_wells.append(well)
 
@@ -535,7 +532,7 @@ func update_laser(delta: float) -> void:
 		if not target_is_exposed(actor, kind):
 			continue
 		var at: Vector2 = actor.body_position if kind == "boss" else actor.position
-		var radius: float = Boss.HIT_RADIUS if kind == "boss" else (Enemy.HIT_RADIUS if kind == "enemy" else actor.radius)
+		var radius: float = actor.hit_radius() if kind == "boss" else (Enemy.HIT_RADIUS if kind == "enemy" else actor.radius)
 		if not visible_shot_intersects(laser, at, radius):
 			continue
 		var id := actor.get_instance_id()
@@ -575,7 +572,7 @@ func reflected_laser(start: Vector2, pressure_delta: float = 0.0) -> Array[Vecto
 				distance=hit
 				reflector=rock
 		if is_instance_valid(boss) and target_is_exposed(boss,"boss"):
-			var hit := ray_circle(origin,direction,boss.body_position,76.0 if boss_is_shielded() else Boss.HIT_RADIUS)
+			var hit := ray_circle(origin,direction,boss.body_position,boss.shield_radius() if boss_is_shielded() else boss.hit_radius())
 			if hit >= 0.0 and hit <= distance:
 				distance=hit
 				reflector=null
@@ -682,7 +679,7 @@ func update_enemies(delta: float) -> void:
 			enemy.previous_position = enemy.position
 			if is_instance_valid(boss):
 				enemy.guard_angle += delta * 0.35
-				var orbit: Vector2 = boss.body_position + Vector2(cos(enemy.guard_angle) * 110.0, sin(enemy.guard_angle) * 95.0)
+				var orbit: Vector2 = boss.body_position + Vector2(cos(enemy.guard_angle), sin(enemy.guard_angle)) * boss.guard_orbit_radii()
 				enemy.position = enemy.position.move_toward(orbit, 240.0 * delta)
 			enemy.queue_redraw()
 		else:
@@ -792,7 +789,7 @@ func update_projectiles(delta: float) -> void:
 			for rock in asteroids:
 				if target_is_exposed(rock, "rock") and visible_shot_intersects(shot, rock.position, rock.radius):
 					targets.append({"actor": rock, "type": "rock", "at": rock.position})
-			if is_instance_valid(boss) and target_is_exposed(boss, "boss") and visible_shot_intersects(shot, boss.body_position, Boss.HIT_RADIUS):
+			if is_instance_valid(boss) and target_is_exposed(boss, "boss") and visible_shot_intersects(shot, boss.body_position, boss.hit_radius()):
 				targets.append({"actor": boss, "type": "boss", "at": boss.body_position})
 			for enemy in enemies:
 				if target_is_exposed(enemy, "enemy") and visible_shot_intersects(shot, enemy.position, Enemy.HIT_RADIUS):
@@ -843,7 +840,7 @@ func deflect_shield_projectile(shot: Node2D, delta: float) -> void:
 ## segment can register a hit, so this does not restore offscreen spawn kills.
 func target_is_exposed(actor: Node2D, kind: String) -> bool:
 	var at: Vector2 = actor.body_position if kind == "boss" else actor.position
-	var radius: float = Boss.HIT_RADIUS if kind == "boss" else (actor.radius if kind == "rock" else Enemy.HIT_RADIUS)
+	var radius: float = actor.hit_radius() if kind == "boss" else (actor.radius if kind == "rock" else Enemy.HIT_RADIUS)
 	if kind == "boss" and actor.phase == "arrival":
 		return false
 	var nearest := at.clamp(Vector2(0,playfield_top()),arena)
@@ -904,7 +901,7 @@ func detonate_rocket(at: Vector2, radius: float, direct_target: Node2D) -> void:
 	for rock in asteroids.duplicate():
 		if rock != direct_target and rock.position.distance_to(at) <= radius + rock.radius:
 			damage_target(rock, "rock", 3)
-	if is_instance_valid(boss) and boss != direct_target and boss.body_position.distance_to(at) <= radius + Boss.HIT_RADIUS:
+	if is_instance_valid(boss) and boss != direct_target and boss.body_position.distance_to(at) <= radius + boss.hit_radius():
 		damage_target(boss, "boss", 3)
 	sound.play_effect("burst")
 
@@ -1152,7 +1149,7 @@ func resolve_deflected_rock(rock: Node2D) -> bool:
 			return true
 	if is_instance_valid(boss) and target_is_exposed(boss,"boss"):
 		var contact := Geometry2D.get_closest_point_to_segment(boss.body_position,rock.previous_position,rock.position)
-		if contact.distance_to(boss.body_position) <= rock.radius+(76.0 if boss_is_shielded() else Boss.HIT_RADIUS):
+		if contact.distance_to(boss.body_position) <= rock.radius+(boss.shield_radius() if boss_is_shielded() else boss.hit_radius()):
 			damage_target(boss,"boss",3)
 			hit_asteroid(rock,rock.health)
 			return true
@@ -1563,7 +1560,7 @@ func resolve_core_projectile(shot: Node2D, hit: Dictionary) -> void:
 ## Sort sweeps by the first visible surface, not target centers: the near face
 ## of a large edge asteroid must win over a smaller alien farther down the ray.
 func target_radius(actor: Node2D,kind: String) -> float:
-	return Boss.HIT_RADIUS if kind == "boss" else (actor.radius if kind == "rock" else Enemy.HIT_RADIUS)
+	return actor.hit_radius() if kind == "boss" else (actor.radius if kind == "rock" else Enemy.HIT_RADIUS)
 
 func shot_entry_distance(shot: Node2D,at: Vector2,radius: float) -> float:
 	var segments: Array[Vector2]=shot.motion_segments

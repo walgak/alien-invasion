@@ -1,19 +1,18 @@
 # Alien Invasion — First Contact
 
-A playable Godot prototype developed from the original Python/Pygame game, including endless flight and the creator's four boss concepts. Tested with Godot 4.7.2 on macOS.
+A playable Godot prototype developed from the original Python/Pygame game, including endless flight and the creator's three boss concepts. Tested with Godot 4.7.2 on macOS.
 
 ## Play
 
 On this Mac, double-click `Play.command`. Alternatively, import `project.godot` in Godot and press **F5**. No Python packages or third-party Godot plugins are needed.
 
-Select **Launch endless flight**. Random alien groups and asteroids arrive regularly. About 45% of regular aliens zigzag; alien firing uses a 1.05–1.9-second reference divided by the current difficulty scale. Boss music announces an approaching boss after roughly 40–55 seconds of ordinary flight; victories continue the run with a short recovery. All four bosses appear once per shuffled set:
+Select **Launch endless flight**. Random alien groups and asteroids arrive regularly. About 45% of regular aliens zigzag; alien firing uses a 1.05–1.9-second reference divided by the current difficulty scale. Boss music announces an approaching boss after roughly 40–55 seconds of ordinary flight; victories continue the run with a short recovery. All three bosses appear once per shuffled set:
 
 
 | Flight | Objective |
 | --- | --- |
 | Black hole | Shoot the boss. It fires a fast rift cannon that detonates into a black hole. Tap rapidly to neutralise the pull. |
 | White hole | Shoot the boss. It fires a fast rift cannon that detonates into a white hole. Tap rapidly to neutralise the push before reaching an edge. |
-| Swarm carrier | Dodge or shoot alien ships pulled from offscreen, tethered to the boss and thrown toward you. |
 | Asteroid forge | Shoot the boss as it pulls rocks from offscreen on attached space-fold strands, then slings them toward the ship. Small, medium, and large rocks take 5, 8, and 12 shots initially. |
 
 Every boss fight repeats the same cycle: exchange fire and dodge the boss's aimed volleys, face its signature special attack, then return to the firefight. A new special is scheduled after a random 5–9 seconds of normal fighting. Surviving a special does not damage the boss or end the battle. Player weapons and redirected asteroids reduce its health after the alien guards are destroyed; reaching zero wins the fight and resumes endless flight. Boss health increases as more bosses are defeated.
@@ -61,7 +60,7 @@ Final art, difficulty balancing, and store submission remain future work. Hole a
 - `game.gd`: run state, input, scoring, spawning, collisions, and app lifecycle.
 - `ship.gd`, `enemy.gd`, `projectile.gd`: arcade actors and summoned alien motion.
 - `weapon_system.gd`, `pickup.gd`: weapon patterns, upgrade levels, and collectible drops.
-- `boss.gd`, `asteroid.gd`: the four boss mechanics and destructible rocks.
+- `boss.gd`, `asteroid.gd`: the three boss mechanics and destructible rocks.
 - `space_background.gd`, `space_folds.gd`, `shaders/`: layered procedural sky and background refraction. One screen-reading pass combines up to eight object lenses and six strands; actors and HUD render above it. Animation uses game time so pausing also freezes the folds.
 - `interface.gd`: menus, floating score/pause, and circular special-weapon input routing.
 - `progress.gd`: best scores and sound preference in a local ConfigFile.

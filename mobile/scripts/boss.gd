@@ -1,10 +1,10 @@
 extends Node2D
 ## A repeating firefight, random special attack, and return to the firefight.
 
-const HIT_RADIUS := 54.0
+const HIT_RADIUS := 110.0
 ## Protect the complete visible hull, not merely its smaller damage collider.
-const GRAVITY_HULL_RADIUS := 96.0
-const HullFinish = preload("res://scripts/hull_finish.gd")
+const GRAVITY_HULL_RADIUS := 140.0
+const Artwork = preload("res://scripts/boss_artwork.gd")
 const WARNING_SECONDS := 1.25
 const ACTIVE_SECONDS := 4.0
 const FIREFIGHT_MIN_SECONDS := 5.0
@@ -12,7 +12,6 @@ const FIREFIGHT_MAX_SECONDS := 9.0
 const TAP_NEUTRALISE_SECONDS := 0.22
 const EDGE_COLLISION_DISTANCE := 26.0
 const RIFT_CANNON_SPEED := 1225.0
-const SWARM_SIZE := 4
 const ASTEROID_SIZES := [
 	{"radius": 20.0, "health": 3},
 	{"radius": 31.0, "health": 6},
@@ -28,8 +27,6 @@ var phase_time := 0.0
 var cooldown := 0.0
 var shot_timer := 0.8
 var asteroid_timer := 0.0
-var swarm_count := 0
-var swarm_reward: Dictionary = {}
 var well_position := Vector2.ZERO
 var white_push_direction := Vector2.DOWN
 var neutralise_time := 0.0
@@ -57,9 +54,17 @@ var dodge_position := Vector2.ZERO
 var hole_color := Color("a45cff")
 var pressure_front_radius := 0.0
 var collapse_snapshot := false
+var artwork: Node2D
 
 ## Godot calls this once after the node joins the scene; initialize child nodes and cached resources here.
 func _ready() -> void:
+	# A collapse snapshot needs the same hull even though its phase machine is
+	# disabled. Detached attacks keep only their existing well/tractor visuals.
+	if not lingering:
+		artwork = Artwork.new()
+		artwork.kind = kind
+		add_child(artwork)
+		refresh_artwork()
 	if lingering or collapse_snapshot:
 		return
 	return_to_firefight()
@@ -79,7 +84,7 @@ func step(delta: float) -> void:
 		update_player_well_dodge(delta,patrol)
 		body_position = patrol+dodge_offset
 	if phase == "arrival":
-		body_position.y = lerpf(-100.0, game.top_inset + 250.0+dodge_offset.y, smoothstep(0.0, 1.5, phase_time))
+		body_position.y = lerpf(-visual_hull_radius()-20.0, game.top_inset + 250.0+dodge_offset.y, smoothstep(0.0, 1.5, phase_time))
 		if phase_time >= 1.5:
 			return_to_firefight()
 	elif phase == "firefight":
@@ -111,19 +116,8 @@ func step(delta: float) -> void:
 		elif asteroid_timer <= 0:
 			summon_asteroid()
 			asteroid_timer += 0.82
-	elif phase == "active" and kind == "swarm":
-		asteroid_timer -= delta
-		if swarm_count >= SWARM_SIZE:
-			phase = "clearing"
-			phase_time = 0.0
-		elif asteroid_timer <= 0.0:
-			summon_alien()
-			swarm_count += 1
-			asteroid_timer += 0.92
 	elif phase == "clearing":
 		var summons_cleared: bool = game.asteroids.is_empty()
-		if kind == "swarm":
-			summons_cleared = game.enemies.filter(func(enemy: Node2D) -> bool: return enemy.summoned).is_empty()
 		if summons_cleared:
 			return_to_firefight()
 	elif phase == "active" and kind in ["black", "white"]:
@@ -133,6 +127,7 @@ func step(delta: float) -> void:
 			return_to_firefight()
 			return
 		neutralise_time = maxf(0.0, neutralise_time - delta)
+	refresh_artwork(delta)
 	queue_redraw()
 
 ## Continuous velocity steering keeps the boss on one side of a moving field.
@@ -188,14 +183,14 @@ func player_well_threats(anticipate: bool = true) -> Array[Dictionary]:
 	var threats: Array[Dictionary] = []
 	if anticipate and game.combat.pending_gravity_time >= 0.0:
 		var size: float = game.PlayerWell.scale_for_charge(game.combat.pending_gravity_charge)
-		threats.append({"at": game.combat.pending_gravity_target, "radius": 31.0 * size + GRAVITY_HULL_RADIUS + 12.0})
+		threats.append({"at": game.combat.pending_gravity_target, "radius": 31.0 * size + visual_hull_radius() + 12.0})
 	for well in game.lingering_wells:
 		if well.get_script() != game.PlayerWell or well.phase == "finished" or well.is_queued_for_deletion():
 			continue
 		if not anticipate and well.phase != "active":
 			continue
 		var size: float = game.PlayerWell.scale_for_charge(well.charge) if well.phase == "warning" else well.well_scale
-		threats.append({"at": well.well_position, "radius": (31.0 * size if well.phase == "warning" else game.gravity_fields.core_radius(well)) + GRAVITY_HULL_RADIUS + 12.0})
+		threats.append({"at": well.well_position, "radius": (31.0 * size if well.phase == "warning" else game.gravity_fields.core_radius(well)) + visual_hull_radius() + 12.0})
 	return threats
 
 ## Swept visibility prevents a smooth return from taking a shortcut through a
@@ -242,7 +237,7 @@ func player_well_clearance(at: Vector2, anticipate: bool = true) -> float:
 
 ## Aim three enemy projectiles at the ship's current position; their trajectories remain dodgeable after firing.
 func fire_volley() -> void:
-	var muzzle := body_position + Vector2(0, 45)
+	var muzzle := body_position + Vector2(0, 124)
 	var aim: Vector2 = (game.ship.position - muzzle).normalized()
 	for angle in [-0.2, 0.0, 0.2]:
 		game.spawn_hostile_shot(muzzle, aim.rotated(angle) * 245.0)
@@ -254,7 +249,7 @@ func return_to_firefight(release_force: Vector2 = Vector2.INF) -> void:
 		game.gravity_fields.add_exit(well_position, kind, well_scale)
 		game.request_cruise_return(departing_force)
 	if lingering:
-		if kind in ["asteroid", "swarm"]:
+		if kind == "asteroid":
 			game.burst(body_position + Vector2(0, 42), Color("ffb86a"), 18)
 		game.lingering_wells.erase(self)
 		queue_free()
@@ -294,8 +289,6 @@ func activate_special(intercepted: bool = false) -> void:
 	pressure_front_radius = 31.0 * well_scale
 	neutralise_time = 0.0
 	asteroid_timer = 0.0
-	swarm_count = 0
-	swarm_reward = {"dropped": false, "color": game.ALIEN_HOLE_COLORS[game.rng.randi_range(0, game.ALIEN_HOLE_COLORS.size() - 1)]}
 	game.sound.play_effect("rift" if kind in ["black", "white"] else "burst")
 	if kind in ["black", "white"]:
 		if game.combat.shield_time <= 0.0:
@@ -309,7 +302,7 @@ func activate_special(intercepted: bool = false) -> void:
 ## Spawn the fast visual cannon at the boss muzzle and aim it at the chosen fixed well location.
 func launch_rift_cannon() -> void:
 	cannon_active = true
-	cannon_position = body_position + Vector2(0, 46)
+	cannon_position = body_position # Rift cannon launches from the visible central reactor.
 	cannon_previous_position = cannon_position
 	aim_cannon_at_hole()
 
@@ -333,23 +326,6 @@ func summon_asteroid() -> void:
 	var aim_offset := Vector2(game.rng.randf_range(-65, 65), 0)
 	var velocity: Vector2 = Vector2.DOWN * game.rng.randf_range(225, 305)
 	game.spawn_asteroid(start, velocity, radius, 0, body_position + Vector2(0, 42), aim_offset)
-	game.sound.play_effect("fold")
-
-## Create a tethered alien with the barrage's group metadata. Support loot counts defeats across every group.
-func summon_alien() -> void:
-	var side: int = game.rng.randi_range(0, 2)
-	var start := Vector2.ZERO
-	if side == 0:
-		start = Vector2(game.rng.randf_range(40.0, game.arena.x - 40.0), -60.0)
-	elif side == 1:
-		start = Vector2(-60.0, game.rng.randf_range(game.top_inset + 140.0, game.top_inset + 340.0))
-	else:
-		start = Vector2(game.arena.x + 60.0, game.rng.randf_range(game.top_inset + 140.0, game.top_inset + 340.0))
-	var velocity: Vector2 = Vector2.DOWN * game.rng.randf_range(185.0, 240.0)
-	var alien: Node2D = game.spawn_enemy(start, velocity, true, body_position + Vector2(0, 42))
-	alien.shot_timer = 0.55
-	alien.drop_group = swarm_reward
-	alien.set_palette(swarm_reward.get("color", Color("c26bff")))
 	game.sound.play_effect("fold")
 
 ## Choose a lower-middle landing region, maximizing clearance if the random point is too close to the ship.
@@ -403,112 +379,46 @@ func take_hit(amount: int = 1) -> void:
 func holds_steering() -> bool:
 	return phase == "active" and kind in ["black", "white"]
 
-## Submit this object's visual geometry in local coordinates. Physics and collision rules are handled separately.
-func _draw() -> void:
-	if collapse_snapshot:
-		draw_armored_body(Color("b9f8ff") if kind == "white" else hole_color)
+## All three final boss designs share dimensions, shield clearance and damage
+## targets. These helpers keep rendering, aim selection and dodge paths aligned.
+func visual_hull_radius() -> float:
+	return GRAVITY_HULL_RADIUS
+
+func hit_radius() -> float:
+	return HIT_RADIUS
+
+func shield_radius() -> float:
+	return 150.0
+
+func guard_orbit_radii() -> Vector2:
+	return Vector2(177.0, 165.0)
+
+## Artwork has local coordinates; wells and cannon trajectories stay in world
+## coordinates. Never scale the Boss node itself to enlarge only its hull.
+func refresh_artwork(delta: float = 0.0) -> void:
+	if not is_instance_valid(artwork):
 		return
-	if lingering and kind in ["asteroid", "swarm"]:
+	artwork.position = Vector2.ZERO if collapse_snapshot else body_position
+	artwork.refresh(animation_time, health / maxf(1.0, max_health), hit_flash, phase == "warning", delta)
+
+## Submit only attack effects here; the textured 2D hull is a reusable child.
+func _draw() -> void:
+	refresh_artwork()
+	if collapse_snapshot:
+		return
+	if lingering and kind == "asteroid":
 		draw_tractor_remnant()
 		return
-	if kind == "swarm":
-		if not lingering:
-			draw_swarm_body()
-		return
-
-	var tint := hole_color if kind == "black" else (Color("b9f8ff") if kind == "white" else Color("ffb86a"))
-	if not lingering:
-		draw_set_transform(body_position)
-		draw_armored_body(tint)
-		if hit_flash > 0:
-			draw_circle(Vector2.ZERO, 52, Color(1, 1, 1, 0.42))
-		draw_set_transform(Vector2.ZERO)
 	if phase not in ["warning", "active"] or kind not in ["black", "white"]:
 		return
+	var tint := hole_color if kind == "black" else Color("b9f8ff")
 	var active := phase == "active"
 	var radius := (31.0 if active else 25.0) * well_scale
 	if cannon_active:
 		draw_rift_cannon(tint)
 	draw_space_folds(well_position, radius, tint, active)
-	# Active disks and their core masks are shared with player/lingering wells.
 	if not active:
 		draw_circle(well_position, radius, Color(tint, 0.04))
-
-## Draw the three non-carrier bosses as related warships with different tools:
-## gravity bosses use enclosing scythes; the forge uses armored crusher arms.
-func draw_armored_body(tint: Color) -> void:
-	var pulse := 0.75 + sin(animation_time * 5.0) * 0.25
-	draw_circle(Vector2.ZERO,82.0,Color(tint,0.045))
-	for side in [-1.0,1.0]:
-		var outer: PackedVector2Array
-		if kind == "asteroid":
-			outer = PackedVector2Array([Vector2(side*15,-30),Vector2(side*63,-48),Vector2(side*81,-24),Vector2(side*76,26),Vector2(side*51,50),Vector2(side*47,12),Vector2(side*20,21)])
-		else:
-			outer = PackedVector2Array([Vector2(side*13,-28),Vector2(side*49,-54),Vector2(side*74,-62),Vector2(side*61,-28),Vector2(side*76,13),Vector2(side*60,54),Vector2(side*43,18),Vector2(side*19,25)])
-		HullFinish.plate(self, outer, Color("716b7d") if kind != "asteroid" else Color("80715f"), tint, animation_time)
-		var inset := PackedVector2Array([Vector2(side*20,-23),Vector2(side*50,-43),Vector2(side*62,-45),Vector2(side*50,-19),Vector2(side*61,15),Vector2(side*50,34),Vector2(side*39,8),Vector2(side*22,14)])
-		HullFinish.plate(self, inset, Color("a5a4b9") if kind != "asteroid" else Color("b89770"), tint, animation_time + side * 0.3)
-		draw_polyline(PackedVector2Array([Vector2(side*21,-19),Vector2(side*48,-35),Vector2(side*45,-12),Vector2(side*55,18),Vector2(side*43,25)]),Color(tint,0.85),3.2,true)
-		# Twin recessed weapon/tractor ports.
-		var port := Vector2(side*30,11)
-		draw_circle(port,10,Color("08080d"))
-		draw_arc(port,10,0,TAU,24,Color(tint,0.75),2,true)
-		draw_circle(port,4.5,Color(tint,pulse))
-	var hull := PackedVector2Array([Vector2(0,-61),Vector2(22,-27),Vector2(24,20),Vector2(10,49),Vector2(0,59),Vector2(-10,49),Vector2(-24,20),Vector2(-22,-27)])
-	HullFinish.plate(self, hull, Color("777e94"), tint, animation_time)
-	HullFinish.plate(self, PackedVector2Array([Vector2(0,-56),Vector2(0,47),Vector2(-9,39),Vector2(-17,14),Vector2(-16,-21)]), Color("b3b7c9"), tint, animation_time)
-	var core_tint := Color("ffffff") if kind == "white" else tint
-	draw_colored_polygon(PackedVector2Array([Vector2(0,-31),Vector2(8,-7),Vector2(7,23),Vector2(0,42),Vector2(-7,23),Vector2(-8,-7)]),Color("09080f"))
-	draw_line(Vector2(0,-26),Vector2(0,34),core_tint,5.0,true)
-	for y in [-17.0,-5.0,7.0,19.0]:
-		draw_circle(Vector2(0,y),2.6,Color(core_tint,pulse))
-	if kind == "black":
-		draw_arc(Vector2(0,35),13,0,TAU,32,Color("c47cff"),3,true)
-	elif kind == "white":
-		draw_circle(Vector2(0,35),10,Color("ecffff"))
-		draw_circle(Vector2(0,35),18,Color(tint,0.16))
-	else:
-		HullFinish.plate(self, PackedVector2Array([Vector2(-17,35),Vector2(0,55),Vector2(17,35),Vector2(0,24)]), Color("b38660"), tint, animation_time)
-		draw_line(Vector2(-10,36),Vector2(0,48),Color("ffb86a"),3,true)
-		draw_line(Vector2(10,36),Vector2(0,48),Color("ffb86a"),3,true)
-
-## Render the carrier's distinctive body and hangars; this is cosmetic geometry, not collision geometry.
-func draw_swarm_body() -> void:
-	var tint := Color("c26bff")
-	var pulse := 0.5 + sin(animation_time * 4.0) * 0.5
-	draw_set_transform(body_position)
-	draw_circle(Vector2.ZERO, 94.0, Color(tint, 0.05))
-	# Four hooked hangar blades echo the small alien while making the carrier's
-	# wider, predatory silhouette instantly distinct from the gravity bosses.
-	for side in [-1.0, 1.0]:
-		var wing := PackedVector2Array([
-			Vector2(side * 18.0, -37.0), Vector2(side * 63.0, -62.0),
-			Vector2(side * 88.0, -47.0), Vector2(side * 68.0, -13.0),
-			Vector2(side * 86.0, 29.0), Vector2(side * 62.0, 66.0),
-			Vector2(side * 45.0, 18.0), Vector2(side * 23.0, 27.0)
-		])
-		HullFinish.plate(self, wing, Color("807589"), tint, animation_time)
-		var raised := PackedVector2Array([Vector2(side*30,-31),Vector2(side*61,-49),Vector2(side*73,-45),Vector2(side*58,-13),Vector2(side*72,30),Vector2(side*60,44),Vector2(side*48,10)])
-		HullFinish.plate(self, raised, Color("b599c3"), tint, animation_time + side * 0.3)
-		draw_line(Vector2(side * 52.0, -39.0), Vector2(side * 63.0, 29.0), Color(tint,0.85), 4.0, true)
-		for i in range(3):
-			var dock := Vector2(side * (43.0 + float(i) * 9.0), -25.0 + float(i) * 22.0)
-			draw_circle(dock,7.0,Color("08080d"))
-			draw_circle(dock, 3.0, Color(tint, 0.45 + pulse * 0.4))
-	var hull := PackedVector2Array([Vector2(0,-64),Vector2(29,-31),Vector2(30,27),Vector2(0,58),Vector2(-30,27),Vector2(-29,-31)])
-	HullFinish.plate(self, hull, Color("8a809c"), tint, animation_time)
-	HullFinish.plate(self, PackedVector2Array([Vector2(0,-58),Vector2(0,48),Vector2(-13,32),Vector2(-18,-23)]), Color("c1aacd"), tint, animation_time)
-	for side in [-1.0, 1.0]:
-		var eye := PackedVector2Array([Vector2(side*5,-13),Vector2(side*23,-27),Vector2(side*19,-3),Vector2(side*6,5)])
-		draw_colored_polygon(eye, tint)
-	draw_circle(Vector2(0, 29), 13.0 + pulse, Color(tint, 0.17))
-	draw_circle(Vector2(0, 29), 6.0, Color("f1dcff"))
-	if phase in ["warning", "active", "clearing"]:
-		for layer in range(5, 0, -1):
-			draw_circle(Vector2(0, 42), 4.0 + layer * 3.0 + pulse, Color(tint, 0.035))
-	if hit_flash > 0.0:
-		draw_circle(Vector2.ZERO, 40.0, Color(1, 1, 1, 0.5))
-	draw_set_transform(Vector2.ZERO)
 
 ## Refraction owns the folding surface. Only diffuse warning light is painted;
 ## active fields use the textured disk and shader particles without line rings.
@@ -530,11 +440,11 @@ func draw_rift_cannon(tint: Color) -> void:
 	draw_circle(cannon_position, 9.5, Color("f5ffff") if kind == "white" else Color("f0e5ff"))
 	draw_circle(cannon_position, 17.0, Color(tint, 0.25))
 
-## The destroyed carrier leaves a broken, still-powered tractor core. Its
+## The destroyed asteroid forge leaves a broken, still-powered tractor core. Its
 ## position is the original tether origin, and its lifetime is the attack's own.
 func draw_tractor_remnant() -> void:
 	var at := body_position + Vector2(0, 42)
-	var tint := Color("79f4c4") if kind == "swarm" else Color("ffb86a")
+	var tint := Color("ffb86a")
 	draw_circle(at, 46, Color(tint, 0.06))
 	for i in range(5):
 		var angle := i * TAU / 5.0 + sin(animation_time) * 0.08

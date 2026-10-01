@@ -39,7 +39,7 @@ func capture() -> void:
 	await process_frame
 	await RenderingServer.frame_post_draw
 	root.get_texture().get_image().save_png(destination.path_join("continued-flight.png"))
-	for mode in ["black", "white", "asteroid", "swarm"]:
+	for mode in ["black", "white", "asteroid"]:
 		game.start_run(mode)
 		game.rng.seed = 14
 		game.boss.step(1.5)

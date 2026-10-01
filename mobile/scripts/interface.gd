@@ -6,7 +6,7 @@ const GlassButton = preload("res://scripts/glass_button.gd")
 const INK := Color("e8f0f5")
 const MUTED := Color("94a7bc")
 const MINT := Color("64edcf")
-const BOSS_NAMES := {"black": "BLACK HOLE", "white": "WHITE HOLE", "asteroid": "ASTEROID FORGE", "swarm": "SWARM CARRIER"}
+const BOSS_NAMES := {"black": "BLACK HOLE", "white": "WHITE HOLE", "asteroid": "ASTEROID FORGE"}
 var game: Node2D
 var primary: Button
 var secondary: Button
@@ -332,16 +332,8 @@ func _draw() -> void:
 		centered("Alien kills charge gravity · tap to resist a hole", h - game.bottom_inset - 270, 13, MUTED)
 		centered("Lasers save 10 seconds of fire · hull repairs up to 3", h - game.bottom_inset - 248, 13, INK)
 		return
-	# Floating essentials leave the upper playfield open. The boss indicator
-	# follows its hull until final boss damage artwork replaces health bars.
+	# Final boss artwork now communicates damage through scars, flicker and smoke.
 	draw_score_and_lives(top)
-	if is_instance_valid(game.boss):
-		var boss_at: Vector2 = game.boss.body_position + Vector2(-48, 82)
-		boss_at.x = clampf(boss_at.x, 10.0, w - 106.0)
-		boss_at.y = maxf(boss_at.y, top + 10.0)
-		draw_style_box(panel(Color(0.035, 0.07, 0.13, 0.6), Color(0, 0, 0, 0)), Rect2(boss_at, Vector2(96, 4)))
-		var tint := Color("75cfff") if game.boss_is_shielded() else Color("ffbb85")
-		draw_style_box(panel(tint, Color(0, 0, 0, 0)), Rect2(boss_at, Vector2(96.0 * float(game.boss.health) / game.boss.max_health, 4)))
 	if game.state == game.State.PLAYING:
 		if game.combat.gravity_armed:
 			draw_gravity_target()

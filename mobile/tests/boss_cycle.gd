@@ -41,7 +41,7 @@ func run_checks() -> void:
 	game.set_physics_process(false)
 	game.set_process(false)
 	game.sound.enabled = false
-	for mode in ["black", "white", "asteroid", "swarm"]:
+	for mode in ["black", "white", "asteroid"]:
 		game.start_run(mode)
 		game.bosses_defeated = 49
 		check(game.boss.phase == "arrival", mode + ": enters from offscreen")

@@ -87,6 +87,8 @@ func update_effects(game: Node2D) -> void:
 	var collapses: Variant = game.gravity_fields.get("collapses")
 	if collapses is Array:
 		for collapse in collapses:
+			if collapse.kind not in ["black", "white"]:
+				continue
 			if lenses.size() >= MAX_LENSES:
 				break
 			var progress: float = clampf(collapse.age/collapse.OPEN_TIME,0.0,1.0)
@@ -99,8 +101,8 @@ func update_effects(game: Node2D) -> void:
 		var guards: Array = game.enemies.filter(func(enemy: Node2D) -> bool: return enemy.shield_guard)
 		var shield_strength := float(guards.size()) / maxf(1.0, boss.guard_total)
 		var gravity_shield: bool = boss.has_player_gravity_threat()
-		lenses.append(Vector4(boss.body_position.x, boss.body_position.y, 185.0, 8.5 if gravity_shield else 2.0 + shield_strength * 4.5))
-		styles.append(Vector4(104.0, 1.0, 3.0, game.visual_time))
+		lenses.append(Vector4(boss.body_position.x, boss.body_position.y, boss.shield_radius() + 81.0, 8.5 if gravity_shield else 2.0 + shield_strength * 4.5))
+		styles.append(Vector4(boss.shield_radius(), 1.0, 3.0, game.visual_time))
 	# Manual targeting and the final third-second of automatic targeting share
 	# the same refraction clock, so both launches gather plasma before firing.
 	var gravity_preparation: float = game.combat.gravity_preparation_time()
@@ -136,7 +138,7 @@ func update_effects(game: Node2D) -> void:
 		lenses.append(Vector4(effect.at.x, effect.at.y, radius + 75.0, 1.5 * (1.0 - age / 1.2)))
 		styles.append(Vector4(maxf(radius, 2.0), -1.0 if black else 1.0, 2.0, game.visual_time))
 	for well in game.lingering_wells:
-		if well.kind in ["asteroid", "swarm"] and lenses.size() < MAX_LENSES:
+		if well.kind == "asteroid" and lenses.size() < MAX_LENSES:
 			var core: Vector2 = well.body_position + Vector2(0, 42)
 			lenses.append(Vector4(core.x, core.y, 65.0, 0.4))
 			styles.append(Vector4(15.0, -1.0, 1.0, well.animation_time))
@@ -162,7 +164,7 @@ func update_effects(game: Node2D) -> void:
 				var tail: Vector2 = boss.cannon_position - boss.cannon_velocity.normalized() * 112.0
 				strands.append(Vector4(tail.x, tail.y, boss.cannon_position.x, boss.cannon_position.y))
 				strand_styles.append(Vector4(20.0, 0.75, boss.animation_time, 1.0))
-		elif boss.kind in ["asteroid", "swarm"] and boss.phase in ["active", "clearing"] and lenses.size() < MAX_LENSES:
+		elif boss.kind == "asteroid" and boss.phase in ["active", "clearing"] and lenses.size() < MAX_LENSES:
 			lenses.append(Vector4(boss.body_position.x, boss.body_position.y, 87.0, 0.28))
 			styles.append(Vector4(36.0, -1.0, 1.0, boss.animation_time))
 	for rock in game.asteroids:

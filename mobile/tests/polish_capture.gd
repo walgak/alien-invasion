@@ -90,7 +90,7 @@ func run() -> void:
 	game.spawn_asteroid(Vector2(420,430),Vector2.ZERO,43)
 	await shot("asteroid-materials")
 	# Compare every boss and brighter hulls against the same planet/background.
-	for kind in ["black", "white", "asteroid", "swarm"]:
+	for kind in ["black", "white", "asteroid"]:
 		game.start_run(kind)
 		game.visual_time = 0.0
 		game.boss.step(1.5)

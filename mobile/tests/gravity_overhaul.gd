@@ -97,7 +97,7 @@ func run() -> void:
 	check(game.enemies.is_empty() and game.combat.gravity_charge == 0.0, "safe annihilation kills never replenish gravity charge")
 	check(game.gravity_fields.exits.any(func(effect: Dictionary) -> bool: return effect.kind == "white"), "annihilating white hole emits its exit burst")
 	fresh()
-	game.begin_boss("swarm")
+	game.begin_boss("asteroid")
 	game.boss.step(1.5)
 	well = player_field(Vector2(270, game.boss.body_position.y), 5.0)
 	other = player_field(Vector2(80, game.boss.body_position.y + 150.0), 2.0)

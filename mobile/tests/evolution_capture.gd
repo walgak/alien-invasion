@@ -28,7 +28,7 @@ func run() -> void:
 	game.set_process(false)
 	game.set_physics_process(false)
 	game.sound.enabled = false
-	for kind in ["asteroid", "swarm"]:
+	for kind in ["asteroid"]:
 		game.start_run(kind)
 		game.boss.step(1.5)
 		game.boss.begin_special()

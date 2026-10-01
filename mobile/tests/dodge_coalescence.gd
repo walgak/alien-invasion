@@ -62,7 +62,10 @@ func run() -> void:
 	boss.phase = "firefight"
 	boss.cooldown = 1000.0
 	boss.shot_timer = 1000.0
-	boss.body_position = Vector2(270, game.top_inset + 250)
+	# Stage a hole near the top: the smaller current player core must still
+	# be able to send the enlarged boss outside the viewport when necessary.
+	boss.body_position = Vector2(270, game.top_inset + 120)
+	boss.dodge_tracking = false
 	var target: Vector2 = boss.body_position
 	game.combat.pending_gravity_time = 1.0 / 3.0
 	game.combat.pending_gravity_charge = 5.0

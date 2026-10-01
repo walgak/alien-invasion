@@ -2,7 +2,9 @@
 
 A space shooter that began as a Python/Pygame practice project and is being developed into a portrait mobile game with Godot.
 
-The current Godot prototype is an endless high-score shooter with random alien groups, drifting asteroids, and four bosses. It runs locally on desktop and supports touch input. iOS development and Android debug APK presets are included; store submission remains future work.
+The current Godot prototype is an endless high-score shooter with random alien groups, drifting asteroids, and three bosses. It runs locally on desktop and supports touch input. iOS development and Android debug APK presets are included; store submission remains future work.
+
+For the prepared local phone builds, see [iPhone installation instructions](INSTALL-ON-IPHONE.md). The iPhone installer resolves paths relative to this folder, including after moving the project.
 
 ## Play the Godot game
 
@@ -39,9 +41,8 @@ Each tap fully cancels a hole's force for a brief beat. Keep tapping to hold the
 - **White hole:** the boss fires its rift cannon into a fixed lower-middle area. The blast creates a white hole that pushes away from its core, usually downward. All four edges remain dangerous. Repeated taps neutralise the push; reaching an edge destroys the ship.
 - **Asteroid forge:** space-fold strands connect the boss to rocks offscreen, pulling them inward before a brief wind-up and sling toward the ship. The strands fade after release. Small, medium, and large asteroids take 5, 8, and 12 shots initially to destroy. Once the barrage is cleared, the firefight resumes.
 
-- **Swarm carrier:** pulls alien ships from offscreen on boss-connected folds, then throws them toward the player. These ships can shoot and can be dodged or destroyed.
 
-Random enemy groups and asteroids keep arriving between bosses. About 45% of regular aliens zigzag, and alien firing uses a 1.05–1.9-second reference divided by the current difficulty scale. Boss music gives a three-second warning before an entrance, roughly every 40–55 seconds of regular flight. Each set of four bosses contains all four types in shuffled order. Defeating a boss awards points, drops exactly one special weapon, one gun upgrade and one shield, preserves its unfinished attack, and continues after the hazards expire. The ship returns smoothly to normal position.
+Random enemy groups and asteroids keep arriving between bosses. About 45% of regular aliens zigzag, and alien firing uses a 1.05–1.9-second reference divided by the current difficulty scale. Boss music gives a three-second warning before an entrance, roughly every 40–55 seconds of regular flight. Each set of three bosses contains all three types in shuffled order. Defeating a boss awards points, drops exactly one special weapon, one gun upgrade and one shield, preserves its unfinished attack, and continues after the hazards expire. The ship returns smoothly to normal position.
 
 ## Drops and survival
 

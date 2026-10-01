@@ -45,10 +45,10 @@ func run_checks() -> void:
 	game.start_run()
 	game.rng.seed = 19
 	var kinds: Array[String] = []
-	for i in range(4):
+	for i in range(3):
 		kinds.append(game.next_boss_kind())
 	kinds.sort()
-	check(kinds == ["asteroid", "black", "swarm", "white"], "every four-boss deck contains all four types")
+	check(kinds == ["asteroid", "black", "white"], "every three-boss deck contains all three types")
 	game.boss_timer = 0.01
 	game.update_director(0.02)
 	check(game.boss_warning > 0 and game.sound.boss_music_active and not is_instance_valid(game.boss), "music warns before the boss appears")
@@ -110,19 +110,6 @@ func run_checks() -> void:
 	game.combat.launch_cannon(target)
 	game.update_projectiles(0.3)
 	check(game.enemies.is_empty(), "targeted cannon blast kills its direct target and the nearby three-hit alien")
-	game.start_run("swarm")
-	game.boss.summon_alien()
-	var alien = game.enemies[0]
-	check(alien.summoned and alien.motion_phase == "pull", "fourth boss pulls alien ships from offscreen")
-	game.boss.body_position = Vector2(270, 250)
-	game.update_enemies(0.7)
-	check(alien.motion_phase == "windup" and alien.fold_origin == Vector2(270, 292), "alien tether connects to the moving boss")
-	game.update_enemies(0.22)
-	var velocity: Vector2 = alien.velocity
-	check(alien.motion_phase == "flight" and velocity.y > 0, "boss throws the alien toward the ship")
-	game.ship.position.x = 40
-	game.update_enemies(0.1)
-	check(alien.velocity == velocity, "thrown aliens keep a dodgeable trajectory")
 	game.start_run()
 	check(game.sound.flight_music_active and not game.sound.boss_music_active, "regular flight selects background music")
 	game.rng.seed = 2026
